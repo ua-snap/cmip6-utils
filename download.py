@@ -121,7 +121,8 @@ def update_tracker(tracker_fp, raw_dir):
                 #not sure if this check is necessary
                 if expected_base_fp == base_fp:
                     if base_fp.exists():
-                        pass
+                        if row["fail_reason"] == "BadZipFile":
+                            df.at[row_id, "fail_reason"] = ""
                     else:
                         # don't need to save base_fp return in this case
                         # _ = unzip(zip_fp, dest_dir)
@@ -161,7 +162,7 @@ def unzip(zip_fp, dest_dir):
 
 
 
-def batch_unzip(tracker_fp, raw_dir):
+def batch_unzip(tracker_fp, raw_dir, try_badzip=True):
     """Iterate over the rows of the tracker table and
     attempt to extract any data files that have not been 
     extracted yet
@@ -179,21 +180,22 @@ def batch_unzip(tracker_fp, raw_dir):
     new_base_fps = []
     for row_id, row in df.iterrows():
         zip_fp = Path(row["zip_path"])
-        if zip_fp.exists() and (row["fail_reason"] != "BadZipFile"):
-            with ZipFile(zip_fp, "r") as zip_ref:
-                fns = zip_ref.namelist()
-            dest_dir = raw_dir.joinpath(row["data_group"])
-            expected_base_fp = dest_dir.joinpath([fn for fn in fns if ".nc" in fn][0])
-            if not expected_base_fp.exists():
-                try:
-                    # unzip and update dataframe
-                    base_fp = unzip(zip_fp, dest_dir)
-                except BadZipFile as exc:
-                    df.at[row_id, "fail_reason"] = exc.args[0]
-                    continue
-                    
-                new_base_fps.append(base_fp)
-                df.at[row_id, "base_path"] = base_fp
+        if zip_fp.exists():
+            if (row["fail_reason"] != "BadZipFile") or try_badzip:
+                with ZipFile(zip_fp, "r") as zip_ref:
+                    fns = zip_ref.namelist()
+                dest_dir = raw_dir.joinpath(row["data_group"])
+                expected_base_fp = dest_dir.joinpath([fn for fn in fns if ".nc" in fn][0])
+                if not expected_base_fp.exists():
+                    try:
+                        # unzip and update dataframe
+                        base_fp = unzip(zip_fp, dest_dir)
+                    except BadZipFile as exc:
+                        df.at[row_id, "fail_reason"] = exc.args[0]
+                        continue
+
+                    new_base_fps.append(base_fp)
+                    df.at[row_id, "base_path"] = base_fp
                 
     # save changes to tracker df
     df.to_csv(tracker_fp, index=False)
