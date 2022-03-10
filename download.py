@@ -76,6 +76,28 @@ def download(row, skip_existing=True):
     return row
 
 
+def make_expected_base_fp(zip_fp, zip_fns, dest_dir):
+    """make expected base filepath from file inside zip and 
+    "west" or "east" hemisphere specified in zip path
+    
+    Args:
+        zip_fp (pathlib.PosixPath): filepath for zip archive download
+        zip_fns (list): list of strings coresponding to filenames inside of 
+            the downloaded zip file at zip_path. these are extracted as a 
+            test that the zip downloaded successfully
+        dest_dir (pathlib.PosixPath): path to the directory where the downloads
+            should be extracted to
+    
+    Returns:
+        pathlib.PosixPath object for the path to the expected data file in base_dir
+    """
+    expected_base_fn = [fn for fn in zip_fns if ".nc" in fn][0]
+    hemisphere = zip_fp.name.split("_")[-1].split(".zip")[0]
+    expected_base_fn = expected_base_fn.replace(".nc", f"_{hemisphere}.nc")
+    expected_base_fp = dest_dir.joinpath(expected_base_fn)
+    
+    return expected_base_fp
+
 def update_tracker(tracker_fp, raw_dir):
     """Update the tracking table based on presence of files. 
     May be executed repeatedly without change if there are no updates to be made.
@@ -97,7 +119,7 @@ def update_tracker(tracker_fp, raw_dir):
             try:
                 # try to open the zipfile to see if success
                 with ZipFile(zip_fp, "r") as zip_ref:
-                    fns = zip_ref.namelist()
+                    zip_fns = zip_ref.namelist()
             except BadZipFile:
                 df.at[row_id, "result"] = "fail"
                 df.at[row_id, "fail_reason"] = "BadZipFile"
@@ -111,11 +133,14 @@ def update_tracker(tracker_fp, raw_dir):
                 #  corrupt / partial zip or something weird
                 if df.at[row_id, "fail_reason"] == "":
                     df.at[row_id, "fail_reason"] = "Good zip file, but failed?"
+                else:
+                    df.at[row_id, "result"] = "pass"
+                    df.at[row_id, "fail_reason"] = "originally failed but now passing"
                 continue
                 
             # should only be one netcdf in there
             dest_dir = raw_dir.joinpath(row["data_group"])
-            expected_base_fp = dest_dir.joinpath([fn for fn in fns if ".nc" in fn][0])
+            expected_base_fp = make_expected_base_fp(zip_fp, zip_fns, dest_dir)
             base_fp = Path(row["base_path"])
             if str(base_fp) != "":
                 #not sure if this check is necessary
@@ -143,21 +168,25 @@ def update_tracker(tracker_fp, raw_dir):
     return df
 
 
-def unzip(zip_fp, dest_dir):
+def unzip(zip_fp, base_fp):
     """Extract contents of a zip file to a destination directory
     
     Args:
         zip_fp (path-like): path to zip file
-        dest_dir (pathlib.PosixPath): path to destination directory to extract to
+        base_fp (pathlib.PosixPath): path to extract the data file to
         
     Returns:
         base_fp (pathlib.PosixPath): New path to data file in $BASE_DIR
     """
     with ZipFile(zip_fp, "r") as zip_ref:
-        fns = zip_ref.namelist()
-        zip_ref.extractall(dest_dir)
-    # should only be one netcdf in there
-    base_fp = dest_dir.joinpath([fn for fn in fns if ".nc" in fn][0])
+        zip_info = zip_ref.infolist()
+        # iterate across files and change names to have specific hemisphere
+        for info in zip_info:
+            if ".nc" in info.filename:
+                info.filename = base_fp.name
+                dest_dir = base_fp.parent
+                zip_ref.extract(info, dest_dir)
+
     return base_fp
 
 
@@ -183,13 +212,13 @@ def batch_unzip(tracker_fp, raw_dir, try_badzip=True):
         if zip_fp.exists():
             if (row["fail_reason"] != "BadZipFile") or try_badzip:
                 with ZipFile(zip_fp, "r") as zip_ref:
-                    fns = zip_ref.namelist()
+                    zip_fns = zip_ref.namelist()
                 dest_dir = raw_dir.joinpath(row["data_group"])
-                expected_base_fp = dest_dir.joinpath([fn for fn in fns if ".nc" in fn][0])
+                expected_base_fp = make_expected_base_fp(zip_fp, zip_fns, dest_dir)
                 if not expected_base_fp.exists():
                     try:
                         # unzip and update dataframe
-                        base_fp = unzip(zip_fp, dest_dir)
+                        base_fp = unzip(zip_fp, expected_base_fp)
                     except BadZipFile as exc:
                         df.at[row_id, "fail_reason"] = exc.args[0]
                         continue
