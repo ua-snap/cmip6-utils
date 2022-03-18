@@ -98,6 +98,7 @@ def make_expected_base_fp(zip_fp, zip_fns, dest_dir):
     
     return expected_base_fp
 
+
 def update_tracker(tracker_fp, raw_dir):
     """Update the tracking table based on presence of files. 
     May be executed repeatedly without change if there are no updates to be made.
@@ -110,6 +111,25 @@ def update_tracker(tracker_fp, raw_dir):
     Returns:
         Nothing, prints the number of records updated
     """
+    # de-duplicating some code just for use in here 
+    def mosaic_exists(mosaic_fp):
+        """update mosaic_exists column"""
+        if Path(mosaic_fp).exists():
+            df.at[row_id, "mosaic_exists"] = True
+        return None
+                
+    def update_mosaic():
+        """Update mosaic path columns"""
+        if row["hemisphere"] != "":
+            mosaic_fp = str(expected_base_fp).replace(
+                f"_{row['hemisphere']}.nc", ".nc"
+            )
+            df.at[row_id, "mosaic_path"] = mosaic_fp
+        else:
+            return None
+        mosaic_exists(mosaic_fp)
+        return None
+    
     df = pd.read_csv(tracker_fp, keep_default_na=False)
     
     # check if data present in scratch_dir but not in base_dir
@@ -148,21 +168,25 @@ def update_tracker(tracker_fp, raw_dir):
                     if base_fp.exists():
                         if row["fail_reason"] == "BadZipFile":
                             df.at[row_id, "fail_reason"] = ""
+                        else:
+                            update_mosaic()
                     else:
                         # don't need to save base_fp return in this case
                         # _ = unzip(zip_fp, dest_dir)
                         pass
                 elif expected_base_fp.exists():
-                    df.at[row_id, "base_path"] = expected_base_fp
+                    df.at[row_id, "base_path"] = str(expected_base_fp)
+                    update_mosaic()
                 else:
                     # df.at[row_id, "base_path"] = unzip(zip_fp, dest_dir)
                     pass
             elif expected_base_fp.exists():
                 # zip present with data .nc file, and expected data
                 #  present in base_dir, set base_path
-                df.at[row_id, "base_path"] = expected_base_fp
-        else:
-            pass
+                df.at[row_id, "base_path"] = str(expected_base_fp)
+                update_mosaic()
+        elif row["base_path"] != "":
+            update_mosaic()
         
     df.to_csv(tracker_fp, index=False)
     return df
