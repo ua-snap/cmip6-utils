@@ -69,3 +69,18 @@ api_lu["varnames"] = {
     "snw": "surface_snow_amount",
     "mrro": "total_runoff",
 }
+
+# min, max valid ranges
+api_lu["var_ranges"] = {
+    "tas": (210, 310), # ~80 F to 100 F
+    "pr": (0, 0.001), # (kg m-2 s-1)
+    "psl": (90000, 110000), # Pa
+    # "orog": ,
+    # "sftlf": ,
+    # "sftof": ,
+    # "evspsbl": ,
+    # "mrsos": ,
+    # "prsn": ,
+    # "snw": ,
+    # "mrro": ,
+}
