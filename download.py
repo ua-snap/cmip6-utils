@@ -7,7 +7,7 @@ import cdsapi
 import pandas as pd
 
 
-def run_retrieve(api_di, fp, log_fp):
+def run_retrieve(api_di, fp, log_fp, dataset="projections-cmip6"):
     """Wrapper for the cdsapi.Client.retrieve function
     to run the download request for a given set of parameters.
     
@@ -17,6 +17,7 @@ def run_retrieve(api_di, fp, log_fp):
         fp (path-like): path to write downloaded data
         log_fp (path-like): path to text file where download logging
             messages should be written
+        dataset (str): name of the CDS dataset to access
     
     Returns:
         out (str): path to download path on CDS if success, error 
@@ -32,7 +33,7 @@ def run_retrieve(api_di, fp, log_fp):
     c.logger.propagate = False
     
     try:
-        result = c.retrieve("projections-cmip6", api_di, fp)
+        result = c.retrieve(dataset, api_di, str(fp))
         out = result.location
     except Exception as exc:
         out = exc.args[0]
