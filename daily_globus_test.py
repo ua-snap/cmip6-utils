@@ -1,0 +1,106 @@
+import sys
+import argparse
+import os
+
+from random import SystemRandom
+from uuid import uuid4
+
+# Revised version by Matt Pritchard, CEDA/STFC to work with globus-cli
+
+def listEndpoints(gendpointDict):
+
+    endNames = list(gendpointDict.keys())
+    print("Endpoints involved:")
+    for thisEndName in endNames:
+        print(thisEndName)
+
+def arguments(argv):
+
+    parser = argparse.ArgumentParser(description = \
+        '''To use this script, you must have the Globus Command Line Interface
+        tools installed locally (see https://docs.globus.org/cli/)
+        The host where you install these tools does
+        NOT need to be one of the endpoints in the transfer.
+        This script makes use of the Globus CLI 'transfer' command.
+        You need to ensure the endpoints involved are activated, see "Endpoints
+        to be activated" in output (use "globus endpoint activate")
+        By default, the transfer command will:
+        - verify the checksum of the transfer
+        - encrypt the transfer
+        - and delete any fies at the user endpoint with the same name.'''
+            )
+    # parser.add_argument('-e', '--user-endpoint', type=str, help='endpoint you wish to download files to', required=True)
+    parser.add_argument('-u', '--username', type=str, help='your Globus username', required=True)
+    parser.add_argument('-p', '--path', type=str, help='the path on your endpoint where you want files to be downloaded to', default='/~/')
+    parser.add_argument('-l', '--list-endpoints', help='List the endpoints to be activated and exit (no transfer attempted)', action='store_true')
+    parser._optionals.title = 'required and optional arguments'
+    args = parser.parse_args()
+
+    username = args.username
+    # uendpoint = args.user_endpoint
+    upath = args.path
+    listonly = args.list_endpoints
+
+    # if '/' in uendpoint:
+    #     print("Do not include the download path in the endpoint name, please use the -p option")
+    #     sys.exit()
+    if '#' in upath:
+        print("The '#' character is invalid in your path, please re-enter")
+        sys.exit()
+    if upath[0] != '/' and upath != '/~/':
+        upath = '/' + upath
+
+    # return (uendpoint, username, upath, listonly)
+    return (username, upath, listonly)
+
+
+def getFiles(gendpointDict, uendpoint, username, upath):
+
+    label = str(uuid4())
+
+    endNames = list(gendpointDict.keys())
+
+    for thisEndName in endNames:
+
+        fileList = gendpointDict[thisEndName]
+
+        cryptogen = SystemRandom()
+        transferFile = '/tmp/transferList_' + thisEndName + '_' + str(cryptogen.randint(1,9999)) + '.txt'
+        file = open(transferFile, 'w')
+
+        for thisFile in fileList:
+
+            basename = os.path.basename(thisFile)
+
+            if upath[-1] != '/':
+                basename = '/' + basename
+
+            remote = thisFile
+            local = upath + basename
+
+            file.write(remote + ' ' + local + '\n')
+
+        file.close()
+        os.system(f"cat {transferFile}")
+        print("done")
+        
+        # print("globus transfer "+thisEndName+" "+uendpoint+" --label \"CLI Batch\" --batch "+transferFile)
+
+        # os.system("globus transfer "+thisEndName+" "+uendpoint+" --label \"CLI Batch\" --batch "+transferFile)
+
+        os.remove(transferFile)
+
+    return
+
+if __name__ == '__main__':
+
+    gendpointDict = {'415a6320-e49c-11e5-9798-22000b9da45e': ['/css03_data/CMIP6/ScenarioMIP/NOAA-GFDL/GFDL-ESM4/ssp585/r1i1p1f1/Amon/tas/gr1/v20180701/tas_Amon_GFDL-ESM4_ssp585_r1i1p1f1_gr1_201501-210012.nc']}
+    # uendpoint, username, upath, listonly = arguments(sys.argv)
+    username, upath, listonly = arguments(sys.argv)
+    
+    uendpoint = "7235217a-be50-46ba-be31-70bffe2b5bf4"
+    
+    if (listonly):
+        listEndpoints(gendpointDict)
+    else:
+        getFiles(gendpointDict, uendpoint, username, upath)
