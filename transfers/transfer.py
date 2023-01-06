@@ -41,6 +41,8 @@ if __name__ == "__main__":
         f"Batch {freq} {varname}",
         "--batch",
         batch_fp,
+        "--sync",
+        "mtime",
     ]
     
     out = check_output(command)
