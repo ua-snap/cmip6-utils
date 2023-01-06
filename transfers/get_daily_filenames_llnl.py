@@ -74,4 +74,4 @@ if __name__ == "__main__":
     
     # create dataframe from results and save to this folder
     df = pd.DataFrame(rows)
-    df.to_csv("llnl_esgf_day_filenames.csv")
+    df.to_csv("llnl_esgf_day_filenames.csv", index=False)
