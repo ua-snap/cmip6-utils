@@ -6,6 +6,7 @@ Example usage: `python transfer.py -v tas`
 import argparse
 import time
 import sys
+from pathlib import Path
 from subprocess import check_output
 from config import llnl_ep, acdn_ep
 
@@ -14,7 +15,11 @@ def arguments(argv):
     """Parse some args"""
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "-v", "--varname", type=str, help="Name of variable to transfer", required=True
+        "-v",
+        "--varname",
+        type=str,
+        help="Name of variable to transfer. If no variable is supplied, all batch files are used.",
+        default="all_variables",
     )
     parser.add_argument(
         "-f",
@@ -23,14 +28,30 @@ def arguments(argv):
         help="Temporal frequency (currently only option is 'day' and this is default)",
         default="day",
     )
+    parser.add_argument(
+        "-d",
+        "--dry-run",
+        action="store_true",
+        help="Set the --dry-run switch in globus transfer",
+    )
     args = parser.parse_args()
     
-    return args.varname, args.freq
+    return args.varname, args.freq, args.dry_run
 
                                      
 if __name__ == "__main__":
-    varname, freq = arguments(sys.argv)
-    batch_fp = f"batch_files/batch_llnl_{freq}_{varname}.txt"
+    varname, freq, dry_run = arguments(sys.argv)
+    
+    if varname == "all_variables":
+        batch_fps = Path("batch_files").glob(f"batch_llnl_{freq}_*.txt")
+        all_fp = Path(f"/tmp/batch_llnl_{freq}_all_variables.txt")
+        batch_fp = str(all_fp)
+        with open(batch_fp, "w") as batch_file:
+            for fp in batch_fps:
+                with open(fp) as infile:
+                    batch_file.write(infile.read())
+    else:
+        batch_fp = f"batch_files/batch_llnl_{freq}_{varname}.txt"
     
     command = [
         "globus",
@@ -41,10 +62,20 @@ if __name__ == "__main__":
         f"Batch {freq} {varname}",
         "--batch",
         batch_fp,
-        "--sync",
+        "--sync-level",
         "mtime",
     ]
     
+    if dry_run:
+        command += ["--dry-run"]
+    
     out = check_output(command)
     print(out.decode("utf-8"))
+    
+    # delete the all-variable batch file if created
+    try:
+        all_fp.unlink()
+    except:
+        pass
+    
                                      
