@@ -14,6 +14,8 @@ scenarios = [
 # this points to the "UAF Arctic CMIP6" collection
 acdn_ep = "7235217a-be50-46ba-be31-70bffe2b5bf4"
 
+acdn_prefix = Path("/CMIP6")
+
 # the endpoint for the LLNL ESGF node
 llnl_ep = "415a6320-e49c-11e5-9798-22000b9da45e"
 
