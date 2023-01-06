@@ -14,7 +14,7 @@ def get_contents(ep, path):
     ep_path = f"{ep}:{path}"
     
     try:
-        out = check_output(["globus", "ls", ep_path], stderr=subprocess.STDOUT)
+        out = subprocess.check_output(["globus", "ls", ep_path], stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError as exc:
         out_list = re.split("\n|\s\s\s\s\s", exc.output.decode("utf-8"))
         http_status = out_list[out_list.index("HTTP status:") + 1]
