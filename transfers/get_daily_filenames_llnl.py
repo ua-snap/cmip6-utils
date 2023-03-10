@@ -1,4 +1,8 @@
-"""Generate a reference table of daily CMIP6 holdings of interest for SNAP on the LLNL ESGF node"""
+"""Generate a reference table of CMIP6 holdings of interest for SNAP on the LLNL ESGF node.
+
+The tbale resulting from this should have the following columns: 
+model, scenario, variant, frequency, variable, grid_type, version, n_files, filenames
+"""
 
 from itertools import product
 from multiprocessing import Pool
@@ -11,14 +15,14 @@ import utils
 
 def get_filenames(args):
     """Get the file names for a some combination of model, scenario, and variable."""
-    activity, model, scenario, varname = args
+    activity, model, scenario, frequency, varname = args
     variant = luts.model_inst_lu[model]["variant"]
     
     # the subdirectory under the variable name is the grid type.
     #  This is almost always "gn", meaning the model's native grid, but it could be different. 
     #  So we have to check it instead of assuming. I have only seen one model where this is different (gr1, GFDL-ESM4)
     var_path = llnl_prefix.joinpath(
-        activity, luts.model_inst_lu[model]["institution"], model, scenario, variant, "day", varname
+        activity, luts.model_inst_lu[model]["institution"], model, scenario, variant, frequency, varname
     )
     grid_type = utils.get_contents(llnl_ep, var_path)
 
@@ -28,6 +32,7 @@ def get_filenames(args):
             "model": model,
             "scenario": scenario,
             "variant": variant,
+            "frequency": frequency,
             "variable": varname,
             "grid_type": None,
             "version": None,
@@ -63,10 +68,11 @@ if __name__ == "__main__":
     varnames = list(luts.vars_tier1.keys()) + list(luts.vars_tier2.keys())
     
     # generate lists of arguments from all combinations of variables, models, and scenarios
+    freqs = ["mon", "day"]
     args = list(
-        product(["CMIP"], luts.model_inst_lu, ["historical"], varnames)
+        product(["CMIP"], luts.model_inst_lu, ["historical"], freqs, varnames)
     ) + list(
-        product(["ScenarioMIP"], luts.model_inst_lu, scenarios, varnames)
+        product(["ScenarioMIP"], luts.model_inst_lu, scenarios, freqs, varnames)
     )
     
     with Pool(32) as pool:
@@ -74,4 +80,4 @@ if __name__ == "__main__":
     
     # create dataframe from results and save to this folder
     df = pd.DataFrame(rows)
-    df.to_csv("llnl_esgf_day_filenames.csv", index=False)
+    df.to_csv("llnl_esgf_holdings.csv", index=False)
