@@ -31,13 +31,14 @@ def arguments(argv):
 def get_filenames(args):
     """Get the file names for a some combination of model, scenario, and variable."""
     esgf_node, activity, model, scenario, frequency, varname = args
-    node_ep = luts.globus_esgf_endpoints[esgf_node]
+    node_ep = luts.globus_esgf_endpoints[esgf_node]["ep"]
+    node_prefix = Path(luts.globus_esgf_endpoints[esgf_node]["prefix"])
     variant = luts.model_inst_lu[model]["variant"]
     
     # the subdirectory under the variable name is the grid type.
     #  This is almost always "gn", meaning the model's native grid, but it could be different. 
     #  So we have to check it instead of assuming. I have only seen one model where this is different (gr1, GFDL-ESM4)
-    var_path = llnl_prefix.joinpath(
+    var_path = node_prefix.joinpath(
         activity, luts.model_inst_lu[model]["institution"], model, scenario, variant, frequency, varname
     )
     grid_type = utils.get_contents(node_ep, var_path)
@@ -68,6 +69,7 @@ def get_filenames(args):
             "model": model,
             "scenario": scenario,
             "variant": variant,
+            "frequency": frequency,
             "variable": varname,
             "grid_type": grid_type,
             "version": use_version,
@@ -84,7 +86,7 @@ if __name__ == "__main__":
     varnames = list(luts.vars_tier1.keys()) + list(luts.vars_tier2.keys())
     
     # generate lists of arguments from all combinations of variables, models, and scenarios
-    freqs = ["mon", "day"]
+    freqs = ["Amon", "day"]
     args = list(
         product(["CMIP"], luts.model_inst_lu, ["historical"], freqs, varnames)
     ) + list(
