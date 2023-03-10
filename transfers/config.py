@@ -7,6 +7,7 @@ from pathlib import Path
 scenarios = [
     "ssp126",
     "ssp245",
+    "ssp370",
     "ssp585",
 ]
 
