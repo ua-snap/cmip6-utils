@@ -42,3 +42,7 @@ const_variables = {
     "sftlf": "percentage_of_the_grid_cell_occupied_by_land_including_lakes",
     "sftof": "sea_area_percentage",
 }
+
+globus_esgf_endpoints = {
+    "llnl": "415a6320-e49c-11e5-9798-22000b9da45e"
+}
