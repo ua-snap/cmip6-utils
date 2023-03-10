@@ -44,5 +44,8 @@ const_variables = {
 }
 
 globus_esgf_endpoints = {
-    "llnl": "415a6320-e49c-11e5-9798-22000b9da45e"
+    "llnl": {
+        "ep": "415a6320-e49c-11e5-9798-22000b9da45e",
+        "prefix": "/css03_data/CMIP6"
+    }
 }
