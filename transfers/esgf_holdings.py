@@ -2,8 +2,13 @@
 
 The tbale resulting from this should have the following columns: 
 model, scenario, variant, frequency, variable, grid_type, version, n_files, filenames
+
+Usage:
+    python esgf_holdings.py --node llnl
 """
 
+import argparse
+import sys
 from itertools import product
 from multiprocessing import Pool
 import numpy as np
@@ -16,9 +21,9 @@ import utils
 def arguments(argv):
     """Parse some args"""
     parser = argparse.ArgumentParser()
-    parser.add_argument("--esgf_node", type=str, help="ESGF node to query", required=True)
+    parser.add_argument("--node", type=str, help="ESGF node to query", required=True)
     args = parser.parse_args()
-    esgf_node = args.esgf_node
+    esgf_node = args.node
 
     return esgf_node
 
@@ -74,7 +79,7 @@ def get_filenames(args):
 
 
 if __name__ == "__main__":
-    esgf_node = arguments()
+    esgf_node = arguments(sys.argv)
     # put all variables of interest into single list
     varnames = list(luts.vars_tier1.keys()) + list(luts.vars_tier2.keys())
     
