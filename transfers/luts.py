@@ -17,24 +17,27 @@ model_inst_lu = {
     "NorESM2-MM": {"institution": "NCC", "variant": "r1i1p1f1"},
 }
 
-# highest priority variables 
-vars_tier1 = {
+main_variables = {
     "tas": "near_surface_air_temperature",
     "pr": "precipitation",
     "psl": "sea_level_pressure",
-    "uas": "eastward_wind",
-    "vas": "northward_wind",
-}
-
-# lower priority variables
-vars_tier2 = {
+    "huss": "near_surface_specific humidity",
+    "uas": "near_surface_eastward_wind",
+    "vas": "near_surface_northward_wind",
+    "ta": "air_temperature",
+    "ua": "eastward_wind",
+    "va": "northward_wind",
+    "hus": "specific_humidity",
     "evspsbl": "evaporation_including_sublimation_and_transpiration",
     "mrro": "total_runoff",
     "mrsos": "moisture_in_upper_portion_of_soil_column",
     "prsn": "snowfall_flux",
     "snd": "surface_snow_thickness",
     "snw": "surface_snow_amount",
-    
+    "rlds": "surface_downwelling_longwave_flux_in_air",
+    "rlus": "surface_upwelling_longwave_flux_in_air",
+    "rsds": "surface_downwelling_shortwave_flux_in_air",
+    "rsus": "surface_upwelling_shortwave_flux_in_air",
 }
 
 const_variables = {

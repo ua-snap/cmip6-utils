@@ -9,7 +9,7 @@ This "pipeline" is being set up to transfer all desired CMIP6 data from ESGF nod
 It is designed to be run from an Atlas compute node. 
 
 1. follow steps 1-4 in the Globus CLI section below to set up your environment for using the CLI.
-2. Run the `get_daily_filenames_llnl.py` to create the `llnl_esgf_day_filenames.csv` table, which contains lists of the available filenames for all desired daily data, which is hard-coded in the python file. This may not need to be run as this file will likely be committed to version control. 
+2. Use the `esgf_holdings.py` to create tables detailing availability on a particular ESGF node, which contains lists of the available filenames for all desired daily data, which is hard-coded in the python file. This may not need to be run as this file will likely be committed to version control. 
 
 
 ## Globus CLI

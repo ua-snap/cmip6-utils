@@ -83,7 +83,7 @@ def get_filenames(args):
 if __name__ == "__main__":
     esgf_node = arguments(sys.argv)
     # put all variables of interest into single list
-    varnames = list(luts.vars_tier1.keys()) + list(luts.vars_tier2.keys())
+    varnames = list(luts.main_variables.keys())
     
     # generate lists of arguments from all combinations of variables, models, and scenarios
     freqs = ["Amon", "day"]

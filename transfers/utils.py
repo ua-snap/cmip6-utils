@@ -13,11 +13,18 @@ def get_contents(ep, path):
     """Get the contents of a Globus directory as a list of string values"""
     ep_path = f"{ep}:{path}"
     
+    command = ["globus", "ls", ep_path]
     try:
-        out = subprocess.check_output(["globus", "ls", ep_path], stderr=subprocess.STDOUT)
+        out = subprocess.check_output(command, stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError as exc:
         out_list = re.split("\n|\s\s\s\s\s", exc.output.decode("utf-8"))
-        http_status = out_list[out_list.index("HTTP status:") + 1]
+        
+        try:
+            http_status = out_list[out_list.index("HTTP status:") + 1]
+        except ValueError:
+            print(exc.output.decode("utf-8"))
+            print(command)
+            exit()
         return int(http_status)
         
     contents = [c for c in out.decode("utf-8").split("\n") if c != ""]
