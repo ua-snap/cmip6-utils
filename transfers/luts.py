@@ -35,9 +35,7 @@ main_variables = {
     "snd": "surface_snow_thickness",
     "snw": "surface_snow_amount",
     "rlds": "surface_downwelling_longwave_flux_in_air",
-    "rlus": "surface_upwelling_longwave_flux_in_air",
     "rsds": "surface_downwelling_shortwave_flux_in_air",
-    "rsus": "surface_upwelling_shortwave_flux_in_air",
 }
 
 const_variables = {
@@ -52,3 +50,11 @@ globus_esgf_endpoints = {
         "prefix": "/css03_data/CMIP6"
     }
 }
+
+# names of the ScenarioMIP scenarios that we are interested in, matching directory names in ESGF archives
+scenarios = [
+    "ssp126",
+    "ssp245",
+    "ssp370",
+    "ssp585",
+]

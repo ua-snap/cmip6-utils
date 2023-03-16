@@ -28,12 +28,48 @@ def arguments(argv):
     return esgf_node
 
 
-def get_filenames(args):
-    """Get the file names for a some combination of model, scenario, and variable."""
-    esgf_node, activity, model, scenario, frequency, varname = args
+def list_variants(tc, esgf_node, activity, model, scenario):
+    """List the different variants available on a particular ESGF node for the given activity, model, and scenario"""
     node_ep = luts.globus_esgf_endpoints[esgf_node]["ep"]
     node_prefix = Path(luts.globus_esgf_endpoints[esgf_node]["prefix"])
-    variant = luts.model_inst_lu[model]["variant"]
+    scenario_path = node_prefix.joinpath(
+        activity, luts.model_inst_lu[model]["institution"], model, scenario
+    )
+    
+    variants = utils.operation_ls(tc, node_ep, scenario_path)
+    
+    if isinstance(variants, int):
+        return {}
+    elif isinstance(variants, list):
+        return {"model": model, "scenario": scenario, "variants": variants}
+    
+    
+def make_model_variants_lut(tc, esgf_node, models, scenarios):
+    """Create a lookup table of all variants available for each model/ scenario combination. Uses an existing TransferClient object. 
+    
+    Returns a pandas DataFrame with a list of variants available for each model/scenario
+    """
+    # find what variants are available for each model / scenario combination
+    args = list(
+        product(["CMIP"], models, ["historical"])
+    ) + list(
+        product(["ScenarioMIP"], models, scenarios)
+    )
+    # include the TransferClient object for each query
+    args = [[tc, esgf_node] + list(a) for a in args]
+    
+    with Pool(32) as pool:
+        rows = pool.starmap(list_variants, args)
+        
+    df = pd.DataFrame(rows)
+    
+    return df.dropna()
+
+
+def get_filenames(tc, esgf_node, activity, model, scenario, variant, frequency, varname):
+    """Get the file names for a some combination of model, scenario, and variable."""
+    node_ep = luts.globus_esgf_endpoints[esgf_node]["ep"]
+    node_prefix = Path(luts.globus_esgf_endpoints[esgf_node]["prefix"])
     
     # the subdirectory under the variable name is the grid type.
     #  This is almost always "gn", meaning the model's native grid, but it could be different. 
@@ -41,9 +77,10 @@ def get_filenames(args):
     var_path = node_prefix.joinpath(
         activity, luts.model_inst_lu[model]["institution"], model, scenario, variant, frequency, varname
     )
-    grid_type = utils.get_contents(node_ep, var_path)
+    grid_type = utils.operation_ls(tc, node_ep, var_path)
 
     if isinstance(grid_type, int):
+        # error if int
         # there is no data for this particular combination.
         row_di = {
             "model": model,
@@ -59,12 +96,11 @@ def get_filenames(args):
 
     else:
         # combo does exist, return all filenames
-        grid_type = grid_type[0].replace("/", "")
-        versions = utils.get_contents(node_ep, var_path.joinpath(grid_type))
+        grid_type = grid_type[0]
+        versions = utils.operation_ls(tc, node_ep, var_path.joinpath(grid_type))
         # go with newer version
-        use_version = sorted([v.replace("/", "") for v in versions])[-1]
-        # add "v" back in
-        fns = utils.get_contents(node_ep, var_path.joinpath(grid_type, use_version))
+        use_version = sorted(versions)[-1]
+        fns = utils.operation_ls(tc, node_ep, var_path.joinpath(grid_type, use_version))
         row_di = {
             "model": model,
             "scenario": scenario,
@@ -80,23 +116,56 @@ def get_filenames(args):
     return row_di
 
 
-if __name__ == "__main__":
-    esgf_node = arguments(sys.argv)
-    # put all variables of interest into single list
-    varnames = list(luts.main_variables.keys())
-    
+def make_holdings_table(tc, esgf_node, models, scenarios, variant_lut, varnames):
+    """Create a table of filename availability for all models, scenarios, variants, and variable names"""
     # generate lists of arguments from all combinations of variables, models, and scenarios
     freqs = ["Amon", "day"]
-    args = list(
-        product(["CMIP"], luts.model_inst_lu, ["historical"], freqs, varnames)
-    ) + list(
-        product(["ScenarioMIP"], luts.model_inst_lu, scenarios, freqs, varnames)
-    )
-    args = [[esgf_node] + list(a) for a in args]
-    
+    args = []
+    for i, row in variant_lut.iterrows():
+        activity = "CMIP" if row["scenario"] == "historical" else "ScenarioMIP"
+        args.extend(
+            product(
+                [tc], 
+                [esgf_node], 
+                [activity], 
+                [row["model"]], 
+                [row["scenario"]], 
+                row["variants"],
+                freqs, 
+                varnames
+            )
+        )
+
     with Pool(32) as pool:
-        rows = pool.map(get_filenames, args)
+        rows = pool.starmap(get_filenames, args)
+
+    filenames_lu = pd.DataFrame(rows)
     
-    # create dataframe from results and save to this folder
-    df = pd.DataFrame(rows)
-    df.to_csv(f"{esgf_node}_esgf_holdings.csv", index=False)
+    return filenames_lu
+
+
+if __name__ == "__main__":
+    esgf_node = arguments(sys.argv)
+    
+    # create an authorization client for Globus
+    auth_client = globus_sdk.NativeAppAuthClient(CLIENT_ID)
+    tc = utils.login_and_get_transfer_client(auth_client)
+    
+    # check if we need to grant conesnt for ACDN
+    tc, utils.check_for_consent_required(tc, auth_client, acdn_ep)
+    
+    # specify the models and scenarios we are interested in
+    # currently this is just everything in luts
+    models = list(luts.model_inst_lu.keys())
+    scenarios = luts.scenarios
+    
+    # get a dataframe of variants available for each model and scenario
+    variant_lut = make_model_variants_lut(tc, esgf_node, models, scenarios)
+    
+    # get the main variables of interest
+    varnames = list(luts.main_variables.keys())
+    
+    # amke the holdings table
+    holdings_df = make_holdings_table(tc, esgf_node, models, scenarios, variant_lut, varnames)
+
+    holdings_df.to_csv(f"{esgf_node}_esgf_holdings.csv", index=False)

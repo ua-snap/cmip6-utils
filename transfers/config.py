@@ -9,14 +9,6 @@ import globus_sdk
 # https://globus-sdk-python.readthedocs.io/en/stable/tutorial.html
 CLIENT_ID = os.getenv("CLIENT_ID")
 
-# names of the ScenarioMIP scenarios that we are interested in, matching directory names in ESGF archives
-scenarios = [
-    "ssp126",
-    "ssp245",
-    "ssp370",
-    "ssp585",
-]
-
 # the endpoint string for the Arctic Climate Data Node.
 # this points to the "UAF Arctic CMIP6" collection
 acdn_ep = "7235217a-be50-46ba-be31-70bffe2b5bf4"
