@@ -1,7 +1,13 @@
 """Config file to assist with Globus transfers"""
 
+import os
 from pathlib import Path
+import globus_sdk
 
+
+# Globus Client ID requried to complete an OAuth2 flow to get tokens
+# https://globus-sdk-python.readthedocs.io/en/stable/tutorial.html
+CLIENT_ID = os.getenv("CLIENT_ID")
 
 # names of the ScenarioMIP scenarios that we are interested in, matching directory names in ESGF archives
 scenarios = [
