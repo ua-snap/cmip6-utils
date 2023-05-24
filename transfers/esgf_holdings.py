@@ -151,6 +151,8 @@ if __name__ == "__main__":
     auth_client = globus_sdk.NativeAppAuthClient(CLIENT_ID)
     tc = utils.login_and_get_transfer_client(auth_client)
     
+    print("Log in successful. Running the audit now.")
+    
     # check if we need to grant conesnt for ACDN
     tc, utils.check_for_consent_required(tc, auth_client, acdn_ep)
     
