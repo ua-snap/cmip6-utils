@@ -1,10 +1,8 @@
 """Lookup tables for CMIP6 transfers"""
 
-
-# format model: institution
 model_inst_lu = {
     "ACCESS-CM2": {"institution": "CSIRO-ARCCSS", "variant": "r1i1p1f1"},
-    "CESM2": {"institution": "NCAR", "variant": "r1i1p1f1"},
+    "CESM2": {"institution": "NCAR", "variant": "r11i1p1f1"},
     "CNRM-CM6-1-HR": {"institution": "CNRM-CERFACS", "variant": "r1i1p1f2"},
     "EC-Earth3-Veg": {"institution": "EC-Earth-Consortium", "variant": "r1i1p1f1"},
     "GFDL-ESM4": {"institution": "NOAA-GFDL", "variant": "r1i1p1f1"},
@@ -12,9 +10,13 @@ model_inst_lu = {
     "HadGEM3-GC31-MM": {"institution": "MOHC", "variant": "r1i1p1f3"},
     "KACE-1-0-G": {"institution": "NIMS-KMA", "variant": "r1i1p1f1"},
     "MIROC6": {"institution": "MIROC", "variant": "r1i1p1f1"},
-    "MPI-ESM1-2-LR": {"institution": "MPI-M", "variant": "r10i1p1f1"},
+    "MPI-ESM1-2-LR": {"institution": "MPI-M", "variant": "r1i1p1f1"},
     "MRI-ESM2-0": {"institution": "MPI-M", "variant": "r1i1p1f1"},
     "NorESM2-MM": {"institution": "NCC", "variant": "r1i1p1f1"},
+    # some other models of interest that we want to include in the audit
+    "MPI-ESM1-2-HR": {"institution": "MPI-M"},
+    "TaiESM1": {"institution": "AS-RCEC", "r1i1p1f1"},
+    "CESM2-WACCM": {"institution": "NCAR"},
 }
 
 main_variables = {
