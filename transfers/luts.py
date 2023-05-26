@@ -1,22 +1,24 @@
 """Lookup tables for CMIP6 transfers"""
 
 model_inst_lu = {
-    "ACCESS-CM2": {"institution": "CSIRO-ARCCSS", "variant": "r1i1p1f1"},
-    "CESM2": {"institution": "NCAR", "variant": "r11i1p1f1"},
-    "CNRM-CM6-1-HR": {"institution": "CNRM-CERFACS", "variant": "r1i1p1f2"},
-    "EC-Earth3-Veg": {"institution": "EC-Earth-Consortium", "variant": "r1i1p1f1"},
-    "GFDL-ESM4": {"institution": "NOAA-GFDL", "variant": "r1i1p1f1"},
-    "HadGEM3-GC31-LL": {"institution": "MOHC", "variant": "r1i1p1f3"},
-    "HadGEM3-GC31-MM": {"institution": "MOHC", "variant": "r1i1p1f3"},
-    "KACE-1-0-G": {"institution": "NIMS-KMA", "variant": "r1i1p1f1"},
-    "MIROC6": {"institution": "MIROC", "variant": "r1i1p1f1"},
-    "MPI-ESM1-2-LR": {"institution": "MPI-M", "variant": "r1i1p1f1"},
-    "MRI-ESM2-0": {"institution": "MPI-M", "variant": "r1i1p1f1"},
-    "NorESM2-MM": {"institution": "NCC", "variant": "r1i1p1f1"},
+    # adding a "mirror_variant" key to this nested dict. This is how we will denote which models we should mirror in some capacity.
+    # dropping ACCESS-CM2 in favor of TaiESM1
+    "ACCESS-CM2": {"institution": "CSIRO-ARCCSS"},
+    "CESM2": {"institution": "NCAR", "mirror_variant": "r11i1p1f1"},
+    "CNRM-CM6-1-HR": {"institution": "CNRM-CERFACS", "mirror_variant": "r1i1p1f2"},
+    "EC-Earth3-Veg": {"institution": "EC-Earth-Consortium", "mirror_variant": "r1i1p1f1"},
+    "GFDL-ESM4": {"institution": "NOAA-GFDL", "mirror_variant": "r1i1p1f1"},
+    "HadGEM3-GC31-LL": {"institution": "MOHC", "mirror_variant": "r1i1p1f3"},
+    "HadGEM3-GC31-MM": {"institution": "MOHC", "mirror_variant": "r1i1p1f3"},
+    "KACE-1-0-G": {"institution": "NIMS-KMA", "mirror_variant": "r1i1p1f1"},
+    "MIROC6": {"institution": "MIROC", "mirror_variant": "r1i1p1f1"},
+    "MPI-ESM1-2-LR": {"institution": "MPI-M", "mirror_variant": "r1i1p1f1"},
+    "MRI-ESM2-0": {"institution": "MPI-M", "mirror_variant": "r1i1p1f1"},
+    "NorESM2-MM": {"institution": "NCC", "mirror_variant": "r1i1p1f1"},
     # some other models of interest that we want to include in the audit
     "MPI-ESM1-2-HR": {"institution": "MPI-M"},
-    "TaiESM1": {"institution": "AS-RCEC", "r1i1p1f1"},
-    "CESM2-WACCM": {"institution": "NCAR"},
+    "TaiESM1": {"institution": "AS-RCEC", "mirror_variant": "r1i1p1f1"},
+    "CESM2-WACCM": {"institution": "NCAR", "mirror_variant": "r1i1p1f1"},
 }
 
 main_variables = {
