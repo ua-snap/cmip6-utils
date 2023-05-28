@@ -1,7 +1,6 @@
-"""Generate a reference table of CMIP6 holdings of interest for SNAP on the LLNL ESGF node.
+"""Generate a reference table of CMIP6 holdings on a given ESGF node.
 
-The tbale resulting from this should have the following columns: 
-model, scenario, variant, frequency, variable, grid_type, version, n_files, filenames
+The table resulting from this should have the following columns: model, scenario, variant, frequency, variable, grid_type, version, n_files, filenames
 
 Usage:
     python esgf_holdings.py --node llnl
@@ -33,7 +32,7 @@ def list_variants(tc, esgf_node, activity, model, scenario):
     node_ep = luts.globus_esgf_endpoints[esgf_node]["ep"]
     node_prefix = Path(luts.globus_esgf_endpoints[esgf_node]["prefix"])
     scenario_path = node_prefix.joinpath(
-        activity, luts.model_inst_lu[model]["institution"], model, scenario
+        activity, luts.model_inst_lu[model], model, scenario
     )
     
     variants = utils.operation_ls(tc, node_ep, scenario_path)
@@ -75,7 +74,7 @@ def get_filenames(tc, esgf_node, activity, model, scenario, variant, frequency, 
     #  This is almost always "gn", meaning the model's native grid, but it could be different. 
     #  So we have to check it instead of assuming. I have only seen one model where this is different (gr1, GFDL-ESM4)
     var_path = node_prefix.joinpath(
-        activity, luts.model_inst_lu[model]["institution"], model, scenario, variant, frequency, varname
+        activity, luts.model_inst_lu[model], model, scenario, variant, frequency, varname
     )
     grid_type = utils.operation_ls(tc, node_ep, var_path)
 
@@ -156,18 +155,14 @@ if __name__ == "__main__":
     # check if we need to grant conesnt for ACDN
     tc, utils.check_for_consent_required(tc, auth_client, acdn_ep)
     
-    # specify the models and scenarios we are interested in
-    # currently this is just everything in luts
+    # specify the models we are interested in
+    # currently this is just everything in the luts.model_inst_lu table
     models = list(luts.model_inst_lu.keys())
-    scenarios = luts.scenarios
     
     # get a dataframe of variants available for each model and scenario
-    variant_lut = make_model_variants_lut(tc, esgf_node, models, scenarios)
-    
-    # get the main variables of interest
-    varnames = list(luts.main_variables.keys())
+    variant_lut = make_model_variants_lut(tc, esgf_node, models, prod_scenarios)
     
     # amke the holdings table
-    holdings_df = make_holdings_table(tc, esgf_node, models, scenarios, variant_lut, varnames)
+    holdings_df = make_holdings_table(tc, esgf_node, models, prod_scenarios, variant_lut, prod_vars)
 
     holdings_df.to_csv(f"{esgf_node}_esgf_holdings.csv", index=False)

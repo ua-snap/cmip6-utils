@@ -15,12 +15,11 @@ def test_mirror():
     
     models = [model for model in model_inst_lu.keys() if "mirror_variant" in list(model_inst_lu[model].keys())]
     
+    # make DataFrame of only groups of files to mirror
     mirror_holdings = []
-
     for model in models:
         variant = model_inst_lu[model]["mirror_variant"]
         mirror_holdings.append(holdings.query(f"model == '{model}' & variant == '{variant}'"))
-
     mirror_holdings = pd.concat(mirror_holdings).dropna(axis=0).reset_index(drop=True)
     
     tmp_fp = "/beegfs/CMIP6/arctic-cmip6/CMIP6/{activity}/{institution}/{model}/{scenario}/{variant}/{frequency}/{variable}/{grid_type}/{version}/{filename}"
@@ -32,7 +31,9 @@ def test_mirror():
             activity = "ScenarioMIP"
 
         return activity
-
+    
+    # test that all files to be mirrored are found on the filesystem
+    # (individual assertions rather than aggregate)
     for i, row in mirror_holdings.iterrows():
         scenario = row["scenario"]
         model = row["model"]
