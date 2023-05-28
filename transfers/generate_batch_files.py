@@ -87,6 +87,6 @@ if __name__ == "__main__":
                 query_str = f"model == '{model}' & variant == '{variant}' & frequency == '{freq}' & variable == '{varname}'"
                 for i, row in holdings.query(query_str).iterrows():
                     transfer_paths.extend(generate_transfer_paths(row, freq))
-
-            write_batch_file(freq, varname, transfer_paths)
-
+            # only write batch file if transfer paths were found
+            if transfer_paths != []:
+                write_batch_file(freq, varname, transfer_paths)

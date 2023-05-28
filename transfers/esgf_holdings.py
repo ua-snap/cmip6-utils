@@ -153,7 +153,7 @@ if __name__ == "__main__":
     print("Log in successful. Running the audit now.")
     
     # check if we need to grant conesnt for ACDN
-    tc, utils.check_for_consent_required(tc, auth_client, acdn_ep)
+    utils.check_for_consent_required(tc, auth_client, acdn_ep)
     
     # specify the models we are interested in
     # currently this is just everything in the luts.model_inst_lu table
