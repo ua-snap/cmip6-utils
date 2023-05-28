@@ -29,7 +29,7 @@ Here is a description of the pipeline.
 * `luts.py`: like `config.py`, but for lookups / dicts
 * `esgf_holdings.py`: script to generate a reference table of CMIP6 holdings on a given ESGF node
 * `generate_batch_files.py`: script to generate the batch files of \<source> \<destination> filepaths for transferring files
-* `transfer.py`: script to execute the main transfer of all target files to be mirrored via globus
+* `batch_transfer.py`: script to execute the main transfer of all target files to be mirrored via globus
 * `llnl_esgf_holdings.csv`: table of data audit results for LLNL ESGF node.  
 * `batch_files/`: batch files with \<source> \<destination> filepaths for transferring files
 * `tests/`: tests for verifying that the mirror is successful
