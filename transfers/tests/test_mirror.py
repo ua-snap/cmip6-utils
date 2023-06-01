@@ -5,7 +5,7 @@ Usage: from transfers folder, rung python -m pytest tests/test_mirror.py
 
 from pathlib import Path
 import pandas as pd
-from transfers.luts import model_inst_lu
+from transfers.luts import prod_variant_lu, model_inst_lu
 
 
 def test_mirror():
@@ -13,12 +13,13 @@ def test_mirror():
     
     holdings = pd.read_csv("llnl_esgf_holdings.csv", converters={"filenames": lambda x: x.strip("[]").replace("'","").split(", ")})
     
-    models = [model for model in model_inst_lu.keys() if "mirror_variant" in list(model_inst_lu[model].keys())]
+    # table of production variants contains the target models
+    models = [model for model in prod_variant_lu.keys()]
     
     # make DataFrame of only groups of files to mirror
     mirror_holdings = []
     for model in models:
-        variant = model_inst_lu[model]["mirror_variant"]
+        variant = prod_variant_lu[model]
         mirror_holdings.append(holdings.query(f"model == '{model}' & variant == '{variant}'"))
     mirror_holdings = pd.concat(mirror_holdings).dropna(axis=0).reset_index(drop=True)
     
@@ -39,7 +40,7 @@ def test_mirror():
         model = row["model"]
         fp_kw = {
             "activity": get_activity(scenario),
-            "institution": model_inst_lu[model]["institution"],
+            "institution": model_inst_lu[model],
             "model": model,
             "scenario": scenario,
             "variant": row["variant"],
