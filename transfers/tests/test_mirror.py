@@ -8,24 +8,7 @@ import pandas as pd
 from transfers.luts import prod_variant_lu, model_inst_lu
 
 
-def test_mirror():
-    """Iterate over all filenames in the ESGF LLNL audit table (hardcoded for now) and assert that they are present in the ACDN"""
-    
-    holdings = pd.read_csv("llnl_esgf_holdings.csv", converters={"filenames": lambda x: x.strip("[]").replace("'","").split(", ")})
-    
-    # table of production variants contains the target models
-    models = [model for model in prod_variant_lu.keys()]
-    
-    # make DataFrame of only groups of files to mirror
-    mirror_holdings = []
-    for model in models:
-        variant = prod_variant_lu[model]
-        mirror_holdings.append(holdings.query(f"model == '{model}' & variant == '{variant}'"))
-    mirror_holdings = pd.concat(mirror_holdings).dropna(axis=0).reset_index(drop=True)
-    
-    tmp_fp = "/beegfs/CMIP6/arctic-cmip6/CMIP6/{activity}/{institution}/{model}/{scenario}/{variant}/{frequency}/{variable}/{grid_type}/{version}/{filename}"
-
-    def get_activity(scenario):
+def get_activity(scenario):
         if scenario == "historical":
             activity = "CMIP"
         else:
@@ -33,9 +16,17 @@ def test_mirror():
 
         return activity
     
+    
+def test_mirror():
+    """Iterate over all filenames in the ESGF LLNL audit table (hardcoded for now) and assert that they are present in the ACDN"""
+    
+    manifest = pd.read_csv("llnl_manifest.csv")
+    
+    tmp_fp = "/beegfs/CMIP6/arctic-cmip6/CMIP6/{activity}/{institution}/{model}/{scenario}/{variant}/{frequency}/{variable}/{grid_type}/{version}/{filename}"
+    
     # test that all files to be mirrored are found on the filesystem
     # (individual assertions rather than aggregate)
-    for i, row in mirror_holdings.iterrows():
+    for i, row in manifest.iterrows():
         scenario = row["scenario"]
         model = row["model"]
         fp_kw = {
@@ -49,6 +40,5 @@ def test_mirror():
             "grid_type": row["grid_type"],
             "version": row["version"],
         }
-        mirror_filepaths = [tmp_fp.format(**fp_kw, filename=fn) for fn in row["filenames"]]
-        for fp in mirror_filepaths:
-            assert Path(fp).exists()
+        mirror_fp = tmp_fp.format(**fp_kw, filename=row["filename"])
+        assert Path(mirror_fp).exists()
