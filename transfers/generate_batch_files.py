@@ -31,7 +31,7 @@ def generate_transfer_paths(row, freq):
         freq (str): temporal frequency to generate transfer paths for, should be either "day", or "Amon"
 
     Returns:
-        transfer_list (list): has format [(<remote path>, <target path>), ...] for all files in row["filenames"]
+        transfer_tpl (tuple): has format (<remote path>, <target path>) for the file in row["filename"]
     """
     activity = "CMIP" if row["scenario"] == "historical" else "ScenarioMIP"
     model = row["model"]
@@ -48,12 +48,11 @@ def generate_transfer_paths(row, freq):
         row["version"],
     )
     
-    transfer_list = []
-    for fn in row["filenames"]:
-        fp = group_path.joinpath(fn.replace("'", ""))
-        transfer_list.append((llnl_prefix.joinpath(fp), acdn_prefix.joinpath(fp)))
-        
-    return transfer_list
+    fn = row["filename"]
+    fp = group_path.joinpath(fn)
+    transfer_tpl = (llnl_prefix.joinpath(fp), acdn_prefix.joinpath(fp))
+
+    return transfer_tpl
 
 
 def write_batch_file(freq, varname, transfer_paths):
@@ -68,25 +67,20 @@ if __name__ == "__main__":
     # this script only runs for a single ESGF node
     ESGF_NODE = arguments(sys.argv)
     
-    holdings = pd.read_csv(
-        holdings_tmp_fn.format(esgf_node=ESGF_NODE),
-        # filenames column should be list for each row
-        converters={"filenames": lambda x: x.strip("[]").split(", ")}
+    # use the manifest file for generating batch files
+    manifest = pd.read_csv(
+        manifest_tmp_fn.format(esgf_node=ESGF_NODE),
     )
-    # ignore rows where data not on LLNL node for now
-    holdings = holdings.query("~n_files.isnull()")
-
+    
+    # group batch files by variable name and 
     for freq in prod_freqs:
         for varname in prod_vars:
             transfer_paths = []
-            # holdings table is created from production scenarios only, so all scenarios in here should be included
-            # iterate over model so that we can subset by the correct variant to be mirrored:
-            for model in prod_models:
-                # subset to the variant we will be mirroring
-                variant = luts.prod_variant_lu[model]
-                query_str = f"model == '{model}' & variant == '{variant}' & frequency == '{freq}' & variable == '{varname}'"
-                for i, row in holdings.query(query_str).iterrows():
-                    transfer_paths.extend(generate_transfer_paths(row, freq))
+            
+            query_str = f"frequency == '{freq}' & variable == '{varname}'"
+            for i, row in manifest.query(query_str).iterrows():
+                transfer_paths.append(generate_transfer_paths(row, freq))
+            
             # only write batch file if transfer paths were found
             if transfer_paths != []:
                 write_batch_file(freq, varname, transfer_paths)

@@ -26,6 +26,9 @@ llnl_prefix = Path("/css03_data/CMIP6")
 # template name for an  ESGF holdings audit table
 holdings_tmp_fn = "{esgf_node}_esgf_holdings.csv"
 
+# template name for an  ESGF holdings audit table
+manifest_tmp_fn = "{esgf_node}_manifest.csv"
+
 # name of directory in home folder for writing batch files
 batch_dir = Path("batch_files")
 batch_dir.mkdir(exist_ok=True)
