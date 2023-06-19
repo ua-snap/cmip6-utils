@@ -35,7 +35,8 @@ regrid_dir.mkdir(exist_ok=True)
 regrid_batch_dir = SCRATCH_DIR.joinpath("regrid_batch")
 regrid_batch_dir.mkdir(exist_ok=True)
 # template name for batch files
-batch_tmp_fn = "batch_{model}_{scenario}.txt"
+#  count is for breaking up batch files with a maximum number of files of 200
+batch_tmp_fn = "batch_{model}_{scenario}_{count}.txt"
 
 # target regridding file - all files will be regridded to the grid in this file
 target_grid_fp = cmip6_dir.joinpath("ScenarioMIP/NCAR/CESM2/ssp370/r11i1p1f1/Amon/tas/gn/v20200528/tas_Amon_CESM2_ssp370_r11i1p1f1_gn_206501-210012.nc")

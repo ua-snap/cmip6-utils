@@ -75,12 +75,22 @@ def read_grids(fps):
     return grids
 
 
-def write_batch_file(group_df, model, scenario, fps):
-    """Write the batch file for a particular model and scenario group"""
-    batch_file = regrid_batch_dir.joinpath(batch_tmp_fn.format(model=model, scenario=scenario))
-    with open(batch_file, "w") as f:
-        for fp in fps:
-            f.write(f"{fp}\n")
+def write_batch_file(group_df, model, scenario):
+    """Write the batch file for a particular model and scenario group. Breaks up into multiple jobs if file count exceeds 500"""
+    def chunk_fp_list(fp_list, n):
+        """Helper function to chunk lists of files for appropriately-sized batches"""
+        for i in range(0, len(fp_list), n): 
+            yield fp_list[i:i + n]
+            
+    fp_chunks = chunk_fp_list(group_df.fp.values, 200)
+    
+    for i, chunk in enumerate(fp_chunks):
+        batch_file = regrid_batch_dir.joinpath(
+            batch_tmp_fn.format(model=model, scenario=scenario, count=i)
+        )
+        with open(batch_file, "w") as f:
+            for fp in chunk:
+                f.write(f"{fp}\n")
             
     return
 
@@ -103,5 +113,5 @@ if __name__ == "__main__":
     
     for name, group_df in regrid_df.groupby(["model", "scenario"]):
         model, scenario = name
-        write_batch_file(group_df, model, scenario, fps)
+        write_batch_file(group_df, model, scenario)
         
