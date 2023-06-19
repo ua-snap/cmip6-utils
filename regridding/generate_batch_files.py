@@ -75,22 +75,39 @@ def read_grids(fps):
     return grids
 
 
-def write_batch_file(group_df, model, scenario):
+def write_batch_files(group_df, model, scenario):
     """Write the batch file for a particular model and scenario group. Breaks up into multiple jobs if file count exceeds 500"""
+
+    def generate_grid_names(df):
+        """Helper function to give the unique grids within group_df a useful name for file naming"""
+        grids = df.grid.unique()
+        grid_name_lu = {
+            grid: f"gr{i}" for grid, i in zip(grids, np.arange(grids.shape[0]))
+        }
+        df["grid_name"] = [grid_name_lu[grid] for grid in df["grid"]]
+
+        return df
+    
     def chunk_fp_list(fp_list, n):
         """Helper function to chunk lists of files for appropriately-sized batches"""
         for i in range(0, len(fp_list), n): 
             yield fp_list[i:i + n]
-            
-    fp_chunks = chunk_fp_list(group_df.fp.values, 200)
-    
-    for i, chunk in enumerate(fp_chunks):
-        batch_file = regrid_batch_dir.joinpath(
-            batch_tmp_fn.format(model=model, scenario=scenario, count=i)
-        )
-        with open(batch_file, "w") as f:
-            for fp in chunk:
-                f.write(f"{fp}\n")
+
+    # iterate over the types of grid within a single model scenario so that only files 
+    #  with same grid are worked on in the same batch file
+    # first, classify the different grid types with a name to be included in the batch file name
+    group_df = generate_grid_names(group_df)
+    for grid_name, df in group_df.groupby("grid_name"):
+        fp_chunks = chunk_fp_list(df.fp.values, 200)
+        for i, chunk in enumerate(fp_chunks):
+            batch_file = regrid_batch_dir.joinpath(
+                batch_tmp_fn.format(
+                    model=model, scenario=scenario, grid_name=grid_name, count=i
+                )
+            )
+            with open(batch_file, "w") as f:
+                for fp in chunk:
+                    f.write(f"{fp}\n")
             
     return
 
@@ -112,6 +129,7 @@ if __name__ == "__main__":
     regrid_df = results_df.query("grid != @cesm2_grid")
     
     for name, group_df in regrid_df.groupby(["model", "scenario"]):
+        # make sure that there are not multiple grids within one model/scenario at this point
         model, scenario = name
-        write_batch_file(group_df, model, scenario)
+        write_batch_files(group_df, model, scenario)
         
