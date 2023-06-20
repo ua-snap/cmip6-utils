@@ -98,7 +98,8 @@ def write_batch_files(group_df, model, scenario):
     # first, classify the different grid types with a name to be included in the batch file name
     group_df = generate_grid_names(group_df)
     for grid_name, df in group_df.groupby("grid_name"):
-        fp_chunks = chunk_fp_list(df.fp.values, 200)
+        # bumped this down from 200 to 100 after getting some memory errors with dask
+        fp_chunks = chunk_fp_list(df.fp.values, 100)
         for i, chunk in enumerate(fp_chunks):
             batch_file = regrid_batch_dir.joinpath(
                 batch_tmp_fn.format(

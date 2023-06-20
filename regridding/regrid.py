@@ -73,6 +73,7 @@ def regrid_file(fp, regridder, out_fp):
     src_ds = xr.open_dataset(fp)
     regrid_ds = regridder(src_ds)
     regrid_ds.to_netcdf(out_fp)
+    del regrid_ds
     
     return out_fp
 
