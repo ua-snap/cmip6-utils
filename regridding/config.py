@@ -17,10 +17,6 @@ except TypeError:
 # path to script for regridding
 regrid_script = PROJECT_DIR.joinpath("regridding/regrid.py")
 
-# slurm info (doesn't need to be hardcoded, but OK for now?)
-partition = "t1small"
-ncpus = 24
-
 # this will probably not change between users
 cmip6_dir = Path("/beegfs/CMIP6/arctic-cmip6/CMIP6")
 
@@ -28,7 +24,7 @@ cmip6_dir = Path("/beegfs/CMIP6/arctic-cmip6/CMIP6")
 manifest_fp = PROJECT_DIR.joinpath("transfers/llnl_manifest.csv")
 
 # directory to write re-gridded files
-regrid_dir = Path("/beegfs/CMIP6/arctic-cmip6/regrid")
+regrid_dir = SCRATCH_DIR.joinpath("regrid")
 regrid_dir.mkdir(exist_ok=True)
 
 # paths to text files containing paths to regrid
@@ -36,7 +32,19 @@ regrid_batch_dir = SCRATCH_DIR.joinpath("regrid_batch")
 regrid_batch_dir.mkdir(exist_ok=True)
 # template name for batch files
 #  count is for breaking up batch files with a maximum number of files of 200
-batch_tmp_fn = "batch_{model}_{scenario}_{count}.txt"
+batch_tmp_fn = "batch_{model}_{scenario}_{grid_name}_{count}.txt"
+
+# directory for all slurming
+slurm_dir = SCRATCH_DIR.joinpath("slurm")
+slurm_dir.mkdir(exist_ok=True)
+# arguments to be supplied for slurming
+sbatch_head_kwargs = {
+    # slurm info (doesn't need to be hardcoded, but OK for now?)
+    "partition": "t1small",
+    "ncpus": 24,
+    "conda_init_script": conda_init_script,
+    "slurm_email": slurm_email
+}
 
 # target regridding file - all files will be regridded to the grid in this file
 target_grid_fp = cmip6_dir.joinpath("ScenarioMIP/NCAR/CESM2/ssp370/r11i1p1f1/Amon/tas/gn/v20200528/tas_Amon_CESM2_ssp370_r11i1p1f1_gn_206501-210012.nc")
