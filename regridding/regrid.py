@@ -1,4 +1,4 @@
-"""Script for regridding a batch of files listed in a batch file"""
+"""Script for regridding a batch of files listed in a text file"""
 
 import argparse
 import re
@@ -66,11 +66,55 @@ def parse_cmip6_fp(fp):
     }
     
     return attr_di
+
+
+def rename_file(fn, rep):
+    """Renames a file by swapping out patterns based on mappings in rep
+    
+    Args:
+        fn (str): filename to rename
+        rep (dict): mapping from potential patterns to replacement text
+    
+    Returns:
+        new_fn (str): new filename string
+    """
+    pattern = re.compile("|".join([k for k in rep]))
+    new_fn = pattern.sub(lambda m: rep[re.escape(m.group(0))], fn)
+    
+    return new_fn
+
+
+def get_time_chunking(fp):
+    """Determine the time axis chunking for opening a dataset to be regridded.
+    This was done to alleviate memory issues with regridding some of the larger datasets ( ~10 GB on disk).
+    
+    Args:
+        fp (pathlike): path to file being worked on
+        
+    Returns:
+        chunk_spec (dict): Chunking spec in form {"time": <chunk size>
+    """
+    # from some quick experimentation, it looks like arrays that were
+    #  under < 5 GB were regridded without memory errors.
+    # we will implement a simple switch option then, with < 5GB getting no chunking, 
+    #  and > 5gb getting time: 100 chunking.
+    ds = xr.open_dataset(fp)
+    da = ds[list(ds.data_vars)[0]]
+    assert str(da.dtype) == "float32"
+    # float32 is 4 bytes
+    memory = (da.size * 4) / (1028 ** 3)
+    if memory < 5:
+        chunk_spec = None
+    else:
+        chunk_spec = {"time": 100}
+    
+    return chunk_spec
     
 
 @dask.delayed
 def regrid_file(fp, regridder, out_fp):
-    src_ds = xr.open_dataset(fp)
+    chunk_spec = get_time_chunking(fp)
+    src_ds = xr.open_dataset(fp, chunks=chunk_spec)
     regrid_ds = regridder(src_ds)
     regrid_ds.to_netcdf(out_fp)
     del regrid_ds
@@ -103,16 +147,15 @@ if __name__ == "__main__":
         frequency = fp_attrs["frequency"]
         # rename the file by simply switching out the existing grid type component with "regrid"
         #  should only be one of three options: gr, gr1, or gn
-        rep = {"gr": "regrid", "gr1": "regrid", "gn": "regrid"}
-        pattern = re.compile("gr|gr1|gn")
-        fn = pattern.sub(lambda m: rep[re.escape(m.group(0))], fp.name)
+        rep = {"_gr_": "_regrid_", "_gr1_": "_regrid_", "_gn_": "_regrid_"}
+        fn = rename_file(fp.name, rep)
         out_fp = out_dir.joinpath(model, scenario, frequency, varname, fn)
         # make sure the parent dirs exist
         out_fp.parent.mkdir(exist_ok=True, parents=True)
         results.append(regrid_file(fp, regridder, out_fp))
      
     # processing results with dask
-    print("Running the regridding with Dask", end="...")
+    print("Running the regridding with Dask", end="...", flush=True)
     tic = time.perf_counter()
     dask.compute(results)
     print(f"done, {np.round((time.pref_counter() - tic) / 60, 1)}m")
