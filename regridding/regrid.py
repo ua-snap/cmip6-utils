@@ -125,10 +125,10 @@ def regrid_file(fp, regridder, out_fp):
     src_ds = xr.open_dataset(fp, chunks=chunk_spec)
     
     if chunk_spec is not None:
-        regrid_task = regridder(src_ds)
+        regrid_task = regridder(src_ds, keep_attrs=True)
         regrid_ds = regrid_task.compute()
     else:
-        regrid_ds = regridder(src_ds)
+        regrid_ds = regridder(src_ds, keep_attrs=True)
 
     regrid_ds.to_netcdf(out_fp)
     
