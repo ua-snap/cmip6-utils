@@ -5,6 +5,7 @@ import re
 import time
 from pathlib import Path
 import dask
+import numpy as np
 import xesmf as xe
 import xarray as xr
 
@@ -37,9 +38,16 @@ def parse_args():
         help="Path to directory where regridded data should be written",
         required=True
     )
+    parser.add_argument(
+        "--no-clobber",
+        dest="no_clobber",
+        action="store_true",
+        default=False,
+        help="Do not regrid a file if the regridded file already exists in out_dir",
+    )
     args = parser.parse_args()
     
-    return args.regrid_batch_fp, args.dst_fp, Path(args.out_dir)
+    return args.regrid_batch_fp, args.dst_fp, Path(args.out_dir), args.no_clobber
 
 
 def init_regridder(src_fp, dst_ds):
@@ -99,32 +107,37 @@ def get_time_chunking(fp):
     # we will implement a simple switch option then, with < 5GB getting no chunking, 
     #  and > 5gb getting time: 100 chunking.
     ds = xr.open_dataset(fp)
-    da = ds[list(ds.data_vars)[0]]
+    da = ds[ds.attrs["variable_id"]]
     assert str(da.dtype) == "float32"
     # float32 is 4 bytes
-    memory = (da.size * 4) / (1028 ** 3)
+    memory = (da.size * 4) / (1e3 ** 3)
     if memory < 5:
         chunk_spec = None
     else:
+        print(f"Chunking large dataset: {fp.name}", flush=True)
         chunk_spec = {"time": 100}
     
     return chunk_spec
     
 
-@dask.delayed
 def regrid_file(fp, regridder, out_fp):
     chunk_spec = get_time_chunking(fp)
     src_ds = xr.open_dataset(fp, chunks=chunk_spec)
-    regrid_ds = regridder(src_ds)
+    
+    if chunk_spec is not None:
+        regrid_task = regridder(src_ds)
+        regrid_ds = regrid_task.compute()
+    else:
+        regrid_ds = regridder(src_ds)
+
     regrid_ds.to_netcdf(out_fp)
-    del regrid_ds
     
     return out_fp
 
 
 if __name__ == "__main__":
     # parse args
-    regrid_batch_fp, dst_fp, out_dir = parse_args()
+    regrid_batch_fp, dst_fp, out_dir, no_clobber = parse_args()
     
     # get the paths of files to regrid from the batch file
     with open(regrid_batch_fp) as f:
@@ -136,6 +149,9 @@ if __name__ == "__main__":
     
     # use one of the source files to be regridded and the destination grid file to create a regridder object
     regridder = init_regridder(src_fps[0], dst_ds)
+    
+    print(f"Regridding {len(src_fps)} files", flush=True)
+    tic = time.perf_counter()
     
     results = []
     for fp in src_fps:
@@ -152,10 +168,13 @@ if __name__ == "__main__":
         out_fp = out_dir.joinpath(model, scenario, frequency, varname, fn)
         # make sure the parent dirs exist
         out_fp.parent.mkdir(exist_ok=True, parents=True)
-        results.append(regrid_file(fp, regridder, out_fp))
-     
-    # processing results with dask
-    print("Running the regridding with Dask", end="...", flush=True)
-    tic = time.perf_counter()
-    dask.compute(results)
-    print(f"done, {np.round((time.pref_counter() - tic) / 60, 1)}m")
+        
+        if no_clobber:
+            if not out_fp.exists():
+                results.append(regrid_file(fp, regridder, out_fp))
+            else:
+                continue
+        else:
+            results.append(regrid_file(fp, regridder, out_fp))
+
+    print(f"done, {len(results)} files regridded in {np.round((time.perf_counter() - tic) / 60, 1)}m")

@@ -45,6 +45,7 @@ def write_sbatch_regrid(
     regrid_dir,
     regrid_batch_fp,
     dst_fp,
+    no_clobber,
     sbatch_head
 ):
     """Write an sbatch script for executing the restacking script for a given group and variable, executes for a given list of years 
@@ -56,6 +57,7 @@ def write_sbatch_regrid(
         regrid_dir (pathlib.PosixPath): directory to write the regridded data to
         regrid_batch_fp (path_like): path to the batch file containing paths of CMIP6 files to regrid
         dst_fp (path_like): path to file being used as template / reference for destination grid
+        no_clobber (bool): do not overwrite regridded files if they exist in regrid_dir
         sbatch_head (dict): string for sbatch head script
         
     Returns:
@@ -69,8 +71,12 @@ def write_sbatch_regrid(
         f"python {regrid_script} "
         f"-b {regrid_batch_fp} "
         f"-d {dst_fp} "
-        f"-o {regrid_dir}\n\n"
+        f"-o {regrid_dir} "
     )
+    if no_clobber:
+        pycommands += "--no-clobber \n\n"
+    else:
+        pycommands += "\n\n"
     commands = sbatch_head.format(sbatch_out_fp=sbatch_out_fp) + pycommands
 
     with open(sbatch_fp, "w") as f:
