@@ -67,7 +67,7 @@ Next, use the `regrid_cmip6.ipynb` to orchestrate the slurm jobs which will regr
 
 ### 4. Quality control on the regridded data
 
-Use the `qc.ipynb` notebook to verify that the regridded files appear correct and consistent. 
+Use the `qc.ipynb` notebook to verify that the regridded files appear correct and consistent. There is also a section in this notebook for symlinking the non-regridded files such that they are part of the regridded dataset.
 
 ### 5. Copy the regridded data off scratch space
 
@@ -88,7 +88,3 @@ find /beegfs/CMIP6/arctic-cmip6/regrid -type d -exec chmod 755 {} \;
 # files
 find /beegfs/CMIP6/arctic-cmip6/regrid -type f -exec chmod 644 {} \;
 ```
-
-### 6. Symlink the non-regridded files
-
-Some of the files where not re-gridded because they already had the correct grid.
