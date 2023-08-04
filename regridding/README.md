@@ -1,6 +1,6 @@
 # Regrid CMIP6 on ACDN
 
-This directory is used for regridding all of the CMIP6 data mirrored on the ACDN to a common grid. The target grid is the NCAR CESM2 grid, which is also shared by a number of the other chosen models. 
+This directory is used for regridding all of the CMIP6 data mirrored on the ACDN to a common grid. The target grid is the NCAR CESM2 grid, which is also shared by a number of the other chosen models.
 
 
 ## Running the regridding pipeline

@@ -59,6 +59,13 @@ def get_grid(fp):
     grid_di.update(fp_to_attrs(fp))
     # also keep the filename for reference
     grid_di["fp"] = fp
+    # want to save the earliest time, because we will just ignore projections greater than 2100, for now at least.
+    ts_min = ds.time.values.min()
+    if not isinstance(ts_min, np.datetime64):
+        ts_min = np.datetime64(ts_min.strftime("%Y-%m-%d"))
+    grid_di["start_time"] = ts_min
+    # save file size for better chunking into batches
+    grid_di["filesize"] = fp.stat().st_size / (1e3 ** 3)
         
     return grid_di
 
@@ -88,18 +95,37 @@ def write_batch_files(group_df, model, scenario):
 
         return df
     
-    def chunk_fp_list(fp_list, n):
+    def chunk_fp_list(df, max_size):
         """Helper function to chunk lists of files for appropriately-sized batches"""
-        for i in range(0, len(fp_list), n): 
-            yield fp_list[i:i + n]
+        # for i in range(0, len(fp_list), n): 
+        #     yield fp_list[i:i + n]
+            
+        fp_chunks = []
+        # split filepaths into chunks such that sum total of sizes is less than max_size
+        # initialize counter for tallying sizes and chunk list
+        k = 0
+        chunk = []
+        for i, row in df.iterrows():
+            if (k + row["filesize"]) > max_size:
+                fp_chunks.append(chunk)
+                k = 0
+                chunk = []
+            else:
+                chunk.append(row["fp"])
+                
+        if len(chunk) > 0:
+            fp_chunks.append(chunk)
+        
+        return fp_chunks
 
     # iterate over the types of grid within a single model scenario so that only files 
     #  with same grid are worked on in the same batch file
     # first, classify the different grid types with a name to be included in the batch file name
     group_df = generate_grid_names(group_df)
+    
     for grid_name, df in group_df.groupby("grid_name"):
-        # bumped this down from 200 to 100 after getting some memory errors with dask
-        fp_chunks = chunk_fp_list(df.fp.values, 100)
+        fp_chunks = chunk_fp_list(df, 100)
+        
         for i, chunk in enumerate(fp_chunks):
             batch_file = regrid_batch_dir.joinpath(
                 batch_tmp_fn.format(
@@ -120,14 +146,18 @@ if __name__ == "__main__":
         inst, model = inst_model.split("_")
         fps = []
         for exp_id in ["ScenarioMIP", "CMIP"]:
-            fps.extend(list(cmip6_dir.joinpath(exp_id).glob(f"{inst}/{model}/*/*/*/*/*/*/*.nc")))
+            fps.extend(list(cmip6_dir.joinpath(exp_id).glob(f"{inst}/{model}/**/*.nc")))
         results.append(read_grids(fps))
         
     results_df = pd.concat([pd.DataFrame(rows) for rows in results])
     
     # the grid of the file chosen as the target template grid
     cesm2_grid = results_df.query(f"fp == @target_grid_fp").grid.values[0]
+    # regrid files that do not have this grid
     regrid_df = results_df.query("grid != @cesm2_grid")
+    # only regrid files if their ending date is less than or equal to 2101-01-01
+    max_time = np.datetime64("2101-01-01T12:00:00.0000")
+    regrid_df = regrid_df.query("start_time < @max_time")
     
     for name, group_df in regrid_df.groupby(["model", "scenario"]):
         # make sure that there are not multiple grids within one model/scenario at this point
