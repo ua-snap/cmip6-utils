@@ -2,6 +2,8 @@
 
 This directory is used for regridding all of the CMIP6 data mirrored on the ACDN to a common grid. The target grid is the NCAR CESM2 grid, which is also shared by a number of the other chosen models.
 
+This pipeline also crops these datasets to a pan-arctic domain of 50N - 90N.
+
 
 ## Running the regridding pipeline
 
@@ -65,11 +67,19 @@ This could take a bit of time, as all of the grid information is being read in a
 
 Next, use the `regrid_cmip6.ipynb` to orchestrate the slurm jobs which will regrid all CMIP6 files listed in the batch files created in step 2. Follow the text in the notebook for instructions on running this step. 
 
-### 4. Quality control on the regridded data
+### 4. Crop the non-regridded files
+
+For the files which were not regridded, we want to crop them to the same spatial extent as is done for the data in the regridding step. Run the `crop_non_regrid.py` script like so, probably from a screen session on a compute node:
+
+```
+python crop_non_regrid.py
+```
+
+### 5. Quality control on the regridded data
 
 Use the `qc.ipynb` notebook to verify that the regridded files appear correct and consistent. There is also a section in this notebook for symlinking the non-regridded files such that they are part of the regridded dataset.
 
-### 5. Copy the regridded data off scratch space
+### 6. Copy the regridded data off scratch space
 
 Now, copy the regridded data off of scratch space to a permanent location. For now, this will be `/beegfs/CMIP6/arctic-cmip6/regrid`. This can be achieved with:
 
