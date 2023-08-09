@@ -73,7 +73,7 @@ def get_grid(fp):
 def read_grids(fps):
     """Read the grid info from all files in fps, using multiprocessing and with a progress bar"""
     grids = []
-    with Pool(32) as pool:
+    with Pool(24) as pool:
         for grid_di in tqdm.tqdm(
             pool.imap_unordered(get_grid, fps), total=len(fps)
         ):
@@ -97,9 +97,7 @@ def write_batch_files(group_df, model, scenario):
     
     def chunk_fp_list(df, max_size):
         """Helper function to chunk lists of files for appropriately-sized batches"""
-        # for i in range(0, len(fp_list), n): 
-        #     yield fp_list[i:i + n]
-            
+
         fp_chunks = []
         # split filepaths into chunks such that sum total of sizes is less than max_size
         # initialize counter for tallying sizes and chunk list
@@ -124,7 +122,7 @@ def write_batch_files(group_df, model, scenario):
     group_df = generate_grid_names(group_df)
     
     for grid_name, df in group_df.groupby("grid_name"):
-        fp_chunks = chunk_fp_list(df, 100)
+        fp_chunks = chunk_fp_list(df, 50)
         
         for i, chunk in enumerate(fp_chunks):
             batch_file = regrid_batch_dir.joinpath(
