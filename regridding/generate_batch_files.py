@@ -13,10 +13,12 @@ from config import *
 
 # ignore serializationWarnings from xarray for datasets with multiple FillValues
 import warnings
+
 warnings.filterwarnings("ignore", category=xr.SerializationWarning)
 
 
 GRID_VARS = ["lat", "lon", "lat_bnds", "lon_bnds"]
+
 
 def fp_to_attrs(fp):
     """pull the data attributes from a filepath"""
@@ -25,15 +27,15 @@ def fp_to_attrs(fp):
     scenario = fp.parent.parent.parent.parent.parent.parent.name
     model = fp.parent.parent.parent.parent.parent.parent.parent.name
     timeframe = fp.name.split("_")[-1].split(".nc")[0]
-    
+
     attr_di = {
         "model": model,
         "scenario": scenario,
         "frequency": frequency,
         "varname": varname,
-        "timeframe": timeframe
+        "timeframe": timeframe,
     }
-    
+
     return attr_di
 
 
@@ -52,7 +54,7 @@ def get_grid(fp):
                 grid_di[f"{varname}_max"] = None
                 grid_di[f"{varname}_size"] = None
                 grid_di[f"{varname}_step"] = None
-            
+
     # create a new column that is a concatenation of all of these values
     grid_di["grid"] = "_".join([str(grid_di[key]) for key in grid_di.keys()])
     # pull out file attributes (model scenario etc)
@@ -65,8 +67,8 @@ def get_grid(fp):
         ts_min = np.datetime64(ts_min.strftime("%Y-%m-%d"))
     grid_di["start_time"] = ts_min
     # save file size for better chunking into batches
-    grid_di["filesize"] = fp.stat().st_size / (1e3 ** 3)
-        
+    grid_di["filesize"] = fp.stat().st_size / (1e3**3)
+
     return grid_di
 
 
@@ -74,11 +76,9 @@ def read_grids(fps):
     """Read the grid info from all files in fps, using multiprocessing and with a progress bar"""
     grids = []
     with Pool(24) as pool:
-        for grid_di in tqdm.tqdm(
-            pool.imap_unordered(get_grid, fps), total=len(fps)
-        ):
+        for grid_di in tqdm.tqdm(pool.imap_unordered(get_grid, fps), total=len(fps)):
             grids.append(grid_di)
-            
+
     return grids
 
 
@@ -94,8 +94,8 @@ def write_batch_files(group_df, model, scenario):
         df["grid_name"] = [grid_name_lu[grid] for grid in df["grid"]]
 
         return df
-    
-    def chunk_fp_list(df, max_size):
+
+    def chunk_fp_list(df, max_size, max_count):
         """Helper function to chunk lists of files for appropriately-sized batches"""
 
         fp_chunks = []
@@ -104,26 +104,26 @@ def write_batch_files(group_df, model, scenario):
         k = 0
         chunk = []
         for i, row in df.iterrows():
-            if (k + row["filesize"]) > max_size:
+            if ((k + row["filesize"]) > max_size) or (len(chunk) >= max_count):
                 fp_chunks.append(chunk)
                 k = 0
                 chunk = []
             else:
                 chunk.append(row["fp"])
-                
+
         if len(chunk) > 0:
             fp_chunks.append(chunk)
-        
+
         return fp_chunks
 
-    # iterate over the types of grid within a single model scenario so that only files 
+    # iterate over the types of grid within a single model scenario so that only files
     #  with same grid are worked on in the same batch file
     # first, classify the different grid types with a name to be included in the batch file name
     group_df = generate_grid_names(group_df)
-    
+
     for grid_name, df in group_df.groupby("grid_name"):
-        fp_chunks = chunk_fp_list(df, 50)
-        
+        fp_chunks = chunk_fp_list(df, max_size=50, max_count=200)
+
         for i, chunk in enumerate(fp_chunks):
             batch_file = regrid_batch_dir.joinpath(
                 batch_tmp_fn.format(
@@ -133,7 +133,7 @@ def write_batch_files(group_df, model, scenario):
             with open(batch_file, "w") as f:
                 for fp in chunk:
                     f.write(f"{fp}\n")
-            
+
     return
 
 
@@ -146,9 +146,9 @@ if __name__ == "__main__":
         for exp_id in ["ScenarioMIP", "CMIP"]:
             fps.extend(list(cmip6_dir.joinpath(exp_id).glob(f"{inst}/{model}/**/*.nc")))
         results.append(read_grids(fps))
-        
+
     results_df = pd.concat([pd.DataFrame(rows) for rows in results])
-    
+
     # the grid of the file chosen as the target template grid
     cesm2_grid = results_df.query(f"fp == @target_grid_fp").grid.values[0]
     # regrid files that do not have this grid
@@ -156,9 +156,8 @@ if __name__ == "__main__":
     # only regrid files if their ending date is less than or equal to 2101-01-01
     max_time = np.datetime64("2101-01-01T12:00:00.0000")
     regrid_df = regrid_df.query("start_time < @max_time")
-    
+
     for name, group_df in regrid_df.groupby(["model", "scenario"]):
         # make sure that there are not multiple grids within one model/scenario at this point
         model, scenario = name
         write_batch_files(group_df, model, scenario)
-        
