@@ -1,10 +1,27 @@
+import argparse
 import re
+import time
 from multiprocessing import Pool
 import tqdm
 import numpy as np
 import xarray as xr
 from config import *
 from regrid import rename_file, open_and_crop_dataset, parse_cmip6_fp
+
+
+def parse_args():
+    """Parse some arguments"""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--no-clobber",
+        dest="no_clobber",
+        action="store_true",
+        default=False,
+        help="Do not crop a file if the file already exists in out_dir",
+    )
+    args = parser.parse_args()
+
+    return args.no_clobber
 
 
 def crop_dataset(args):
@@ -16,8 +33,9 @@ def crop_dataset(args):
     Returns:
         out_fp (pathlib.Path): path where the cropped dataset was written
     """
-    fp, out_dir = args
-    ds = open_and_crop_dataset(fp)
+    fp, out_dir, no_clobber = args
+
+    # get output filepath from input file
     fp_attrs = parse_cmip6_fp(fp)
     varname = fp_attrs["varname"]
     model = fp_attrs["model"]
@@ -29,20 +47,27 @@ def crop_dataset(args):
     fn = rename_file(fp.name, rep)
     out_fp = out_dir.joinpath(model, scenario, frequency, varname, fn)
     # make sure the parent dirs exist
-    out_fp.parent.mkdir(exist_ok=True, parents=True)
-    # write
+    out_fp.parent.mkdir(exist_ok=rue, parents=True)
+
+    if no_clobber:
+        if out_fp.exists():
+            time.sleep(1)
+            return out_fp
+
+    ds = open_and_crop_dataset(fp)
     ds.to_netcdf(out_fp)
 
     return out_fp
 
 
-def run_crop_datasets(fps, out_dir, ncpus):
+def run_crop_datasets(fps, out_dir, ncpus, no_clobber=False):
     """Run the cropping of all files in fps using multiprocessing and with a progress bar.
 
     Args:
         fps (list): list of files to crop
         out_dir (pathlib.Path): path to where the cropped files should be written
         ncpus (int): number of CPUs to use with multiprocessing.Pool
+        no_clobber (bool): Do not crop a file if the file already exists in out_dir
 
     Returns:
         out_fps (list): list of filepaths of cropped files
@@ -50,7 +75,9 @@ def run_crop_datasets(fps, out_dir, ncpus):
     out_fps = []
     with Pool(ncpus) as pool:
         for out_fp in tqdm.tqdm(
-            pool.imap_unordered(crop_dataset, [(fp, out_dir) for fp in fps]),
+            pool.imap_unordered(
+                crop_dataset, [(fp, out_dir, no_clobber) for fp in fps]
+            ),
             total=len(fps),
         ):
             out_fps.append(out_fp)
@@ -59,6 +86,7 @@ def run_crop_datasets(fps, out_dir, ncpus):
 
 
 if __name__ == "__main__":
+    no_clobber = parse_args()
     regrid_fps = list(regrid_dir.glob("**/*.nc"))
     cmip6_fps = list(cmip6_dir.glob("**/*.nc"))
 
@@ -69,14 +97,23 @@ if __name__ == "__main__":
     # get non-regridded filenames from set difference on standardized filenames
     non_regrid_fns = cmip6_fns - regrid_fns
 
-    non_regrid_fps = []
-    for fn in non_regrid_fns:
-        var_id, freq, model, scenario, variant, timespan = fn.split(".nc")[0].split("_")
-        fp = list(
-            cmip6_dir.glob(
-                f"*/*/{model}/{scenario}/{variant}/{freq}/{var_id}/*/*/{var_id}_{freq}_{model}_{scenario}_{variant}_*_{timespan}.nc"
-            )
-        )[0]
-        non_regrid_fps.append(fp)
+    if len(non_regrid_fns) == 0:
+        print(
+            "All source CMIP6 files accounted for in regridding output dir. No files to crop."
+        )
+        pass
 
-    out_fps = run_crop_datasets(non_regrid_fps, regrid_dir, 24)
+    else:
+        non_regrid_fps = []
+        for fn in non_regrid_fns:
+            var_id, freq, model, scenario, variant, timespan = fn.split(".nc")[0].split(
+                "_"
+            )
+            fp = list(
+                cmip6_dir.glob(
+                    f"*/*/{model}/{scenario}/{variant}/{freq}/{var_id}/*/*/{var_id}_{freq}_{model}_{scenario}_{variant}_*_{timespan}.nc"
+                )
+            )[0]
+            non_regrid_fps.append(fp)
+
+        out_fps = run_crop_datasets(non_regrid_fps, regrid_dir, 24, no_clobber)
