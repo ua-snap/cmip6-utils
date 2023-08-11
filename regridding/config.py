@@ -2,7 +2,9 @@
 
 import os
 from pathlib import Path
+from dotenv import load_dotenv
 
+load_dotenv()
 
 # path-based required env vars will throw error if None
 # path to root of this repo, for constructing absolute paths to scripts
@@ -43,24 +45,35 @@ sbatch_head_kwargs = {
     "partition": "t1small",
     "ncpus": 24,
     "conda_init_script": conda_init_script,
-    "slurm_email": slurm_email
+    "slurm_email": slurm_email,
 }
 
 # target regridding file - all files will be regridded to the grid in this file
-target_grid_fp = cmip6_dir.joinpath("ScenarioMIP/NCAR/CESM2/ssp370/r11i1p1f1/Amon/tas/gn/v20200528/tas_Amon_CESM2_ssp370_r11i1p1f1_gn_206501-210012.nc")
+target_grid_fp = cmip6_dir.joinpath(
+    "ScenarioMIP/NCAR/CESM2/ssp370/r11i1p1f1/Amon/tas/gn/v20200528/tas_Amon_CESM2_ssp370_r11i1p1f1_gn_206501-210012.nc"
+)
 
 # institution model strings (<institution>_<model>, from mirrored data) that we will be regridding
 inst_models = [
-    'NOAA-GFDL_GFDL-ESM4',
-    'NIMS-KMA_KACE-1-0-G',
-    'CNRM-CERFACS_CNRM-CM6-1-HR',
-    'NCC_NorESM2-MM',
-    'AS-RCEC_TaiESM1',
-    'MOHC_HadGEM3-GC31-MM',
-    'MOHC_HadGEM3-GC31-LL',
-    'MIROC_MIROC6',
-    'EC-Earth-Consortium_EC-Earth3-Veg',
-    'NCAR_CESM2',
-    'NCAR_CESM2-WACCM',
-    'MPI-M_MPI-ESM1-2-LR'
+    "NOAA-GFDL_GFDL-ESM4",
+    "NIMS-KMA_KACE-1-0-G",
+    "CNRM-CERFACS_CNRM-CM6-1-HR",
+    "NCC_NorESM2-MM",
+    "AS-RCEC_TaiESM1",
+    "MOHC_HadGEM3-GC31-MM",
+    "MOHC_HadGEM3-GC31-LL",
+    "MIROC_MIROC6",
+    "EC-Earth-Consortium_EC-Earth3-Veg",
+    "NCAR_CESM2",
+    "NCAR_CESM2-WACCM",
+    "MPI-M_MPI-ESM1-2-LR",
 ]
+
+# load production scenarios from transfers.config
+import imp
+
+transfers_config = imp.load_source(
+    "config", str(PROJECT_DIR.joinpath("transfers", "config.py"))
+)
+
+prod_scenarios = transfers_config.prod_scenarios
