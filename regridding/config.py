@@ -73,7 +73,7 @@ inst_models = [
 import imp
 
 transfers_config = imp.load_source(
-    "config", str(PROJECT_DIR.joinpath("transfers", "config.py"))
+    "transfers_config", str(PROJECT_DIR.joinpath("transfers", "config.py"))
 )
 
 prod_scenarios = transfers_config.prod_scenarios
