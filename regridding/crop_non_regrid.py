@@ -2,10 +2,16 @@ import argparse
 from multiprocessing import Pool
 import tqdm
 import numpy as np
+import pandas as pd
 import xarray as xr
 import luts
 from config import *
-from regrid import rename_file, open_and_crop_dataset, parse_cmip6_fp
+from regrid import (
+    generate_regrid_filepath,
+    open_and_crop_dataset,
+    prod_lat_slice,
+)
+from generate_batch_files import max_time, read_grids
 
 
 def parse_args():
@@ -25,15 +31,15 @@ def parse_args():
 
 def generate_cmip6_filepath_from_regrid_filename(fn):
     """Get the path to the original CMIP6 filename from a regridded file name."""
-    var_id, freq, model, scenario, variant, timespan = fn.split(".nc")[0].split("_")
+    var_id, freq, model, scenario, _, timespan = fn.split(".nc")[0].split("_")
     institution = luts.model_inst_lu[model]
     experiment_id = "ScenarioMIP" if scenario in prod_scenarios else "CMIP"
     # Construct the original CMIP6 filepath from the filename.
     # Need to use glob because of the "grid type" filename attribute that we do not have a lookup for.
-    var_dir = cmip6_dir.joinpath(
-        f"{experiment_id}/{institution}/{model}/{scenario}/{variant}/{freq}/{var_id}"
+    var_dir = cmip6_dir.joinpath(f"{experiment_id}/{institution}/{model}/{scenario}")
+    glob_str = (
+        f"*/{freq}/{var_id}/*/*/{var_id}_{freq}_{model}_{scenario}_*_{timespan}.nc"
     )
-    glob_str = f"*/*/{var_id}_{freq}_{model}_{scenario}_{variant}_*_{timespan}.nc"
     fp = list(var_dir.glob(glob_str))[0]
 
     return fp
@@ -49,23 +55,6 @@ def get_source_filepaths_from_batch_files(regrid_batch_dir):
     return src_fps
 
 
-def generate_crop_filepath(cmip6_fp, out_dir):
-    # get output filepath from input file
-    fp_attrs = parse_cmip6_fp(cmip6_fp)
-    varname = fp_attrs["varname"]
-    model = fp_attrs["model"]
-    scenario = fp_attrs["scenario"]
-    frequency = fp_attrs["frequency"]
-    # rename the file by simply switching out the existing grid type component with "regrid"
-    # Doing this to match the other regridded files, because these are part of the resulting dataset.
-    #  should only be one of three options: gr, gr1, or gn
-    rep = {"_gr_": "_regrid_", "_gr1_": "_regrid_", "_gn_": "_regrid_"}
-    fn = rename_file(cmip6_fp.name, rep)
-    out_fp = out_dir.joinpath(model, scenario, frequency, varname, fn)
-
-    return out_fp
-
-
 def crop_dataset(args):
     """Crop a dataset to a domain as set in open_and_crop_dataset, write the cropped dataset to netCDF file in out_dir
 
@@ -77,7 +66,7 @@ def crop_dataset(args):
     """
     cmip6_fp, out_dir, no_clobber = args
 
-    out_fp = generate_crop_filepath(cmip6_fp, out_dir)
+    out_fp = generate_regrid_filepath(cmip6_fp, out_dir)
     # make sure the parent dirs exist
     out_fp.parent.mkdir(exist_ok=True, parents=True)
 
@@ -85,7 +74,7 @@ def crop_dataset(args):
         if out_fp.exists():
             return out_fp
 
-    ds = open_and_crop_dataset(cmip6_fp)
+    ds = open_and_crop_dataset(cmip6_fp, lat_slice=prod_lat_slice)
     var_id = out_fp.parent.name
     assert var_id in list(ds.data_vars)
     assert var_id == ds.attrs["variable_id"]
@@ -124,24 +113,28 @@ if __name__ == "__main__":
 
     # get non-regridded filenames from set difference on standardized filenames
     #  between all CMIP6 files and all filepaths listed in batch files
-
     cmip6_fps = list(cmip6_dir.glob("**/*.nc"))
     src_fps = get_source_filepaths_from_batch_files(regrid_batch_dir)
-    rep = {"_gr_": "_", "_gr1_": "_", "_gn_": "_"}
-    cmip6_fns = set([rename_file(fp.name, rep) for fp in cmip6_fps])
-    src_fns = set([rename_file(fp.name, rep) for fp in src_fps])
-    non_regrid_fns = cmip6_fns - src_fns
+    # standardize filenames for set comparison by simple renaming to expected regridded filenanme
+    cmip6_std_fns = set(
+        [generate_regrid_filepath(fp, regrid_dir).name for fp in cmip6_fps]
+    )
+    src_std_fns = set([generate_regrid_filepath(fp, regrid_dir).name for fp in src_fps])
+    # standardized filenames for files which have not been regridded, need to be converted
+    #  back to CMIP6 filepaths for cropping
+    non_regrid_fns = cmip6_std_fns - src_std_fns
+    crop_cmip6_fps = [
+        generate_cmip6_filepath_from_regrid_filename(fn) for fn in non_regrid_fns
+    ]
 
-    if len(non_regrid_fns) == 0:
-        print(
-            "All source CMIP6 files accounted for in regridding output dir. No files to crop."
-        )
-        pass
+    # borrowed code from generate_batch_files.py to ensure we are only cropping files which
+    #  are already on the target grid (including the temporal axis!)
+    results_df = pd.DataFrame(read_grids(crop_cmip6_fps))
+    # the grid of the file chosen as the target template grid
+    cesm2_grid = results_df.query(f"fp == @target_grid_fp").grid.values[0]
+    # crop files that are on this grid
+    crop_df = results_df.query("grid == @cesm2_grid")
+    # only crop files if their start date is less than or equal to 2101-01-01
+    crop_cmip6_fps = crop_df.query("start_time < @max_time").fp.values
 
-    else:
-        non_regrid_cmip6_fps = []
-        for fn in non_regrid_fns:
-            cmip6_fp = generate_cmip6_filepath_from_regrid_filename(fn)
-            non_regrid_cmip6_fps.append(cmip6_fp)
-
-        out_fps = run_crop_datasets(non_regrid_cmip6_fps, regrid_dir, 24, no_clobber)
+    out_fps = run_crop_datasets(crop_cmip6_fps, regrid_dir, 24, no_clobber)

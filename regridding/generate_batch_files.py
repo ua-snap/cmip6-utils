@@ -18,6 +18,7 @@ warnings.filterwarnings("ignore", category=xr.SerializationWarning)
 
 
 GRID_VARS = ["lat", "lon", "lat_bnds", "lon_bnds"]
+max_time = np.datetime64("2101-01-01T12:00:00.0000")
 
 
 def fp_to_attrs(fp):
@@ -155,8 +156,7 @@ if __name__ == "__main__":
     # regrid files that do not have this grid
     regrid_df = results_df.query("grid != @cesm2_grid")
 
-    # only regrid files if their ending date is less than or equal to 2101-01-01
-    max_time = np.datetime64("2101-01-01T12:00:00.0000")
+    # only regrid files if their starting date is less than or equal to 2101-01-01
     regrid_df = regrid_df.query("start_time < @max_time")
 
     for name, group_df in regrid_df.groupby(["model", "scenario"]):
