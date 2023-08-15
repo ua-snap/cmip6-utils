@@ -97,9 +97,9 @@ def write_batch_files(group_df, model, scenario):
 
     def chunk_fp_list(df, max_size, max_count):
         """Helper function to chunk lists of files for appropriately-sized batches"""
-
-        fp_chunks = []
         # split filepaths into chunks such that sum total of sizes is less than max_size
+        #  and no more than max_count paths are included
+        fp_chunks = []
         # initialize counter for tallying sizes and chunk list
         k = 0
         chunk = []
@@ -107,7 +107,8 @@ def write_batch_files(group_df, model, scenario):
             if ((k + row["filesize"]) > max_size) or (len(chunk) >= max_count):
                 fp_chunks.append(chunk)
                 k = 0
-                chunk = []
+                # re-initialize with current filepath
+                chunk = [row["fp"]]
             else:
                 chunk.append(row["fp"])
 
@@ -153,6 +154,7 @@ if __name__ == "__main__":
     cesm2_grid = results_df.query(f"fp == @target_grid_fp").grid.values[0]
     # regrid files that do not have this grid
     regrid_df = results_df.query("grid != @cesm2_grid")
+
     # only regrid files if their ending date is less than or equal to 2101-01-01
     max_time = np.datetime64("2101-01-01T12:00:00.0000")
     regrid_df = regrid_df.query("start_time < @max_time")
