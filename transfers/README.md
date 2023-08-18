@@ -2,12 +2,12 @@
 
 This folder is the "pipeline" for transferring raw CMIP6 model output data to SNAP/UAF infrastructure.
 
-We have woreked with collaborators to identify a potential dataset that we will call the "requested data" that we want to mirror on the Arctic Climate Data Node, which are all outputs contributed under the ScenarioMIP and CMIP activities that satisfy all possible combinations of a particular set of models, scenarios, variables, and sampling frequencies (i.e. time scales) identified by our collaborators as most useful for accessing. This will be for a recent historical to end-of-century time period (approximately 1950-2100), with the historical data coming from the CMIP activity and the projected data coming from the ScenarioMIP activity. We are currently only concerned with accessing a single variant for each model, and so it will be desirable choose one such that it provides the maximal coverage amongst the aformentioned attributes we are basing the selection on. The target data, i.e. the files that are actually available, will be a subset of the requested data, as there are gaps in representation at each level. The requested data attributes are subject to change as we continue to communicate with collaborators about what is available and what is important.
+We have woreked with collaborators to identify a potential dataset that we will call the "requested data" that we want to mirror on the Arctic Climate Data Node, which are all outputs contributed under the ScenarioMIP and CMIP activities that satisfy all possible combinations of a particular set of models, scenarios, variables, and sampling frequencies (i.e. time scales) identified by our collaborators as most useful for accessing. This will be for a historical to end-of-century time period, with the historical data coming from the CMIP activity and the projected data coming from the ScenarioMIP activity. We are currently only concerned with accessing a single variant for each model, so it will be desirable choose one such that it provides the maximal coverage amongst the aformentioned attributes we are basing the selection on. The target data, i.e. the files that are actually available, will be a subset of the requested data, as there are gaps in representation at each level. The requested data attributes are subject to change as we continue to communicate with collaborators about what is available and what is important.
 
 ## Strategy
 
 This is kind of a tricky thing - one does not simply get all of the target data from the holdings by saying "I want these models, scenarios, and variables". The goals of this pipeline are thus:
-1. Identify the target data by comparing our requested data with the current holdings
+1. Identify the target data by comparing our requested data with the current holdings in ESGF
 2. Mirror that target data
 3. Provide some tools for auditing data on the ACDN to ensure we are successfully mirroring the target data, as well as other useful tasks, such as summarizing the data we have mirrored.
 
@@ -27,10 +27,10 @@ Here is a description of the pipeline.
 
 * `config.py`: sets some constant variables such as the main list of models, scenarios, and variables to mirror for our production mirror.
 * `luts.py`: like `config.py`, but for lookups / dicts
-* `esgf_holdings.py`: script to generate a reference table of CMIP6 holdings on a given ESGF node
+* `esgf_holdings.py`: script to generate a reference table of CMIP6 holdings on a given ESGF node using models, scenarios, and variables provided in `config.py`
+* `llnl_esgf_holdings.csv`: table of data audit results for LLNL ESGF node produced by `esgf_holdings.py`
 * `generate_batch_files.py`: script to generate the batch files of \<source> \<destination> filepaths for transferring files
 * `batch_transfer.py`: script to execute the main transfer of all target files to be mirrored via globus
-* `llnl_esgf_holdings.csv`: table of data audit results for LLNL ESGF node.  
 * `batch_files/`: batch files with \<source> \<destination> filepaths for transferring files
 * `tests/`: tests for verifying that the mirror is successful
 

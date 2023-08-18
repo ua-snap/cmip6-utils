@@ -65,6 +65,8 @@ prod_scenarios = [
 # production variables
 prod_vars = [
     "tas",
+    "tasmax",
+    "tasmin",
     "pr",
     "psl",
     "huss",
@@ -78,6 +80,8 @@ prod_vars = [
     "mrro",
     "mrsos",
     "prsn",
+    "sfcWind",
+    "sfcWindmax",
     "snd",
     "snw",
     "rlds",
@@ -85,11 +89,6 @@ prod_vars = [
 ]
 
 # constant variables for each model
-prod_const_vars = [
-    "orog",
-    "sftlf",
-    "sftof"
-]
+prod_const_vars = ["orog", "sftlf", "sftof"]
 
 prod_freqs = ["day", "Amon"]
-   
