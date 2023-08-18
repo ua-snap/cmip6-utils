@@ -45,13 +45,36 @@ python esgf_holdings.py --node llnl
 
 At the time of writing this, the relevant holdings at LLNL is summarized in the `llnl_esgf_holdings.csv` which has been committed to version control. 
 
-3. Use the `generate_batch_files.py` for transferring the files from the ESGF endpoint to the ACDN endpoint. Run like so:
+3. Use the `generate_manifest.py` script generate a complete manifest of all files to be mirrored on the ACDN.
+
+```
+python generate_manifest.py --node llnl
+```
+
+4. Use the `generate_batch_files.py` script to generate batch files from the manifest to run the transfer in batches.
 
 ```
 python generate_batch_files.py --node llnl
 ```
 
-4. Use the `transfer.py` script to run the transfer using the batch files. 
+5. Use the `transfer.py` script to run the transfer from the ESGF endpoint to the ACDN endpoint using the batch files. See that script for available command line options.
+
+```
+python transfer.py
+```
+
+Note - there may be multiple rounds of granting globus permissions/consents. For example, sometimes this error will pop up, maybe if it's the first time in a while?
+
+```
+The collection you are trying to access data on requires you to grant consent for the Globus CLI to access it.
+message: Missing required data_access consent
+
+Please run
+
+  globus session consent 'urn:globus:auth:scope:transfer.api.globus.org:all[*https://auth.globus.org/scopes/7235217a-be50-46ba-be31-70bffe2b5bf4/data_access]'
+
+to login with the required scopes
+```
 
 ### Globus setup
 
