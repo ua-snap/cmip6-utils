@@ -4,10 +4,13 @@ Note - this script first crops the dataset to the panarctic domain of 50N and up
 """
 
 import argparse
-import re
+import calendar
+import random
 import time
 from pathlib import Path
+import cftime
 import numpy as np
+import pandas as pd
 import xesmf as xe
 import xarray as xr
 
@@ -117,6 +120,28 @@ def generate_regrid_filepath(fp, out_dir):
     return regrid_fp
 
 
+def generate_single_year_filename(original_fp, da):
+    # take everything preceding the original daterange component of filename
+    nodate_fn_str = original_fp.split(".nc")[0].split("_")[:-1].join("_")
+    year_fn_str = [
+        pd.to_datetime(da.time.values[i]).strftime("%Y%m%d") for i in [0, -1]
+    ].join("-")
+    out_fp = original_fp.parent.joinpath(f"{nodate_fn_str}_{year_fn_str}.nc")
+
+    return out_fp
+
+
+# def fix_hour(ts):
+#     """Fix the hour in a cftime object if they are 0 instead of 12 (standard is 12 for most all frequencies)"""
+#     s = pd.Series(ts)
+#     if np.any(s.dt.hour != 12):
+#         new_ts = np.datetime64([f"{t.year}-{t.month}-{t.day}T12:00:00" for t in s])
+#     else:
+#         new_ts = ts
+
+#     return new_ts
+
+
 def open_and_crop_dataset(fp, lat_slice):
     """Open the connection to a dataset and crop it to a panarctic domain of 50N and up.
 
@@ -129,9 +154,122 @@ def open_and_crop_dataset(fp, lat_slice):
     """
     # we are cropping the dataset using the .sel method as we do not need to regrid the entire grid,
     #  only the part that will evetually wind up in the dataset.
-    src_ds = xr.open_dataset(fp, chunks={"time": 100}).sel(lat=lat_slice)
+    try:
+        src_ds = xr.open_dataset(fp, chunks={"time": 100}).sel(lat=lat_slice)
+    except ValueError:
+        print(fp)
 
     return src_ds
+
+
+def generate_random_date_indices(year):
+    """Get the random date indices for a given year (only using year to have consistent seed)"""
+    random.seed(year)
+    ridx_list = []
+    for i in range(5):
+        ridx = random.randrange(0 + i * 72, 72 + i * 72)
+        if ridx == 359:
+            ridx -= 1
+        ridx_list.append(ridx)
+
+    return ridx_list
+
+
+def threesixtyday_to_gregorian(ds):
+    """convert a 360 day calendar time axis on a dataset to gregorian numpy.datetime64 by selecting random dates (from different chunks of the year, following the method in https://doi.org/10.31223/X5M081) to insert a new slice as the mean between two adjacent time slices"""
+    ts = ds.time.values
+    var_id = ds.attrs["variable_id"]
+    start_year = ts[0].year
+    end_year = ts[-1].year
+    # make sure we are indeed working with a timeseries on a valid 360 day calendar
+    assert (end_year - start_year + 1) * 360 == len(ts)
+
+    # we will split, compute means, and combine on the random dates selected
+    # iterate over years, compute the dates to do this for
+    year_da_list = []
+    for year in range(start_year, end_year + 1):
+        year_da = ds[var_id].sel(time=slice(f"{year}-01-01", f"{year}-12-30"))
+        sub_das = []
+        prev_idx = 0
+        ridx_list = generate_random_date_indices(year)
+        for ridx, i in zip(ridx_list, range(len(ridx_list))):
+            # for each date, we need a mean of the two adjacent dates
+            # append chunk between previous random index (or 0) and next random index
+            sub_das.append(
+                year_da.isel(time=slice(prev_idx, ridx)).assign_coords(
+                    time=np.arange(prev_idx + i, ridx + i)
+                )
+            )
+            new_idx = ridx + i
+            new_slice = (
+                year_da.isel(time=slice(ridx, ridx + 2))
+                .mean(dim="time")
+                .expand_dims(time=1)
+                .assign_coords(time=[new_idx])
+            )
+            sub_das.append(new_slice)
+            prev_idx = ridx
+
+        sub_das.append(
+            year_da.isel(time=slice(prev_idx, 360)).assign_coords(
+                time=np.arange(prev_idx + i + 1, 365)
+            )
+        )
+
+        year_greg_da = xr.concat(sub_das, dim="time")
+
+        if calendar.isleap(year):
+            # note, slice is upper-bound exclusive with .isel, but is inclusive with .sel
+            leap_slice = (
+                year_greg_da.sel(time=slice(58, 59))
+                .mean(dim="time")
+                .expand_dims(time=1)
+                .assign_coords(time=[59])
+            )
+            pre_leap_da = year_greg_da.sel(time=slice(0, 58))
+            post_leap_da = year_greg_da.sel(time=slice(59, 364)).assign_coords(
+                time=np.arange(60, 366)
+            )
+            year_greg_da = xr.concat(
+                [pre_leap_da, leap_slice, post_leap_da], dim="time"
+            )
+
+        year_greg_da = year_greg_da.assign_coords(
+            time=pd.date_range(
+                f"{year}-01-01 12:00:00", f"{year}-12-31 12:00:00"
+            ).to_numpy()
+        )
+        year_da_list.append(year_greg_da)
+
+    new_greg_da = xr.concat(year_da_list, dim="time")
+    out_ds = new_greg_da.to_dataset()
+    out_ds.attrs = ds.attrs
+    del out_ds.attrs["parent_time_units"]
+
+    return out_ds
+
+
+def fix_time_and_write(ds, out_fp):
+    """Fix the time dimension of a regridded dataset if needed; write dataset, splitting by appropriate time chunks if needed."""
+    if isinstance(ds.time.values[0], cftime._cftime.Datetime360Day):
+        ds = threesixtyday_to_gregorian(ds)
+    elif isinstance(ds.time.values[0], cftime._cftime.DatetimeNoLeap):
+        pass  # TO-DO: handle conversion from cftime._cftime.DatetimeNoLeap
+
+    # now write out by appropriate time chunks
+    if ds.attrs["freq"] == "day":
+        out_fps = []
+        # write out by year for daily data
+        for year, da in ds.groupby("time.year"):
+            year_out_fp = generate_single_year_filename(out_fp, da)
+            year_ds = da.to_dataset
+            year_ds = ds.attrs
+            year_ds.to_netcdf(year_out_fp)
+            out_fps.append(year_out_fp)
+    elif ds.attrs["freq"] == "Amon":
+        pass  # TO-DO: handle month splitting if needed
+
+    return out_fps
 
 
 def regrid_dataset(fp, regridder, out_fp, lat_slice):
@@ -153,10 +291,12 @@ def regrid_dataset(fp, regridder, out_fp, lat_slice):
     regrid_task = regridder(src_ds, keep_attrs=True)
     regrid_ds = regrid_task.compute()
 
-    # subset to the production latitude slice after regridding.
-    regrid_ds.to_netcdf(out_fp)
+    out_fps = fix_time_and_write(regrid_ds, out_fp)
 
-    return out_fp
+    # # subset to the production latitude slice after regridding.
+    # regrid_ds.to_netcdf(out_fp)
+
+    return out_fps
 
 
 if __name__ == "__main__":
