@@ -13,6 +13,7 @@ source /path/to/conda.sh
 conda activate cmip6-utils
 
 export SCRATCH_DIR=/path/to/cmip6_regridding
+export EXAMPLE_REGRID_FILE=/path/to/example_regrid_file.nc
 
 python -m pytest -v tests/test_regridding.py
 
