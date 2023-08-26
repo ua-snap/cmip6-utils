@@ -70,6 +70,7 @@ varnames = [
     # "snd",
     # "snw",
     "rlds",
+    "rsds",
     # "rsd",
     # "clt",
 ]
@@ -115,7 +116,9 @@ def validate_min_max_nan(args):
 
     nan_thresholds = {}
     for varname in varnames:
-        if varname == "hus":
+        if varname == "prsn":
+            nan_thresholds[varname] = 0.6
+        elif varname in ["hus", "ua", "va"]:
             nan_thresholds[varname] = 0.2
         else:
             nan_thresholds[varname] = 0.1
