@@ -30,7 +30,7 @@ regrid_dir = SCRATCH_DIR.joinpath("regrid")
 models = [
     "ACCESS-CM2",
     "CESM2",
-    "CNRM",
+    "CNRM-CM6-1-HR",
     "EC-Earth3-Veg",
     "GFDL-ESM4",
     "HadGEM3-GC31-LL",
