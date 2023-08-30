@@ -175,8 +175,28 @@ def generate_random_date_indices(year):
     return ridx_list
 
 
-def threesixtyday_to_gregorian(ds):
-    """convert a 360 day calendar time axis on a dataset to gregorian numpy.datetime64 by selecting random dates (from different chunks of the year, following the method in https://doi.org/10.31223/X5M081) to insert a new slice as the mean between two adjacent time slices"""
+def dayfreq_add_bnds(out_ds, ds):
+    """Add the bnds variables back to a daily frequency dataset after converting from 360day to gregorian"""
+    lower_bnds = out_ds.time.dt.date.values.astype("datetime64[ns]")
+    upper_bnds = lower_bnds + pd.Timedelta("1d")
+    new_bnds = [[l, u] for l, u in zip(lower_bnds, upper_bnds)]
+    time_bnds = xr.DataArray(
+        new_bnds,
+        dims=["time", "bnds"],
+        coords=dict(time=(["time"], out_ds.time.values)),
+    )
+    time_bnds.encoding = ds.time_bnds.encoding
+    time_bnds.encoding["calendar"] = "gregorian"
+    time_bnds.attrs = ds.time_bnds.attrs
+    out_ds = out_ds.assign(
+        time_bnds=time_bnds, lat_bnds=ds.lat_bnds, lon_bnds=ds.lon_bnds
+    )
+
+    return out_ds
+
+
+def dayfreq_360day_to_gregorian(ds):
+    """convert a 360 day calendar time axis on a daily dataset to gregorian numpy.datetime64 by selecting random dates (from different chunks of the year, following the method in https://doi.org/10.31223/X5M081) to insert a new slice as the mean between two adjacent time slices"""
     ts = ds.time.values
     var_id = ds.attrs["variable_id"]
     start_year = ts[0].year
@@ -235,6 +255,7 @@ def threesixtyday_to_gregorian(ds):
             )
 
         year_greg_da = year_greg_da.assign_coords(
+            # ensuring hour used is consistent here as well (1200)
             time=pd.date_range(
                 f"{year}-01-01 12:00:00", f"{year}-12-31 12:00:00"
             ).to_numpy()
@@ -244,17 +265,87 @@ def threesixtyday_to_gregorian(ds):
     new_greg_da = xr.concat(year_da_list, dim="time")
     out_ds = new_greg_da.to_dataset()
     out_ds.attrs = ds.attrs
-    del out_ds.attrs["parent_time_units"]
+    out_ds.time.encoding = ds.time.encoding
+    out_ds.time.encoding["calendar"] = "gregorian"
+    out_ds.time.attrs = ds.time.attrs
+    # add the bnds variables back in
+    out_ds = dayfreq_add_bnds(out_ds, ds)
 
     return out_ds
 
 
+def Amonfreq_cftime_to_gregorian(ds):
+    """Convert the calendar of a cftime dataset to gregorian"""
+    assert type(ds.time.values[0]) in [
+        cftime._cftime.Datetime360Day,
+        cftime._cftime.DatetimeNoLeap,
+    ]
+    assert ds.attrs["frequency"] == "Amon"
+    new_times = pd.to_datetime(
+        [f"{t.year}-{t.month}-15T12:00:00" for t in ds.time.values]
+    )
+    out_ds = ds.assign_coords(time=new_times)
+    out_ds.time.encoding = ds.encoding
+    out_ds.time.encoding["calendar"] = "gregorian"
+    out_ds.time.attrs = ds.attrs
+
+    return out_ds
+
+
+def dayfreq_noleap_to_gregorian(ds):
+    ts = ds.time.values
+    var_id = ds.attrs["variable_id"]
+    start_year = ts[0].year
+    end_year = ts[-1].year
+    # make sure we are indeed working with a timeseries on a valid 365 day noleap calendar
+    assert (end_year - start_year + 1) * 365 == len(ts)
+
+    # we will split, compute means, and combine on the random dates selected
+    # iterate over years, compute the dates to do this for
+    year_da_list = []
+    for year in range(start_year, end_year + 1):
+        year_da = ds[var_id].sel(time=slice(f"{year}-01-01", f"{year}-12-31"))
+        if calendar.isleap(year):
+            # note, slice is upper-bound exclusive with .isel, but is inclusive with .sel
+            leap_slice = (
+                year_greg_da.sel(time=slice(f"{year}-02-28", f"{year}-03-01"))
+                .mean(dim="time")
+                .expand_dims(time=1)
+                .assign_coords(time=f"{year}-02-29")
+            )
+            pre_leap_da = year_greg_da.sel(time=slice(f"{year}-01-01", f"{year}-02-28"))
+            post_leap_da = year_greg_da.sel(
+                time=slice(f"{year}-03-01", f"{year}-12-31")
+            )
+            year_greg_da = xr.concat(
+                [pre_leap_da, leap_slice, post_leap_da], dim="time"
+            )
+            year_da_list.append(year_greg_da)
+        else:
+            year_da_list.append(year_da)
+
+    new_greg_da = xr.concat(year_da_list, dim="time")
+    out_ds = new_greg_da.to_dataset()
+    out_ds.attrs = ds.attrs
+    out_ds.time.encoding = ds.time.encoding
+    out_ds.time.encoding["calendar"] = "gregorian"
+    out_ds.time.attrs = ds.time.attrs
+    # add the bnds variables back in
+    out_ds = dayfreq_add_bnds(out_ds, ds)
+
+    return ds
+
+
 def fix_time_and_write(ds, out_fp):
     """Fix the time dimension of a regridded dataset if needed; write dataset, splitting by appropriate time chunks if needed."""
-    if isinstance(ds.time.values[0], cftime._cftime.Datetime360Day):
-        ds = threesixtyday_to_gregorian(ds)
-    elif isinstance(ds.time.values[0], cftime._cftime.DatetimeNoLeap):
-        pass  # TO-DO: handle conversion from cftime._cftime.DatetimeNoLeap
+    if ds.attrs["frequency"] == "day":
+        if isinstance(ds.time.values[0], cftime._cftime.Datetime360Day):
+            ds = dayfreq_360day_to_gregorian(ds)
+        elif isinstance(ds.time.values[0], cftime._cftime.DatetimeNoLeap):
+            pass  # TO-DO: handle conversion from cftime._cftime.DatetimeNoLeap
+            ds = dayfreq_noleap_to_gregorian(ds)
+    elif ds.attrs["frequency"] == "Amon":
+        ds = Amonfreq_cftime_to_gregorian(ds)
 
     # now write out by appropriate time chunks
     if ds.attrs["freq"] == "day":
