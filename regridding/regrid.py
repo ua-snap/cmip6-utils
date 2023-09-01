@@ -345,10 +345,31 @@ def Amonfreq_fix_time(out_ds, src_ds):
                     for year, month in zip(out_ds.time.dt.year, out_ds.time.dt.month)
                 ]
             )
+        else:
+            new_times = out_ds.time.values
+
     out_ds = out_ds.assign_coords(time=new_times)
-    out_ds.time.encoding = src_ds.encoding
+    out_ds.time.encoding = src_ds.time.encoding
     out_ds.time.encoding["calendar"] = "gregorian"
     out_ds.time.attrs = src_ds.time.attrs
+
+    try:
+        out_ds = out_ds.assign(time_bnds=src_ds.time_bnds)
+        out_ds.time_bnds.encoding = src_ds.time_bnds.encoding
+        out_ds.time_bnds.encoding["calendar"] = "gregorian"
+        out_ds.time_bnds.attrs = src_ds.time_bnds.attrs
+    except AttributeError:
+        pass
+        # not sure what to do for time_bnds attrs if not available
+
+    try:
+        out_ds = out_ds.assign(lat_bnds=src_ds.lat_bnds, lon_bnds=src_ds.lon_bnds)
+    except AttributeError:
+        # no lat and or lon bounds
+        pass
+
+    return out_ds
+
     out_ds = out_ds.assign(
         time_bnds=src_ds.time_bnds, lat_bnds=src_ds.lat_bnds, lon_bnds=src_ds.lon_bnds
     )
@@ -453,7 +474,7 @@ if __name__ == "__main__":
     # do the same for one of the source datasets to configure the regridder object
     # defining an "extended" latitude slice, so that grids encoompass the entire
     #  production latitude extent before regridding (e.g. a grid will have domain [49.53, 90] instead of [50.75, 90],
-    #  so this is probably always going to give just one more "row" of grid cells for interpolation.)
+    #  so this is probably always going to give just one more row of grid cells for interpolation.)
     ext_lat_slice = slice(49, 90)
     src_init_ds = open_and_crop_dataset(src_fps[0], lat_slice=ext_lat_slice)
 
