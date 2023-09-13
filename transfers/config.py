@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 import globus_sdk
+import luts
 
 
 # Globus Client ID requried to complete an OAuth2 flow to get tokens
@@ -16,7 +17,7 @@ acdn_ep = "7235217a-be50-46ba-be31-70bffe2b5bf4"
 acdn_prefix = Path("/CMIP6")
 
 # the endpoint for the LLNL ESGF node
-llnl_ep = "415a6320-e49c-11e5-9798-22000b9da45e"
+llnl_ep = "1889ea03-25ad-4f9f-8110-1ce8833a9d7e"
 
 ceda_ep = "ee3aa1a0-7e4c-11e6-afc4-22000b92c261"
 
@@ -63,6 +64,8 @@ prod_scenarios = [
 ]
 
 # production variables
+# This list should contain all of the variables in the specs doc
+# Current workflow assumes we will request all combinations prod_vars x prod_freqs
 prod_vars = [
     "tas",
     "tasmax",
@@ -86,7 +89,25 @@ prod_vars = [
     "snw",
     "rlds",
     "rsds",
+    "clt",
+    "sot",
+    "sic",
+    "zmlo",
+    "hfls",
+    "hfss",
+    "rsntp",
+    "rlntp",
 ]
+
+# make sure that all production variables have a long name lookup in the lut
+try:
+    missing_vars = [v for v in prod_vars if v not in list(luts.varname_lu.keys())]
+    assert len(missing_vars) == 0
+except AssertionError:
+    print(
+        f"One or more production variable IDs is missing long name in lut: {missing_vars}"
+    )
+
 
 # constant variables for each model
 prod_const_vars = ["orog", "sftlf", "sftof"]
