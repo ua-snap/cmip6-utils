@@ -6,7 +6,7 @@ prod_variant_lu = {
     "CESM2": "r11i1p1f1",
     "CNRM-CM6-1-HR": "r1i1p1f2",
     "EC-Earth3-Veg": "r1i1p1f1",
-    "GFDL-ESM4":  "r1i1p1f1",
+    "GFDL-ESM4": "r1i1p1f1",
     "HadGEM3-GC31-LL": "r1i1p1f3",
     "HadGEM3-GC31-MM": "r1i1p1f3",
     "KACE-1-0-G": "r1i1p1f1",
@@ -39,6 +39,8 @@ model_inst_lu = {
 
 varname_lu = {
     "tas": "near_surface_air_temperature",
+    "tasmax": "maximum_near_surface_air_temperature",
+    "tasmin": "minimum_near_surface_air_temperature",
     "pr": "precipitation",
     "psl": "sea_level_pressure",
     "huss": "near_surface_specific humidity",
@@ -47,6 +49,8 @@ varname_lu = {
     "ta": "air_temperature",
     "ua": "eastward_wind",
     "va": "northward_wind",
+    "sfcWind": "near_surface_wind_speed",
+    "sfcWindmax": "maximum_near_surface_wind_speed",
     "hus": "specific_humidity",
     "evspsbl": "evaporation_including_sublimation_and_transpiration",
     "mrro": "total_runoff",
@@ -59,12 +63,19 @@ varname_lu = {
     "orog": "surface_altitude",
     "sftlf": "percentage_of_the_grid_cell_occupied_by_land_including_lakes",
     "sftof": "sea_area_percentage",
+    "clt": "cloud_area_fraction",
+    "sot": "sea_surface_temperature",
+    "sic": "sea_ice_area_fraction",
+    "zmlo": "ocean_mixed_layer_thickness",
+    "hfls": "surface_upward_latent_heat_flux",
+    "hfss": "surface_upward_sensible_heat_flux",
+    "rsntp": "net_downward_shortwave_flux_in_air",
+    "rlntp": "net_upward_longwave_flux_in_air",
 }
 
 globus_esgf_endpoints = {
     "llnl": {
-        "ep": "415a6320-e49c-11e5-9798-22000b9da45e",
-        "prefix": "/css03_data/CMIP6"
+        "ep": "1889ea03-25ad-4f9f-8110-1ce8833a9d7e",
+        "prefix": "/css03_data/CMIP6",
     }
 }
-
