@@ -34,7 +34,7 @@ manifest_tmp_fn = "{esgf_node}_manifest.csv"
 batch_dir = Path("batch_files")
 batch_dir.mkdir(exist_ok=True)
 # template name for batch files
-batch_tmp_fn = "batch_{esgf_node}_{freq}_{varname}.txt"
+batch_tmp_fn = "batch_{esgf_node}_{freq}_{var_id}.txt"
 
 # Production mirror model list
 #  assumed to be interested in this entire list of models for all temporal frequencies, etc.
@@ -89,19 +89,18 @@ prod_vars = [
     "snw",
     "rlds",
     "rsds",
+    "rss",
+    "rls",
     "clt",
-    "sot",
-    "sic",
-    "zmlo",
+    "tos",
+    "siconc",
     "hfls",
     "hfss",
-    "rsntp",
-    "rlntp",
 ]
 
 # make sure that all production variables have a long name lookup in the lut
 try:
-    missing_vars = [v for v in prod_vars if v not in list(luts.varname_lu.keys())]
+    missing_vars = [v for v in prod_vars if v not in list(luts.variables.keys())]
     assert len(missing_vars) == 0
 except AssertionError:
     print(

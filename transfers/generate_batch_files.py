@@ -25,7 +25,7 @@ def arguments(argv):
 
 def generate_transfer_paths(row, freq):
     """Generate the paths for transferring between LLNL ESGF node and ACDN
-    
+
     Args:
         row (pandas.core.series.Series): a single row series from pandas.DataFrame.iterrows() on dataframe of desired data filenames
         freq (str): temporal frequency to generate transfer paths for, should be either "day", or "Amon"
@@ -47,7 +47,7 @@ def generate_transfer_paths(row, freq):
         row["grid_type"],
         row["version"],
     )
-    
+
     fn = row["filename"]
     fp = group_path.joinpath(fn)
     transfer_tpl = (llnl_prefix.joinpath(fp), acdn_prefix.joinpath(fp))
@@ -55,9 +55,11 @@ def generate_transfer_paths(row, freq):
     return transfer_tpl
 
 
-def write_batch_file(freq, varname, transfer_paths):
+def write_batch_file(freq, var_id, transfer_paths):
     """Write the batch file for a particular variable and scenario group"""
-    batch_file = batch_dir.joinpath(batch_tmp_fn.format(esgf_node=ESGF_NODE, freq=freq, varname=varname))
+    batch_file = batch_dir.joinpath(
+        batch_tmp_fn.format(esgf_node=ESGF_NODE, freq=freq, var_id=var_id)
+    )
     with open(batch_file, "w") as f:
         for paths in transfer_paths:
             f.write(f"{paths[0]} {paths[1]}\n")
@@ -66,21 +68,19 @@ def write_batch_file(freq, varname, transfer_paths):
 if __name__ == "__main__":
     # this script only runs for a single ESGF node
     ESGF_NODE = arguments(sys.argv)
-    
+
     # use the manifest file for generating batch files
     manifest = pd.read_csv(
         manifest_tmp_fn.format(esgf_node=ESGF_NODE),
     )
-    
-    # group batch files by variable name and 
-    for freq in prod_freqs:
-        for varname in prod_vars:
+
+    # group batch files by variable name and
+    for var_id, var_df in manifest.groupby("variable"):
+        for freq, freq_df in var_df.groupby("frequency"):
             transfer_paths = []
-            
-            query_str = f"frequency == '{freq}' & variable == '{varname}'"
-            for i, row in manifest.query(query_str).iterrows():
+            for i, row in freq_df.iterrows():
                 transfer_paths.append(generate_transfer_paths(row, freq))
-            
+
             # only write batch file if transfer paths were found
             if transfer_paths != []:
-                write_batch_file(freq, varname, transfer_paths)
+                write_batch_file(freq, var_id, transfer_paths)
