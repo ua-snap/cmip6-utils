@@ -170,34 +170,6 @@ def generate_random_date_indices(year):
     return ridx_list
 
 
-def dayfreq_add_bnds(out_ds, src_ds):
-    """Add the bnds variables back to a daily frequency dataset after converting from 360day to gregorian"""
-    lower_bnds = out_ds.time.dt.date.values.astype("datetime64[ns]")
-    upper_bnds = lower_bnds + pd.Timedelta("1d")
-    new_bnds = [[l, u] for l, u in zip(lower_bnds, upper_bnds)]
-    time_bnds = xr.DataArray(
-        new_bnds,
-        dims=["time", "bnds"],
-        coords=dict(time=(["time"], out_ds.time.values)),
-    )
-    try:
-        time_bnds.encoding = src_ds.time_bnds.encoding
-        time_bnds.attrs = src_ds.time_bnds.attrs
-    except AttributeError:
-        time_bnds.encoding = src_ds.time.encoding
-        # not sure what to do for time_bnds attrs if not available
-    time_bnds.encoding["calendar"] = "gregorian"
-    out_ds = out_ds.assign(time_bnds=time_bnds)
-
-    try:
-        out_ds = out_ds.assign(lat_bnds=src_ds.lat_bnds, lon_bnds=src_ds.lon_bnds)
-    except AttributeError:
-        # no lat and or lon bounds
-        pass
-
-    return out_ds
-
-
 def dayfreq_360day_to_gregorian(out_ds):
     """convert a 360 day calendar time axis on a daily dataset to gregorian numpy.datetime64 by selecting random dates (from different chunks of the year, following the method in https://doi.org/10.31223/X5M081) to insert a new slice as the mean between two adjacent time slices"""
     ts = out_ds.time.values
@@ -337,7 +309,7 @@ def generate_single_year_filename(original_fp, year_ds):
 
 
 def Amonfreq_fix_time(out_ds, src_ds):
-    """Fix the time dimension of a regridded monthly dataset. This includes either converting the calendar of a cftime dataset to gregorian, or simply ensuring that the day of month used is 15 and not 14 or 16. Also adds the bnds variables back in."""
+    """Fix the time dimension of a regridded monthly dataset. This includes either converting the calendar of a cftime dataset to gregorian, or simply ensuring that the day of month used is 15 and not 14 or 16."""
     if type(out_ds.time.values[0]) in [
         cftime._cftime.Datetime360Day,
         cftime._cftime.DatetimeNoLeap,
@@ -345,15 +317,6 @@ def Amonfreq_fix_time(out_ds, src_ds):
         new_times = pd.to_datetime(
             [f"{t.year}-{t.month}-15T12:00:00" for t in out_ds.time.values]
         )
-        new_time_bnds = []
-        for t in out_ds.time:
-            month = t.dt.month.values
-            lower_bnd = f"{t.dt.year.values}-{str(month).zfill(2)}-01T12:00:00"
-            if month == 12:
-                upper_bnd = f"{t.dt.year.values + 1}-01-01T12:00:00"
-            else:
-                upper_bnd = f"{t.dt.year.values}-{str(month + 1).zfill(2)}-01T12:00:00"
-            new_time_bnds.append([np.datetime64(lower_bnd), np.datetime64(upper_bnd)])
     else:
         if not np.all(out_ds.time.dt.day.values == 15):
             new_times = pd.to_datetime(
@@ -364,23 +327,11 @@ def Amonfreq_fix_time(out_ds, src_ds):
             )
         else:
             new_times = out_ds.time.values
-        # time_bnds should already be good to go for non-cftime time variable
-        new_time_bnds = src_ds.time_bnds.values
 
     out_ds = out_ds.assign_coords(time=new_times)
     out_ds.time.encoding = src_ds.time.encoding
     out_ds.time.encoding["calendar"] = "gregorian"
     out_ds.time.attrs = src_ds.time.attrs
-
-    try:
-        out_ds = out_ds.assign(time_bnds=src_ds.time_bnds)
-        out_ds.time_bnds.data = new_time_bnds
-        out_ds.time_bnds.encoding = src_ds.time_bnds.encoding
-        out_ds.time_bnds.encoding["calendar"] = "gregorian"
-        out_ds.time_bnds.attrs = src_ds.time_bnds.attrs
-    except AttributeError:
-        pass
-        # not sure what to do for time_bnds attrs if not available
 
     return out_ds
 
@@ -429,15 +380,19 @@ def fix_time_and_write(out_ds, src_ds, out_fp):
             # most datasets are not offenders (potentially none at this point), but just ensure that they all have the same hour (1200)
             out_ds = fix_hour_in_time_dim(out_ds)
 
-        # add bnds variables back in that were dropped during regridding
-        out_ds = dayfreq_add_bnds(out_ds, src_ds)
-
     elif check_is_monfreq(out_ds):
         # make sure we assign correct monthly frequency type
         out_ds.attrs["frequency"] = [
             s for s in variables[out_ds.attrs["variable_id"]]["freqs"] if "mon" in s
         ][0]
         out_ds = Amonfreq_fix_time(out_ds, src_ds)
+
+    # make sure bnds variables are out, we probably don't need for this dataset
+    # just makes things simpler.
+    # not sure if they are always/never/sometimes kept through regridding
+    for bnd_var in ["bnds", "lat_bnds", "lon_bnds", "time_bnds"]:
+        if bnd_var in out_ds:
+            out_ds = out_ds.drop(bnd_var)
 
     # write out everything (monthly and daily freqs) by year
     for year, year_ds in out_ds.groupby("time.year"):
