@@ -96,4 +96,10 @@ if __name__ == "__main__":
     manifest = pre_manifest.apply(lambda row: split_by_filenames(row), axis=1)
     manifest = pd.concat(manifest.to_list())
 
+    # ignore these files, for one reason or another!
+    # this is just a grouping of all the split up files, doesn't occur for any other variable!
+    manifest = manifest.query(
+        "filename != 'psl_day_CESM2-WACCM_historical_r1i1p1f1_gn_18500101-20150101.nc'"
+    )
+
     manifest.to_csv(manifest_tmp_fn.format(esgf_node=ESGF_NODE), index=False)
