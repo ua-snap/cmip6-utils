@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 import xesmf as xe
 import xarray as xr
+from config import variables
 
 # ignore serializationWarnings from xarray for datasets with multiple FillValues
 import warnings
@@ -320,9 +321,16 @@ def generate_single_year_filename(original_fp, year_ds):
     """Generate a filename for a single year's worth of data"""
     # take everything preceding the original daterange component of filename
     nodate_fn_str = "_".join(original_fp.name.split(".nc")[0].split("_")[:-1])
-    year_fn_str = "-".join(
-        [pd.to_datetime(year_ds.time.values[i]).strftime("%Y%m%d") for i in [0, -1]]
-    )
+    if "day" in year_ds.attrs["frequency"]:
+        year_fn_str = "-".join(
+            [pd.to_datetime(year_ds.time.values[i]).strftime("%Y%m%d") for i in [0, -1]]
+        )
+    elif "mon" in year_ds.attrs["frequency"]:
+        # drop date for monthly data
+        year_fn_str = "-".join(
+            [pd.to_datetime(year_ds.time.values[i]).strftime("%Y%m") for i in [0, -1]]
+        )
+
     out_fp = original_fp.parent.joinpath(f"{nodate_fn_str}_{year_fn_str}.nc")
 
     return out_fp
@@ -337,6 +345,15 @@ def Amonfreq_fix_time(out_ds, src_ds):
         new_times = pd.to_datetime(
             [f"{t.year}-{t.month}-15T12:00:00" for t in out_ds.time.values]
         )
+        new_time_bnds = []
+        for t in out_ds.time:
+            month = t.dt.month.values
+            lower_bnd = f"{t.dt.year.values}-{str(month).zfill(2)}-01T12:00:00"
+            if month == 12:
+                upper_bnd = f"{t.dt.year.values + 1}-01-01T12:00:00"
+            else:
+                upper_bnd = f"{t.dt.year.values}-{str(month + 1).zfill(2)}-01T12:00:00"
+            new_time_bnds.append([np.datetime64(lower_bnd), np.datetime64(upper_bnd)])
     else:
         if not np.all(out_ds.time.dt.day.values == 15):
             new_times = pd.to_datetime(
@@ -347,6 +364,8 @@ def Amonfreq_fix_time(out_ds, src_ds):
             )
         else:
             new_times = out_ds.time.values
+        # time_bnds should already be good to go for non-cftime time variable
+        new_time_bnds = src_ds.time_bnds.values
 
     out_ds = out_ds.assign_coords(time=new_times)
     out_ds.time.encoding = src_ds.time.encoding
@@ -355,24 +374,13 @@ def Amonfreq_fix_time(out_ds, src_ds):
 
     try:
         out_ds = out_ds.assign(time_bnds=src_ds.time_bnds)
+        out_ds.time_bnds.data = new_time_bnds
         out_ds.time_bnds.encoding = src_ds.time_bnds.encoding
         out_ds.time_bnds.encoding["calendar"] = "gregorian"
         out_ds.time_bnds.attrs = src_ds.time_bnds.attrs
     except AttributeError:
         pass
         # not sure what to do for time_bnds attrs if not available
-
-    try:
-        out_ds = out_ds.assign(lat_bnds=src_ds.lat_bnds, lon_bnds=src_ds.lon_bnds)
-    except AttributeError:
-        # no lat and or lon bounds
-        pass
-
-    return out_ds
-
-    out_ds = out_ds.assign(
-        time_bnds=src_ds.time_bnds, lat_bnds=src_ds.lat_bnds, lon_bnds=src_ds.lon_bnds
-    )
 
     return out_ds
 
@@ -383,9 +391,12 @@ def get_time_res_days(ds):
         cftime._cftime.Datetime360Day,
         cftime._cftime.DatetimeNoLeap,
     ]:
-        res_days = (ds.time.values[1] - ds.time.values[0]).days
+        # have seen some datasets with a weird first time values
+        #  (e.g. DatetimeNoLeap(1849, 12, 31, 23, 44, 59, 999993, has_year_zero=True))
+        #  so use the 2nd and 3rd indices
+        res_days = (ds.time.values[2] - ds.time.values[1]).days
     elif isinstance(ds.time.values[0], np.datetime64):
-        res_days = (ds.time.values[1] - ds.time.values[0]).astype("timedelta64[D]")
+        res_days = (ds.time.values[2] - ds.time.values[1]).astype("timedelta64[D]")
     else:
         print(f"Unrecognized time type: {type(ds.time.values[0])}")
 
@@ -406,7 +417,10 @@ def fix_time_and_write(out_ds, src_ds, out_fp):
     """Fix the time dimension of a regridded dataset if needed; write dataset, splitting by appropriate time chunks if needed."""
     out_fps = []
     if check_is_dayfreq(out_ds):
-        out_ds.attrs["frequency"] = "day"
+        # make sure we assign correct daily frequency type
+        out_ds.attrs["frequency"] = [
+            s for s in variables[out_ds.attrs["variable_id"]]["freqs"] if "day" in s
+        ][0]
         if isinstance(out_ds.time.values[0], cftime._cftime.Datetime360Day):
             out_ds = dayfreq_360day_to_gregorian(out_ds)
         elif isinstance(out_ds.time.values[0], cftime._cftime.DatetimeNoLeap):
@@ -418,18 +432,21 @@ def fix_time_and_write(out_ds, src_ds, out_fp):
         # add bnds variables back in that were dropped during regridding
         out_ds = dayfreq_add_bnds(out_ds, src_ds)
 
-        # write out by year for daily data
-        for year, year_ds in out_ds.groupby("time.year"):
-            year_out_fp = generate_single_year_filename(out_fp, year_ds)
-            # year_ds = out_ds.attrs
-            year_ds.to_netcdf(year_out_fp)
-            out_fps.append(year_out_fp)
-
     elif check_is_monfreq(out_ds):
-        out_ds.attrs["frequency"] = "Amon"
+        # make sure we assign correct monthly frequency type
+        out_ds.attrs["frequency"] = [
+            s for s in variables[out_ds.attrs["variable_id"]]["freqs"] if "mon" in s
+        ][0]
         out_ds = Amonfreq_fix_time(out_ds, src_ds)
-        out_ds.to_netcdf(out_fp)
-        out_fps.append(out_fp)
+
+    # write out everything (monthly and daily freqs) by year
+    for year, year_ds in out_ds.groupby("time.year"):
+        if year_ds.time.shape[0] == 1:
+            # skip weird files where first time value is last day of a year
+            continue
+        year_out_fp = generate_single_year_filename(out_fp, year_ds)
+        year_ds.to_netcdf(year_out_fp)
+        out_fps.append(year_out_fp)
 
     [print(f"{fp} done") for fp in out_fps]
 
@@ -491,13 +508,17 @@ if __name__ == "__main__":
         # make sure the parent dirs exist
         out_fp.parent.mkdir(exist_ok=True, parents=True)
 
-        if no_clobber:
-            if not out_fp.exists():
-                results.append(regrid_dataset(fp, regridder, out_fp, ext_lat_slice))
-            else:
-                continue
-        else:
-            results.append(regrid_dataset(fp, regridder, out_fp, ext_lat_slice))
+        # TO-DO: This no longer works because we are actually generating different output filepaths by year
+        # either get rid of this and drop no-clobber option, or fix
+        # if no_clobber:
+        #     if not out_fp.exists():
+        #         results.append(regrid_dataset(fp, regridder, out_fp, ext_lat_slice))
+        #     else:
+        #         continue
+        # else:
+        #     results.append(regrid_dataset(fp, regridder, out_fp, ext_lat_slice))
+
+        results.append(regrid_dataset(fp, regridder, out_fp, ext_lat_slice))
 
     print(
         f"done, {len(results)} files regridded in {np.round((time.perf_counter() - tic) / 60, 1)}m"
