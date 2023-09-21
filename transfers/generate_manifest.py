@@ -8,7 +8,6 @@ import argparse
 from datetime import datetime
 import sys
 import pandas as pd
-import luts
 from config import *
 
 
@@ -40,7 +39,7 @@ def get_ymd_from_str(ymd_str):
 def split_by_filenames(row):
     row_di = row.to_dict()
     row_di["filename"] = [fn.replace("'", "") for fn in row_di["filenames"]]
-    if row_di["variable"] in prod_const_vars:
+    if variables[row_di["variable"]]["freqs"][0] in ["fx", "Ofx"]:
         # these variables do not have time ranges
         row_di["start_year"] = [None]
         row_di["start_month"] = [None]
@@ -81,14 +80,14 @@ if __name__ == "__main__":
 
     pre_manifest = []
     # group batch files by variable name and
-    for var_id in luts.variables:
-        for freq in luts.variables[var_id]["freqs"]:
+    for var_id in variables:
+        for freq in variables[var_id]["freqs"]:
             transfer_paths = []
             # holdings table is created from production scenarios only, so all scenarios in here should be included
             # iterate over model so that we can subset by the correct variant to be mirrored:
-            for model in prod_models:
+            for model in prod_variant_lu:
                 # subset to the variant we will be mirroring
-                variant = luts.prod_variant_lu[model]
+                variant = prod_variant_lu[model]
                 query_str = f"model == '{model}' & variant == '{variant}' & frequency == '{freq}' & variable == '{var_id}'"
                 pre_manifest.append(holdings.query(query_str))
 

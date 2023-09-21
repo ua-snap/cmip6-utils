@@ -4,7 +4,6 @@ Example usage: `python transfer.py -v tas`
 """
 
 import argparse
-import time
 import sys
 from pathlib import Path
 from subprocess import check_output

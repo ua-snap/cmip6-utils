@@ -26,7 +26,6 @@ For the ACDN, the `<root>` folder is `/CMIP6/`, which is found under the `/beegf
 Here is a description of the pipeline.
 
 * `config.py`: sets some constant variables such as the main list of models, scenarios, variables, and frequencies to mirror for our production data.
-* `luts.py`: like `config.py`, but for lookups / dicts
 * `esgf_holdings.py`: script to run an audit which will generate a table of CMIP6 holdings on a given ESGF node using models, scenarios, variables, and frquencies provided in `config.py`
 * `llnl_esgf_holdings.csv`: table of data audit results for LLNL ESGF node produced by `esgf_holdings.py`
 * `generate_batch_files.py`: script to generate the batch files of \<source> \<destination> filepaths for transferring files

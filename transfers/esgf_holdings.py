@@ -10,10 +10,10 @@ import argparse
 import sys
 from itertools import product
 from multiprocessing import Pool
+import globus_sdk
 import numpy as np
 import pandas as pd
 from config import *
-import luts
 import utils
 
 
@@ -30,12 +30,10 @@ def arguments(argv):
     return esgf_node, ncpus
 
 
-def list_variants(tc, esgf_node, activity, model, scenario):
+def list_variants(tc, node_ep, node_prefix, activity, model, scenario):
     """List the different variants available on a particular ESGF node for the given activity, model, and scenario"""
-    node_ep = luts.globus_esgf_endpoints[esgf_node]["ep"]
-    node_prefix = Path(luts.globus_esgf_endpoints[esgf_node]["prefix"])
     scenario_path = node_prefix.joinpath(
-        activity, luts.model_inst_lu[model], model, scenario
+        activity, model_inst_lu[model], model, scenario
     )
 
     variants = utils.operation_ls(tc, node_ep, scenario_path)
@@ -46,7 +44,7 @@ def list_variants(tc, esgf_node, activity, model, scenario):
         return {"model": model, "scenario": scenario, "variants": variants}
 
 
-def make_model_variants_lut(tc, esgf_node, models, scenarios, ncpus):
+def make_model_variants_lut(tc, node_ep, node_prefix, models, scenarios, ncpus):
     """Create a lookup table of all variants available for each model/ scenario combination. Uses an existing TransferClient object.
 
     Returns a pandas DataFrame with a list of variants available for each model/scenario
@@ -56,7 +54,7 @@ def make_model_variants_lut(tc, esgf_node, models, scenarios, ncpus):
         product(["ScenarioMIP"], models, scenarios)
     )
     # include the TransferClient object for each query
-    args = [[tc, esgf_node] + list(a) for a in args]
+    args = [[tc, node_ep, node_prefix] + list(a) for a in args]
 
     with Pool(ncpus) as pool:
         rows = pool.starmap(list_variants, args)
@@ -67,18 +65,15 @@ def make_model_variants_lut(tc, esgf_node, models, scenarios, ncpus):
 
 
 def get_filenames(
-    tc, esgf_node, activity, model, scenario, variant, frequency, varname
+    tc, node_ep, node_prefix, activity, model, scenario, variant, frequency, varname
 ):
     """Get the file names for a some combination of model, scenario, and variable."""
-    node_ep = luts.globus_esgf_endpoints[esgf_node]["ep"]
-    node_prefix = Path(luts.globus_esgf_endpoints[esgf_node]["prefix"])
-
     # the subdirectory under the variable name is the grid type.
     #  This is almost always "gn", meaning the model's native grid, but it could be different.
     #  So we have to check it instead of assuming. I have only seen one model where this is different (gr1, GFDL-ESM4)
     var_path = node_prefix.joinpath(
         activity,
-        luts.model_inst_lu[model],
+        model_inst_lu[model],
         model,
         scenario,
         variant,
@@ -131,19 +126,20 @@ def get_filenames(
     return row_di
 
 
-def make_holdings_table(tc, esgf_node, variant_lut, ncpus):
+def make_holdings_table(tc, node_ep, node_prefix, variant_lut, ncpus):
     """Create a table of filename availability for all models, scenarios, variants, and variable names"""
     # generate lists of arguments from all combinations of variables, models, and scenarios
     args = []
     for i, row in variant_lut.iterrows():
         activity = "CMIP" if row["scenario"] == "historical" else "ScenarioMIP"
-        for var_id in luts.variables:
-            for freq in luts.variables[var_id]["freqs"]:
+        for var_id in variables:
+            for freq in variables[var_id]["freqs"]:
                 args.extend(
                     # make these into lists so we can iterate over variables/freqs and add
                     product(
                         [tc],
-                        [esgf_node],
+                        [node_ep],
+                        [node_prefix],
                         [activity],
                         [row["model"]],
                         [row["scenario"]],
@@ -174,15 +170,18 @@ if __name__ == "__main__":
     utils.check_for_consent_required(tc, auth_client, acdn_ep)
 
     # I think this activation has to be done?
-    node_ep = luts.globus_esgf_endpoints[esgf_node]["ep"]
+    node_ep = globus_esgf_endpoints[esgf_node]["ep"]
     tc.endpoint_autoactivate(node_ep)
+    node_prefix = Path(globus_esgf_endpoints[esgf_node]["prefix"])
 
     # specify the models we are interested in
-    # currently this is just everything in the luts.model_inst_lu table
-    models = list(luts.model_inst_lu.keys())
+    # currently this is just everything in the config.model_inst_lu table
+    models = list(model_inst_lu.keys())
 
     # get a dataframe of variants available for each model and scenario
-    variant_lut = make_model_variants_lut(tc, esgf_node, models, prod_scenarios, ncpus)
+    variant_lut = make_model_variants_lut(
+        tc, node_ep, node_prefix, models, prod_scenarios, ncpus
+    )
 
     # Check that we won't get a particular error which pops up when the user has not logged into the ESGF node via Globus
     try:
@@ -193,6 +192,6 @@ if __name__ == "__main__":
         )
 
     # amke the holdings table
-    holdings_df = make_holdings_table(tc, esgf_node, variant_lut, ncpus)
+    holdings_df = make_holdings_table(tc, node_ep, node_prefix, variant_lut, ncpus)
 
     holdings_df.to_csv(f"{esgf_node}_esgf_holdings.csv", index=False)
