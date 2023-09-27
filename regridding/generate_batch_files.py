@@ -17,13 +17,13 @@ import warnings
 warnings.filterwarnings("ignore", category=xr.SerializationWarning)
 
 
-GRID_VARS = ["lat", "lon", "lat_bnds", "lon_bnds"]
+GRID_VARS = ["lat", "lon"]
 max_time = np.datetime64("2101-01-01T12:00:00.0000")
 
 
 def fp_to_attrs(fp):
     """pull the data attributes from a filepath"""
-    varname = fp.parent.parent.parent.name
+    var_id = fp.parent.parent.parent.name
     frequency = fp.parent.parent.parent.parent.name
     scenario = fp.parent.parent.parent.parent.parent.parent.name
     model = fp.parent.parent.parent.parent.parent.parent.parent.name
@@ -33,7 +33,7 @@ def fp_to_attrs(fp):
         "model": model,
         "scenario": scenario,
         "frequency": frequency,
-        "varname": varname,
+        "var_id": var_id,
         "timeframe": timeframe,
     }
 
@@ -44,17 +44,17 @@ def get_grid(fp):
     """Read the info from a grid for a single file"""
     grid_di = {}
     with xr.open_dataset(fp) as ds:
-        for varname in GRID_VARS:
-            if (varname in ds.dims) or (varname in ds.data_vars):
-                grid_di[f"{varname}_min"] = ds[varname].values.min()
-                grid_di[f"{varname}_max"] = ds[varname].values.max()
-                grid_di[f"{varname}_size"] = ds[varname].values.shape[0]
-                grid_di[f"{varname}_step"] = np.diff(ds[varname].values)[0]
+        for var_id in GRID_VARS:
+            if var_id in ds.dims:
+                grid_di[f"{var_id}_min"] = ds[var_id].values.min()
+                grid_di[f"{var_id}_max"] = ds[var_id].values.max()
+                grid_di[f"{var_id}_size"] = ds[var_id].values.shape[0]
+                grid_di[f"{var_id}_step"] = np.diff(ds[var_id].values)[0]
             else:
-                grid_di[f"{varname}_min"] = None
-                grid_di[f"{varname}_max"] = None
-                grid_di[f"{varname}_size"] = None
-                grid_di[f"{varname}_step"] = None
+                grid_di[f"{var_id}_min"] = None
+                grid_di[f"{var_id}_max"] = None
+                grid_di[f"{var_id}_size"] = None
+                grid_di[f"{var_id}_step"] = None
 
     # create a new column that is a concatenation of all of these values
     grid_di["grid"] = "_".join([str(grid_di[key]) for key in grid_di.keys()])
@@ -76,7 +76,7 @@ def get_grid(fp):
 def read_grids(fps):
     """Read the grid info from all files in fps, using multiprocessing and with a progress bar"""
     grids = []
-    with Pool(24) as pool:
+    with Pool(8) as pool:
         for grid_di in tqdm.tqdm(pool.imap_unordered(get_grid, fps), total=len(fps)):
             grids.append(grid_di)
 
@@ -150,6 +150,13 @@ if __name__ == "__main__":
         results.append(read_grids(fps))
 
     results_df = pd.concat([pd.DataFrame(rows) for rows in results])
+    results_df.to_csv("test.csv")
+
+    # here we will exclude some files.
+    # we are only going to worry about regridding those which have a latitude variable for now.
+    results_df = results_df.query("~lat_min.isnull()")
+    # we are also going to exclude files which cannot form a panarctic result (very few so far).
+    results_df = results_df.query("lat_max > 50")
 
     # the grid of the file chosen as the target template grid
     cesm2_grid = results_df.query(f"fp == @target_grid_fp").grid.values[0]
