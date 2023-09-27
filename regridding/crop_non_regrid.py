@@ -4,7 +4,6 @@ import tqdm
 import numpy as np
 import pandas as pd
 import xarray as xr
-import luts
 from config import *
 from regrid import (
     generate_regrid_filepath,
@@ -32,7 +31,7 @@ def parse_args():
 def generate_cmip6_filepath_from_regrid_filename(fn):
     """Get the path to the original CMIP6 filename from a regridded file name."""
     var_id, freq, model, scenario, _, timespan = fn.split(".nc")[0].split("_")
-    institution = luts.model_inst_lu[model]
+    institution = model_inst_lu[model]
     experiment_id = "ScenarioMIP" if scenario in prod_scenarios else "CMIP"
     # Construct the original CMIP6 filepath from the filename.
     # Need to use glob because of the "grid type" filename attribute that we do not have a lookup for.

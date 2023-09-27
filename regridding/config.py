@@ -77,3 +77,4 @@ transfers_config = imp.load_source(
 )
 
 prod_scenarios = transfers_config.prod_scenarios
+variables = transfers_config.variables
