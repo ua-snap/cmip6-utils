@@ -3,17 +3,21 @@
 #SBATCH --ntasks=32
 #SBATCH --ntasks-per-node=32
 #SBATCH --mail-type=FAIL
-#SBATCH --mail-user=username@alaska.edu
-#SBATCH --output=/path/to/regridding_tests_slurm_%j.out
+#SBATCH --mail-user=$SLURM_EMAIL
+#SBATCH --output=regridding_tests_slurm_%j.out
 #SBATCH -p t1small
 
 echo Start slurm && date
 
-source /path/to/conda.sh
+source $CONDA_INIT
 conda activate cmip6-utils
 
-export SCRATCH_DIR=/path/to/cmip6_regridding
-export EXAMPLE_REGRID_FILE=/path/to/example_regrid_file.nc
+# write script in case of new variables included in regridding
+python write_get_min_max_all_variables_script.py
+source ./get_min_max.sh
+
+echo Running regridding tests
+export EXAMPLE_REGRID_FILE=/beegfs/CMIP6/arctic-cmip6/CMIP6/ScenarioMIP/NCAR/CESM2/ssp370/r11i1p1f1/Amon/tas/gn/v20200528/tas_Amon_CESM2_ssp370_r11i1p1f1_gn_206501-210012.nc
 
 python -m pytest -v tests/test_regridding.py
 

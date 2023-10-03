@@ -12,12 +12,15 @@ cd regridding
 python -m pytest tests/test_regridding.py
 """
 
+import json
+import pytest
 import numpy as np
 import os
 import xarray as xr
-from regrid import rename_file
 from multiprocessing import Pool
 from pathlib import Path
+from regrid import rename_file
+
 
 min_max_buffer_percent = 0.001
 
@@ -95,24 +98,27 @@ def validate_dimensions(args):
     assert True
 
 
-def validate_min_max_nan(args):
-    fp, variable = args
+def generate_min_max_range(min_max_fp):
+    """Generate the minimum and maximum ranges from the files in min_max_dir"""
+    min_max_range = {}
+    var_id = min_max_fp.name.split(".json")[0]
 
-    # Ranges were taken from source CMIP6 data using the get_min_max.py script.
-    min_max_ranges = {
-        "evspsbl": [-2.679381e-05, 0.00019423357],
-        "hus": [-0.011698332, 0.026849562],
-        "huss": [-0.00022705719, 0.029937433],
-        "pr": [-1.2892809e-20, 0.008893973],
-        "prsn": [-1.1401009e-22, 0.004692739],
-        "psl": [90716.89, 108336.56],
-        "rlds": [-104.074745, 542.4809],
-        "rsds": [-0.00390625, 463.78638],
-        "ta": [0.0, 323.19162],
-        "tas": [190.24911, 326.23245],
-        "ua": [-133.71509, 146.29332],
-        "va": [-135.3523, 137.70459],
-    }
+    with open(min_max_fp, "r") as infile:
+        min_max_vals = json.load(infile)
+
+    min_vals = []
+    max_vals = []
+    for k, v in min_max_vals.items():
+        min_vals.append(float(v["min"]))
+        max_vals.append(float(v["max"]))
+
+    min_max_range[var_id] = [min(min_vals), max(max_vals)]
+
+    return min_max_range
+
+
+def validate_min_max_nan(args):
+    fp, variable, min_max_range = args
 
     nan_thresholds = {}
     for varname in varnames:
@@ -123,8 +129,8 @@ def validate_min_max_nan(args):
         else:
             nan_thresholds[varname] = 0.1
 
-    min = min_max_ranges[variable][0]
-    max = min_max_ranges[variable][1]
+    min = min_max_range[variable][0]
+    max = min_max_range[variable][1]
 
     try:
         regrid_ds = xr.open_dataset(fp)
@@ -151,9 +157,11 @@ def validate_min_max_nan(args):
 
 def validate_variable(variable):
     regrid_fps = list(regrid_dir.glob(f"*/*/*/*/{variable}_*.nc"))
-    args = [(fp, variable) for fp in regrid_fps]
+    # derive this dynamically from files in tmp/
+    min_max_range = generate_min_max_range(Path("tmp").joinpath(f"{variable}.json"))
+    args = [(fp, variable, min_max_range) for fp in regrid_fps]
     results = []
-    with Pool(5) as pool:
+    with Pool(24) as pool:
         list(pool.imap_unordered(validate_min_max_nan, args))
 
 
@@ -175,51 +183,56 @@ def test_dimensions():
     dst_ds = xr.open_dataset(test_grid_fp)
     target_lat_arr = dst_ds["lat"].values
     target_lon_arr = dst_ds["lon"].values
-    regrid_fps = list(regrid_dir.glob("*/*/*/*/*.nc"))
+    regrid_fps = list(regrid_dir.glob("**/*.nc"))
     args = [(fp, target_lat_arr, target_lon_arr) for fp in regrid_fps]
     with Pool(5) as pool:
         list(pool.imap_unordered(validate_dimensions, args))
 
 
-def test_evspsbl():
-    validate_variable("evspsbl")
+@pytest.mark.parametrize("variable", regrid_variables)
+def test_variable(var_id):
+    validate_variable(var_id)
 
 
-def test_hus():
-    validate_variable("hus")
+# def test_evspsbl():
+#     validate_variable("evspsbl")
 
 
-def test_huss():
-    validate_variable("huss")
+# def test_hus():
+#     validate_variable("hus")
 
 
-def test_pr():
-    validate_variable("pr")
+# def test_huss():
+#     validate_variable("huss")
 
 
-def test_prsn():
-    validate_variable("prsn")
+# def test_pr():
+#     validate_variable("pr")
 
 
-def test_psl():
-    validate_variable("psl")
+# def test_prsn():
+#     validate_variable("prsn")
 
 
-def test_rlds():
-    validate_variable("rlds")
+# def test_psl():
+#     validate_variable("psl")
 
 
-def test_rsds():
-    validate_variable("rsds")
+# def test_rlds():
+#     validate_variable("rlds")
 
 
-def test_tas():
-    validate_variable("tas")
+# def test_rsds():
+#     validate_variable("rsds")
 
 
-def test_ua():
-    validate_variable("ua")
+# def test_tas():
+#     validate_variable("tas")
 
 
-def test_va():
-    validate_variable("va")
+# def test_ua():
+#     validate_variable("ua")
+
+
+# def test_va():
+#     validate_variable("va")
