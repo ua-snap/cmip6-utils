@@ -4,9 +4,9 @@ import numpy as np
 from multiprocessing import Pool, set_start_method
 import xarray as xr
 from pathlib import Path
-import tqdm
 import os
 import json
+from config import regrid_batch_dir
 
 
 # Check if files is openable using xarray.
@@ -65,11 +65,9 @@ def main(args):
         print(
             f"Processing chunk {arg_chunks.index(arg_chunk) + 1} of {len(arg_chunks)}."
         )
-        with Pool(5) as p:
+        with Pool(24) as p:
             results = list(
-                tqdm.tqdm(
-                    p.imap_unordered(file_min_max, arg_chunk), total=len(arg_chunk)
-                )
+                p.imap_unordered(file_min_max, arg_chunk),
             )
 
         for result in results:
