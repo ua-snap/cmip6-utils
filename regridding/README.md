@@ -67,7 +67,9 @@ Next, use the `regrid_cmip6.ipynb` to orchestrate the slurm jobs which will regr
 
 ### 4. Quality control on the regridded data
 
-Use the `qc.ipynb` notebook to verify that the regridded files appear correct and consistent. There is also a section in this notebook for symlinking the non-regridded files such that they are part of the regridded dataset.
+1. Use the `qc.ipynb` notebook to verify that the regridded files appear correct and consistent.
+2. Run the regridding test suite by executing `sbatch tests.slurm`. This will first look through all files slated for regridding in the batch files and gather minimums and maximums which are written to files in a `tmp/` folder. Then, it will test all regridded files by variable and ensure that the regridded data falls within a tolerance of those minimums and maximums. 
+
 
 ### 5. Copy the regridded data off scratch space
 
