@@ -18,6 +18,7 @@ source ./get_min_max.sh
 
 echo Running regridding tests
 export EXAMPLE_REGRID_FILE=/beegfs/CMIP6/arctic-cmip6/CMIP6/ScenarioMIP/NCAR/CESM2/ssp370/r11i1p1f1/Amon/tas/gn/v20200528/tas_Amon_CESM2_ssp370_r11i1p1f1_gn_206501-210012.nc
+export PYTHONWARNINGS="ignore"
 
 python -m pytest -v tests/test_regridding.py
 
