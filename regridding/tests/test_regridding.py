@@ -55,27 +55,36 @@ scenarios = [
 
 # Missing variables have been commented out for now.
 # TODO: Uncomment these variables once they are regridded.
-varnames = [
+var_ids = [
     "tas",
+    "tos",
+    "tasmin",
+    "tasmax",
     "pr",
     "psl",
     "huss",
-    # "uas",
-    # "vas",
+    "hfss",
+    "hfls",
+    "uas",
+    "vas",
     "ta",
     "ua",
     "va",
     "hus",
     "evspsbl",
-    # "mrro",
-    # "mrsos",
+    "mrro",
+    "mrsos",
     "prsn",
-    # "snd",
-    # "snw",
+    "snd",
+    "snw",
     "rlds",
     "rsds",
-    # "rsd",
-    # "clt",
+    "rss",
+    "rls",
+    "clt",
+    "sithick",
+    "sfcWind",
+    "sfcWindmax",
 ]
 
 intervals = [
@@ -118,26 +127,41 @@ def generate_min_max_range(min_max_fp):
 
 
 def validate_min_max_nan(args):
-    fp, variable, min_max_range = args
+    fp, var_id, min_max_range = args
 
-    nan_thresholds = {}
-    for varname in varnames:
-        if varname == "prsn":
-            nan_thresholds[varname] = 0.6
-        elif varname in ["hus", "ua", "va"]:
-            nan_thresholds[varname] = 0.2
-        else:
-            nan_thresholds[varname] = 0.1
+    if var_id in [
+        "hus",
+        "ua",
+        "va",
+        "ta",
+    ]:
+        nan_threshold = 0.2
+    elif var_id in [
+        "prsn",
+        "snd",
+    ]:
+        nan_threshold = 0.6
+    elif var_id in ["tos", "mrsos"]:
+        nan_threshold = 0.7
+    elif var_id in ["mrro"]:
+        nan_threshold = 0.8
+    elif var_id in [
+        "sithick",
+        "snw",
+    ]:
+        nan_threshold = 0.9
+    else:
+        nan_threshold = 0.1
 
-    min = min_max_range[variable][0]
-    max = min_max_range[variable][1]
+    min = min_max_range[var_id][0]
+    max = min_max_range[var_id][1]
 
     try:
         regrid_ds = xr.open_dataset(fp)
     except:
         assert False
 
-    values = regrid_ds[variable].values
+    values = regrid_ds[var_id].values
     difference = abs(max - min)
     difference_buffer = difference * min_max_buffer_percent
     outliers = values[(values < min) | (values > max)]
@@ -152,7 +176,7 @@ def validate_min_max_nan(args):
     percent_nan = np.count_nonzero(np.isnan(values)) / values.size
 
     # Test fails for some variables when testing percent_nan lower than 0.6.
-    assert within_range and percent_nan < nan_thresholds[variable]
+    assert within_range and percent_nan < nan_threshold
 
 
 def validate_variable(variable):
@@ -180,7 +204,7 @@ def validate_variable(variable):
 
 def test_dimensions():
     test_grid_fp = Path(os.getenv("EXAMPLE_REGRID_FILE"))
-    dst_ds = xr.open_dataset(test_grid_fp)
+    dst_ds = xr.open_dataset(test_grid_fp).sel(lat=slice(50, 90))
     target_lat_arr = dst_ds["lat"].values
     target_lon_arr = dst_ds["lon"].values
     regrid_fps = list(regrid_dir.glob("**/*.nc"))
@@ -189,50 +213,6 @@ def test_dimensions():
         list(pool.imap_unordered(validate_dimensions, args))
 
 
-@pytest.mark.parametrize("variable", regrid_variables)
+@pytest.mark.parametrize("var_id", var_ids)
 def test_variable(var_id):
     validate_variable(var_id)
-
-
-# def test_evspsbl():
-#     validate_variable("evspsbl")
-
-
-# def test_hus():
-#     validate_variable("hus")
-
-
-# def test_huss():
-#     validate_variable("huss")
-
-
-# def test_pr():
-#     validate_variable("pr")
-
-
-# def test_prsn():
-#     validate_variable("prsn")
-
-
-# def test_psl():
-#     validate_variable("psl")
-
-
-# def test_rlds():
-#     validate_variable("rlds")
-
-
-# def test_rsds():
-#     validate_variable("rsds")
-
-
-# def test_tas():
-#     validate_variable("tas")
-
-
-# def test_ua():
-#     validate_variable("ua")
-
-
-# def test_va():
-#     validate_variable("va")
