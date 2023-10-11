@@ -170,8 +170,8 @@ def generate_random_date_indices(year):
     return ridx_list
 
 
-def dayfreq_360day_to_gregorian(out_ds):
-    """convert a 360 day calendar time axis on a daily dataset to gregorian numpy.datetime64 by selecting random dates (from different chunks of the year, following the method in https://doi.org/10.31223/X5M081) to insert a new slice as the mean between two adjacent time slices"""
+def dayfreq_360day_to_noleap(out_ds):
+    """convert a 360 day calendar time axis on a daily dataset to noleap numpy.datetime64 by selecting random dates (from different chunks of the year, following the method in https://doi.org/10.31223/X5M081) to insert a new slice as the mean between two adjacent time slices"""
     ts = out_ds.time.values
     var_id = out_ds.attrs["variable_id"]
     start_year = ts[0].year
@@ -209,82 +209,46 @@ def dayfreq_360day_to_gregorian(out_ds):
             )
         )
 
-        year_greg_da = xr.concat(sub_das, dim="time")
+        year_noleap_da = xr.concat(sub_das, dim="time")
+        # ensuring hour used is consistent here (1200)
+        dates = pd.date_range(f"{year}-01-01T12:00:00", f"{year}-12-31T12:00:00")
+        # drop any possible leap day created by date_range
+        noleap_dates = dates[~((dates.month == 2) & (dates.day == 29))].to_numpy()
+        year_noleap_da = year_noleap_da.assign_coords(time=noleap_dates)
+        year_da_list.append(year_noleap_da)
 
-        if calendar.isleap(year):
-            # note, slice is upper-bound exclusive with .isel, but is inclusive with .sel
-            leap_slice = (
-                year_greg_da.sel(time=slice(58, 59))
-                .mean(dim="time")
-                .expand_dims(time=1)
-                .assign_coords(time=[59])
-            )
-            pre_leap_da = year_greg_da.sel(time=slice(0, 58))
-            post_leap_da = year_greg_da.sel(time=slice(59, 364)).assign_coords(
-                time=np.arange(60, 366)
-            )
-            year_greg_da = xr.concat(
-                [pre_leap_da, leap_slice, post_leap_da], dim="time"
-            )
-
-        year_greg_da = year_greg_da.assign_coords(
-            # ensuring hour used is consistent here as well (1200)
-            time=pd.date_range(
-                f"{year}-01-01 12:00:00", f"{year}-12-31 12:00:00"
-            ).to_numpy()
-        )
-        year_da_list.append(year_greg_da)
-
-    new_greg_da = xr.concat(year_da_list, dim="time")
-    new_out_ds = new_greg_da.to_dataset()
+    new_noleap_da = xr.concat(year_da_list, dim="time")
+    new_out_ds = new_noleap_da.to_dataset()
     new_out_ds.attrs = out_ds.attrs
     new_out_ds.time.encoding = out_ds.time.encoding
-    new_out_ds.time.encoding["calendar"] = "gregorian"
+    new_out_ds.time.encoding["calendar"] = "noleap"
     new_out_ds.time.attrs = out_ds.time.attrs
 
     return new_out_ds
 
 
-def dayfreq_noleap_to_gregorian(out_ds):
-    ts = out_ds.time.values
-    var_id = out_ds.attrs["variable_id"]
-    start_year = ts[0].year
-    end_year = ts[-1].year
+def dayfreq_gregorian_to_noleap(out_ds):
+    """Convert gregorian calendar time axis to noleap"""
+    new_out_ds = out_ds.sel(
+        time=~((out_ds.time.dt.day == 29) & (out_ds.time.dt.month == 2))
+    )
+    new_out_ds.time.encoding["calendar"] = "noleap"
+    # Run this function just to ensure consistent hour values
+    new_out_ds = fix_hour_in_time_dim(new_out_ds)
 
-    # we will split, compute means, and combine on the random dates selected
-    # iterate over years, compute the dates to do this for
-    year_da_list = []
-    for year in range(start_year, end_year + 1):
-        year_da = out_ds[var_id].sel(time=slice(f"{year}-01-01", f"{year}-12-31"))
-        # here we exclude years which are not complete. Such years are simply ommitted
-        if year_da.time.shape[0] != 365:
-            continue
-        if calendar.isleap(year):
-            # note, slice is upper-bound exclusive with .isel, but is inclusive with .sel
-            leap_slice = (
-                year_da.sel(time=slice(f"{year}-02-28", f"{year}-03-01"))
-                .mean(dim="time")
-                .expand_dims(time=1)
-                .assign_coords(time=[f"{year}-02-29"])
-            )
-            pre_leap_da = year_da.sel(time=slice(f"{year}-01-01", f"{year}-02-28"))
-            post_leap_da = year_da.sel(time=slice(f"{year}-03-01", f"{year}-12-31"))
-            year_da = xr.concat([pre_leap_da, leap_slice, post_leap_da], dim="time")
+    return new_out_ds
 
-        year_da = year_da.assign_coords(
-            # ensuring hour used is consistent here as well (1200)
-            time=pd.date_range(
-                f"{year}-01-01 12:00:00", f"{year}-12-31 12:00:00"
-            ).to_numpy()
+
+def convert_cftime_to_datetime(out_ds):
+    """This is just used for noleap CFtime calendars to ensure consistency among regridded datasets"""
+    new_datetimes = [
+        # also ensures correct hour is used
+        pd.to_datetime(f"{year}-{month}-{day}T12:00:00")
+        for year, month, day in zip(
+            out_ds.time.dt.year, out_ds.time.dt.month, out_ds.time.dt.day
         )
-        year_da_list.append(year_da)
-
-    new_greg_da = xr.concat(year_da_list, dim="time")
-    new_out_ds = new_greg_da.to_dataset()
-    new_out_ds.attrs = out_ds.attrs
-    new_out_ds.time.encoding = out_ds.time.encoding
-    new_out_ds.time.encoding["calendar"] = "gregorian"
-    new_out_ds.time.attrs = out_ds.time.attrs
+    ]
+    new_out_ds = out_ds.assign_coords(time=new_datetimes)
 
     return new_out_ds
 
@@ -309,10 +273,9 @@ def generate_single_year_filename(original_fp, year_ds):
 
 
 def Amonfreq_fix_time(out_ds, src_ds):
-    """Fix the time dimension of a regridded monthly dataset. This includes either converting the calendar of a cftime dataset to gregorian, or simply ensuring that the day of month used is 15 and not 14 or 16."""
+    """Fix the time dimension of a regridded monthly dataset to ensure that the day of month used is 15 and not 14 or 16."""
     if type(out_ds.time.values[0]) in [
         cftime._cftime.Datetime360Day,
-        cftime._cftime.DatetimeNoLeap,
     ]:
         new_times = pd.to_datetime(
             [f"{t.year}-{t.month}-15T12:00:00" for t in out_ds.time.values]
@@ -330,7 +293,7 @@ def Amonfreq_fix_time(out_ds, src_ds):
 
     out_ds = out_ds.assign_coords(time=new_times)
     out_ds.time.encoding = src_ds.time.encoding
-    out_ds.time.encoding["calendar"] = "gregorian"
+    out_ds.time.encoding["calendar"] = "noleap"
     out_ds.time.attrs = src_ds.time.attrs
 
     return out_ds
@@ -373,12 +336,14 @@ def fix_time_and_write(out_ds, src_ds, out_fp):
             s for s in variables[out_ds.attrs["variable_id"]]["freqs"] if "day" in s
         ][0]
         if isinstance(out_ds.time.values[0], cftime._cftime.Datetime360Day):
-            out_ds = dayfreq_360day_to_gregorian(out_ds)
-        elif isinstance(out_ds.time.values[0], cftime._cftime.DatetimeNoLeap):
-            out_ds = dayfreq_noleap_to_gregorian(out_ds)
+            out_ds = dayfreq_360day_to_noleap(out_ds)
+        # elif isinstance(out_ds.time.values[0], cftime._cftime.DatetimeNoLeap):
+        #     out_ds = dayfreq_360day_to_noleap(out_ds)
         elif isinstance(out_ds.time.values[0], np.datetime64):
+            out_ds = dayfreq_gregorian_to_noleap(out_ds)
+        elif isinstance(out_ds.time.values[0], cftime._cftime.DatetimeNoLeap):
             # most datasets are not offenders (potentially none at this point), but just ensure that they all have the same hour (1200)
-            out_ds = fix_hour_in_time_dim(out_ds)
+            out_ds = convert_cftime_to_datetime(out_ds)
 
     elif check_is_monfreq(out_ds):
         # make sure we assign correct monthly frequency type
