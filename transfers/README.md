@@ -2,14 +2,14 @@
 
 This folder is the "pipeline" for transferring raw CMIP6 model output data to SNAP/UAF infrastructure.
 
-We have woreked with collaborators to identify a potential dataset that we will call the "requested data" that we want to mirror on the Arctic Climate Data Node, which are all outputs contributed under the ScenarioMIP and CMIP activities that satisfy all possible combinations of a particular set of models, scenarios, variables, and sampling frequencies (i.e. time scales) identified by our collaborators as most useful for accessing. This will be for a recent historical to end-of-century time period (approximately 1950-2100), with the historical data coming from the CMIP activity and the projected data coming from the ScenarioMIP activity. We are currently only concerned with accessing a single variant for each model, and so it will be desirable choose one such that it provides the maximal coverage amongst the aformentioned attributes we are basing the selection on. The target data, i.e. the files that are actually available, will be a subset of the requested data, as there are gaps in representation at each level. The requested data attributes are subject to change as we continue to communicate with collaborators about what is available and what is important.
+We have worked with collaborators to identify a potential dataset that we will call the "requested data" that we want to mirror on the Arctic Climate Data Node, which are all outputs contributed under the ScenarioMIP and CMIP activities that satisfy all possible combinations of a particular set of models, scenarios, variables, and sampling frequencies (i.e. time scales) identified by our collaborators as most useful for accessing. This will be for a historical to end-of-century time period, with the historical data coming from the CMIP activity and the projected data coming from the ScenarioMIP activity. We are currently only concerned with accessing a single variant for each model, so a portion of this pipeline will be dedicated to determining the variant that provides the maximal coverage amongst the aformentioned attributes we are basing the selection on. The target data, i.e. the files that are actually available, will be a subset of the requested data, as there are gaps in representation at each level (i.e. missing model x scenario x variable x frequency combinations). The requested data attributes are subject to change as we continue to communicate with collaborators about what is available and what is important.
 
 ## Strategy
 
-This is kind of a tricky thing - one does not simply get all of the target data from the holdings by saying "I want these models, scenarios, and variables". The goals of this pipeline are thus:
-1. Identify the target data by comparing our requested data with the current holdings
+This is kind of a tricky thing - one does not simply get all of the target data from the holdings by saying "I want these models, scenarios, variables, and frequencies". The goals of this pipeline are thus:
+1. Identify the target data by comparing our requested data with the current holdings in ESGF using an audit
 2. Mirror that target data
-3. Provide some tools for auditing data on the ACDN to ensure we are successfully mirroring the target data, as well as other useful tasks, such as summarizing the data we have mirrored.
+3. Provide some tools for testing that we are successfully identifying and mirroring the target data, as well as other useful tasks, such as summarizing the data we have mirrored.
 
 The ultimate goal of this pipeline is to mirror all target data using the native ESGF directory structure:
 
@@ -25,12 +25,11 @@ For the ACDN, the `<root>` folder is `/CMIP6/`, which is found under the `/beegf
 
 Here is a description of the pipeline.
 
-* `config.py`: sets some constant variables such as the main list of models, scenarios, and variables to mirror for our production mirror.
-* `luts.py`: like `config.py`, but for lookups / dicts
-* `esgf_holdings.py`: script to generate a reference table of CMIP6 holdings on a given ESGF node
+* `config.py`: sets some constant variables such as the main list of models, scenarios, variables, and frequencies to mirror for our production data.
+* `esgf_holdings.py`: script to run an audit which will generate a table of CMIP6 holdings on a given ESGF node using models, scenarios, variables, and frquencies provided in `config.py`
+* `llnl_esgf_holdings.csv`: table of data audit results for LLNL ESGF node produced by `esgf_holdings.py`
 * `generate_batch_files.py`: script to generate the batch files of \<source> \<destination> filepaths for transferring files
 * `batch_transfer.py`: script to execute the main transfer of all target files to be mirrored via globus
-* `llnl_esgf_holdings.csv`: table of data audit results for LLNL ESGF node.  
 * `batch_files/`: batch files with \<source> \<destination> filepaths for transferring files
 * `tests/`: tests for verifying that the mirror is successful
 
@@ -45,13 +44,36 @@ python esgf_holdings.py --node llnl
 
 At the time of writing this, the relevant holdings at LLNL is summarized in the `llnl_esgf_holdings.csv` which has been committed to version control. 
 
-3. Use the `generate_batch_files.py` for transferring the files from the ESGF endpoint to the ACDN endpoint. Run like so:
+3. Use the `generate_manifest.py` script generate a complete manifest of all files to be mirrored on the ACDN.
+
+```
+python generate_manifest.py --node llnl
+```
+
+4. Use the `generate_batch_files.py` script to generate batch files from the manifest to run the transfer in batches.
 
 ```
 python generate_batch_files.py --node llnl
 ```
 
-4. Use the `transfer.py` script to run the transfer using the batch files. 
+5. Use the `transfer.py` script to run the transfer from the ESGF endpoint to the ACDN endpoint using the batch files. See that script for available command line options.
+
+```
+python transfer.py
+```
+
+Note - there may be multiple rounds of granting globus permissions/consents. For example, sometimes this error will pop up, maybe if it's the first time in a while?
+
+```
+The collection you are trying to access data on requires you to grant consent for the Globus CLI to access it.
+message: Missing required data_access consent
+
+Please run
+
+  globus session consent 'urn:globus:auth:scope:transfer.api.globus.org:all[*https://auth.globus.org/scopes/7235217a-be50-46ba-be31-70bffe2b5bf4/data_access]'
+
+to login with the required scopes
+```
 
 ### Globus setup
 

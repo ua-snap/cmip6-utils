@@ -3,15 +3,16 @@
 import subprocess
 
 
-def make_sbatch_head(slurm_email, partition, conda_init_script, ncpus):
+def make_sbatch_head(slurm_email, partition, conda_init_script, ncpus, exclude_nodes):
     """Make a string of SBATCH commands that can be written into a .slurm script
-    
+
     Args:
         slurm_email (str): email address for slurm failures
         partition (str): name of the partition to use
         conda_init_script (path_like): path to a script that contains commands for initializing the shells on the compute nodes to use conda activate
         ncpus (int): number of cpus to request
-            
+        exclude_nodes (str): comma-separated string of nodes to exclude
+
     Returns:
         sbatch_head (str): string of SBATCH commands ready to be used as parameter in sbatch-writing functions. The following gaps are left for filling with .format:
             - ncpus
@@ -20,6 +21,7 @@ def make_sbatch_head(slurm_email, partition, conda_init_script, ncpus):
     sbatch_head = (
         "#!/bin/sh\n"
         "#SBATCH --nodes=1\n"
+        f"#SBATCH --exclude={exclude_nodes}\n"
         f"#SBATCH --cpus-per-task={ncpus}\n"
         "#SBATCH --mail-type=FAIL\n"
         f"#SBATCH --mail-user={slurm_email}\n"
@@ -46,10 +48,10 @@ def write_sbatch_regrid(
     regrid_batch_fp,
     dst_fp,
     no_clobber,
-    sbatch_head
+    sbatch_head,
 ):
-    """Write an sbatch script for executing the restacking script for a given group and variable, executes for a given list of years 
-    
+    """Write an sbatch script for executing the restacking script for a given group and variable, executes for a given list of years
+
     Args:
         sbatch_fp (path_like): path to .slurm script to write sbatch commands to
         sbatch_out_fp (path_like): path to where sbatch stdout should be written
@@ -59,10 +61,10 @@ def write_sbatch_regrid(
         dst_fp (path_like): path to file being used as template / reference for destination grid
         no_clobber (bool): do not overwrite regridded files if they exist in regrid_dir
         sbatch_head (dict): string for sbatch head script
-        
+
     Returns:
         None, writes the commands to sbatch_fp
-        
+
     Notes:
         since these jobs seem to take on the order of 5 minutes or less, seems better to just run through all years once a node is secured for a job, instead of making a single job for every year / variable combination
     """
@@ -87,10 +89,10 @@ def write_sbatch_regrid(
 
 def submit_sbatch(sbatch_fp):
     """Submit a script to slurm via sbatch
-    
+
     Args:
         sbatch_fp (pathlib.PosixPath): path to .slurm script to submit
-        
+
     Returns:
         job id for submitted job
     """

@@ -2,7 +2,9 @@
 
 import os
 from pathlib import Path
+from dotenv import load_dotenv
 
+load_dotenv()
 
 # path-based required env vars will throw error if None
 # path to root of this repo, for constructing absolute paths to scripts
@@ -66,3 +68,13 @@ inst_models = [
     "NCAR_CESM2-WACCM",
     "MPI-M_MPI-ESM1-2-LR",
 ]
+
+# load production scenarios from transfers.config
+import imp
+
+transfers_config = imp.load_source(
+    "transfers_config", str(PROJECT_DIR.joinpath("transfers", "config.py"))
+)
+
+prod_scenarios = transfers_config.prod_scenarios
+variables = transfers_config.variables

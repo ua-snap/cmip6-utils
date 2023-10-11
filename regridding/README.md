@@ -2,6 +2,8 @@
 
 This directory is used for regridding all of the CMIP6 data mirrored on the ACDN to a common grid. The target grid is the NCAR CESM2 grid, which is also shared by a number of the other chosen models.
 
+This pipeline also crops these datasets to a pan-arctic domain of 50N - 90N.
+
 
 ## Running the regridding pipeline
 
@@ -65,14 +67,22 @@ This could take a bit of time, as all of the grid information is being read in a
 
 Next, use the `regrid_cmip6.ipynb` to orchestrate the slurm jobs which will regrid all CMIP6 files listed in the batch files created in step 2. Follow the text in the notebook for instructions on running this step. 
 
-### 4. Quality control on the regridded data
+### 4. Crop the non-regridded files
+
+For the files which were not regridded, we want to crop them to the same spatial extent as is done for the data in the regridding step. Run the `crop_non_regrid.py` script like so, probably from a screen session on a compute node:
+
+```
+python crop_non_regrid.py
+```
+
+### 5. Quality control on the regridded data
 
 1. Use the `qc.ipynb` notebook to verify that the regridded files appear correct and consistent.
 2. Run the `get_min_max.sh` script to extract the minimum and maximum values from the files to be regridded and write them in a `tmp/` directory. Note - if you have added new variables that are not yet in `get_min_max.sh`, you need to add those variables in the script or run the `write_get_min_max_all_variables_script.py` which will do so automatically.
 3. Run the regridding test suite by executing `sbatch tests.slurm`.  This will test all regridded files by variable and ensure that the regridded data falls within a tolerance of the minimums and maximums.
 
 
-### 5. Copy the regridded data off scratch space
+### 6. Copy the regridded data off scratch space
 
 Now, copy the regridded data off of scratch space to a permanent location. For now, this will be `/beegfs/CMIP6/arctic-cmip6/regrid`. This can be achieved with:
 
