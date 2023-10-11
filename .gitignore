@@ -1,7 +1,10 @@
 .ipynb_checkpoints
 
 __pycache__/
+.vscode/
 
-# local script for setting env vars
+# local folder can be created from tests
+tmp/
+
 .env
 .vscode

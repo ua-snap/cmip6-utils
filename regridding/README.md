@@ -77,7 +77,10 @@ python crop_non_regrid.py
 
 ### 5. Quality control on the regridded data
 
-Use the `qc.ipynb` notebook to verify that the regridded files appear correct and consistent. There is also a section in this notebook for symlinking the non-regridded files such that they are part of the regridded dataset.
+1. Use the `qc.ipynb` notebook to verify that the regridded files appear correct and consistent.
+2. Run the `get_min_max.sh` script to extract the minimum and maximum values from the files to be regridded and write them in a `tmp/` directory. Note - if you have added new variables that are not yet in `get_min_max.sh`, you need to add those variables in the script or run the `write_get_min_max_all_variables_script.py` which will do so automatically.
+3. Run the regridding test suite by executing `sbatch tests.slurm`.  This will test all regridded files by variable and ensure that the regridded data falls within a tolerance of the minimums and maximums.
+
 
 ### 6. Copy the regridded data off scratch space
 
