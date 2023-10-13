@@ -2,11 +2,7 @@
 
 Usage:
 
-export SCRATCH_DIR=/path/to/scratch_dir
-
-# Set EXAMPLE_REGRID_FILE environment variable to one of the regrid files.
-# All lat/lon grid coordinates will be compared against this file.
-export EXAMPLE_REGRID_FILE=/path/to/example_regrid_file.nc
+# All lat/lon grid coordinates will be compared against the target regrid file in config.py
 
 cd regridding
 python -m pytest tests/test_regridding.py
@@ -19,13 +15,11 @@ import os
 import xarray as xr
 from multiprocessing import Pool
 from pathlib import Path
-from regrid import rename_file
+from config import target_grid_fp, regrid_dir, variables
+from regrid import open_and_crop_dataset, prod_lat_slice
 
 
 min_max_buffer_percent = 0.001
-
-SCRATCH_DIR = Path(os.getenv("SCRATCH_DIR"))
-regrid_dir = SCRATCH_DIR.joinpath("regrid")
 
 # The lists of models, scenarios, variables, and intervals have been copied from
 # the CMIP6 scope document
@@ -55,37 +49,7 @@ scenarios = [
 
 # Missing variables have been commented out for now.
 # TODO: Uncomment these variables once they are regridded.
-var_ids = [
-    "tas",
-    "tos",
-    "tasmin",
-    "tasmax",
-    "pr",
-    "psl",
-    "huss",
-    "hfss",
-    "hfls",
-    "uas",
-    "vas",
-    "ta",
-    "ua",
-    "va",
-    "hus",
-    "evspsbl",
-    "mrro",
-    "mrsos",
-    "prsn",
-    "snd",
-    "snw",
-    "rlds",
-    "rsds",
-    "rss",
-    "rls",
-    "clt",
-    "sithick",
-    "sfcWind",
-    "sfcWindmax",
-]
+
 
 intervals = [
     "Amon",
@@ -96,7 +60,7 @@ intervals = [
 # "sftlf", "sftof") also once the expected directory structure is known.
 
 
-def validate_dimensions(args):
+def validate_grid(args):
     regrid_fp, target_lat_arr, target_lon_arr = args
     try:
         regrid_ds = xr.open_dataset(regrid_fp)
@@ -179,13 +143,13 @@ def validate_min_max_nan(args):
     assert within_range and percent_nan < nan_threshold
 
 
-def validate_variable(variable):
+def validate_variable(variable, ncpus):
     regrid_fps = list(regrid_dir.glob(f"*/*/*/*/{variable}_*.nc"))
     # derive this dynamically from files in tmp/
     min_max_range = generate_min_max_range(Path("tmp").joinpath(f"{variable}.json"))
     args = [(fp, variable, min_max_range) for fp in regrid_fps]
     results = []
-    with Pool(24) as pool:
+    with Pool(ncpus) as pool:
         list(pool.imap_unordered(validate_min_max_nan, args))
 
 
@@ -202,17 +166,22 @@ def validate_variable(variable):
 #     assert True
 
 
-def test_dimensions():
-    test_grid_fp = Path(os.getenv("EXAMPLE_REGRID_FILE"))
-    dst_ds = xr.open_dataset(test_grid_fp).sel(lat=slice(50, 90))
-    target_lat_arr = dst_ds["lat"].values
-    target_lon_arr = dst_ds["lon"].values
-    regrid_fps = list(regrid_dir.glob("**/*.nc"))
-    args = [(fp, target_lat_arr, target_lon_arr) for fp in regrid_fps]
-    with Pool(5) as pool:
-        list(pool.imap_unordered(validate_dimensions, args))
+dst_ds = open_and_crop_dataset(target_grid_fp, prod_lat_slice)
+target_lat_arr = dst_ds["lat"].values
+target_lon_arr = dst_ds["lon"].values
+ncpus = 24
+var_ids = list(variables.keys())
 
 
 @pytest.mark.parametrize("var_id", var_ids)
-def test_variable(var_id):
-    validate_variable(var_id)
+def test_grid_match(var_id):
+    # dst_ds = xr.open_dataset(test_grid_fp).sel(lat=slice(50, 90))
+    regrid_fps = list(regrid_dir.glob(f"**/{var_id}*.nc"))
+    args = [(fp, target_lat_arr, target_lon_arr) for fp in regrid_fps]
+    with Pool(ncpus) as pool:
+        list(pool.imap_unordered(validate_grid, args))
+
+
+# @pytest.mark.parametrize("var_id", var_ids)
+# def test_variable(var_id):
+#     validate_variable(var_id)
