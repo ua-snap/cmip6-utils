@@ -239,32 +239,18 @@ def dayfreq_gregorian_to_noleap(out_ds):
     return new_out_ds
 
 
-def convert_cftime_to_datetime(out_ds):
-    """This is just used for noleap CFtime calendars to ensure consistency among regridded datasets"""
-    new_datetimes = [
-        # also ensures correct hour is used
-        pd.to_datetime(f"{year}-{month}-{day}T12:00:00")
-        for year, month, day in zip(
-            out_ds.time.dt.year, out_ds.time.dt.month, out_ds.time.dt.day
-        )
-    ]
-    new_out_ds = out_ds.assign_coords(time=new_datetimes)
-
-    return new_out_ds
-
-
 def generate_single_year_filename(original_fp, year_ds):
     """Generate a filename for a single year's worth of data"""
     # take everything preceding the original daterange component of filename
     nodate_fn_str = "_".join(original_fp.name.split(".nc")[0].split("_")[:-1])
     if "day" in year_ds.attrs["frequency"]:
         year_fn_str = "-".join(
-            [pd.to_datetime(year_ds.time.values[i]).strftime("%Y%m%d") for i in [0, -1]]
+            [year_ds.time.values[i].strftime("%Y%m%d") for i in [0, -1]]
         )
     elif "mon" in year_ds.attrs["frequency"]:
         # drop date for monthly data
         year_fn_str = "-".join(
-            [pd.to_datetime(year_ds.time.values[i]).strftime("%Y%m") for i in [0, -1]]
+            [year_ds.time.values[i].strftime("%Y%m") for i in [0, -1]]
         )
 
     out_fp = original_fp.parent.joinpath(f"{nodate_fn_str}_{year_fn_str}.nc")
@@ -341,9 +327,6 @@ def fix_time_and_write(out_ds, src_ds, out_fp):
         #     out_ds = dayfreq_360day_to_noleap(out_ds)
         elif isinstance(out_ds.time.values[0], np.datetime64):
             out_ds = dayfreq_gregorian_to_noleap(out_ds)
-        elif isinstance(out_ds.time.values[0], cftime._cftime.DatetimeNoLeap):
-            # most datasets are not offenders (potentially none at this point), but just ensure that they all have the same hour (1200)
-            out_ds = convert_cftime_to_datetime(out_ds)
 
     elif check_is_monfreq(out_ds):
         # make sure we assign correct monthly frequency type
