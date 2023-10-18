@@ -3,7 +3,16 @@ import pytest
 import pandas as pd
 from config import regrid_dir, regrid_batch_dir, variables, prod_scenarios, inst_models
 from regrid import generate_regrid_filepath
-from crop_non_regrid import get_source_filepaths_from_batch_files
+
+
+def get_source_filepaths_from_batch_files(regrid_batch_dir):
+    """Get all of source filepaths selected for regridding from the batch files in the regrid_batch_dir"""
+    src_fps = []
+    for fp in regrid_batch_dir.glob("*.txt"):
+        with open(fp) as f:
+            src_fps.extend([Path(line.replace("\n", "")) for line in f.readlines()])
+
+    return src_fps
 
 
 def convert_src_filename_to_regrid_filenames(fn):
