@@ -28,7 +28,6 @@ def crop_dataset(args):
         out_fp (pathlib.Path): path where the cropped dataset was written
     """
     cmip6_fp, out_dir = args
-
     out_fp = generate_regrid_filepath(cmip6_fp, out_dir)
     # make sure the parent dirs exist
     out_fp.parent.mkdir(exist_ok=True, parents=True)
@@ -69,6 +68,6 @@ def run_crop_datasets(fps, out_dir, ncpus):
 if __name__ == "__main__":
     # Load the table of files to crop created from the generate_batch_files.py script
     crop_df = pd.read_csv("files_to_crop.csv")
-    crop_cmip6_fps = crop_df.fp.values
+    crop_cmip6_fps = [Path(fp) for fp in crop_df.fp.values]
 
     out_fps = run_crop_datasets(crop_cmip6_fps, regrid_dir, 24)

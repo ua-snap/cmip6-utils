@@ -243,15 +243,16 @@ def generate_single_year_filename(original_fp, year_ds):
     """Generate a filename for a single year's worth of data"""
     # take everything preceding the original daterange component of filename
     nodate_fn_str = "_".join(original_fp.name.split(".nc")[0].split("_")[:-1])
+    time_bnds = [year_ds.time.values[i] for i in [0, -1]]
+    # want these as datetime object to use strftime
+    if isinstance(time_bnds[0], np.datetime64):
+        time_bnds = [pd.to_datetime(tb) for tb in time_bnds]
+
     if "day" in year_ds.attrs["frequency"]:
-        year_fn_str = "-".join(
-            [year_ds.time.values[i].strftime("%Y%m%d") for i in [0, -1]]
-        )
+        year_fn_str = "-".join([tb.strftime("%Y%m%d") for tb in time_bnds])
     elif "mon" in year_ds.attrs["frequency"]:
         # drop date for monthly data
-        year_fn_str = "-".join(
-            [year_ds.time.values[i].strftime("%Y%m") for i in [0, -1]]
-        )
+        year_fn_str = "-".join([tb.strftime("%Y%m") for tb in time_bnds])
 
     out_fp = original_fp.parent.joinpath(f"{nodate_fn_str}_{year_fn_str}.nc")
 
