@@ -149,10 +149,7 @@ def open_and_crop_dataset(fp, lat_slice):
     """
     # we are cropping the dataset using the .sel method as we do not need to regrid the entire grid,
     #  only the part that will evetually wind up in the dataset.
-    try:
-        src_ds = xr.open_dataset(fp, chunks={"time": 100}).sel(lat=lat_slice)
-    except ValueError:
-        print(fp)
+    src_ds = xr.open_dataset(fp, chunks={"time": 100}).sel(lat=lat_slice)
 
     return src_ds
 
