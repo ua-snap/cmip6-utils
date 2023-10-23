@@ -1,4 +1,5 @@
 from itertools import product
+from pathlib import Path
 import pytest
 import pandas as pd
 from config import regrid_dir, regrid_batch_dir, variables, prod_scenarios, inst_models

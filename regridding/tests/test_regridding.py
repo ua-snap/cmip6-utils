@@ -66,6 +66,7 @@ def validate_grid(args):
         regrid_ds = xr.open_dataset(regrid_fp)
         assert np.all(regrid_ds["lat"].values == target_lat_arr)
         assert np.all(regrid_ds["lon"].values == target_lon_arr)
+        assert regrid_ds["time"].encoding["calendar"] == "noleap"
     except:
         assert False
     assert True
