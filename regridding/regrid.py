@@ -325,6 +325,10 @@ def fix_time_and_write(out_ds, src_ds, out_fp):
         #     out_ds = dayfreq_360day_to_noleap(out_ds)
         elif isinstance(out_ds.time.values[0], np.datetime64):
             out_ds = dayfreq_gregorian_to_noleap(out_ds)
+        else:
+            # some variations of this calendar are called 365_day.
+            #  Just ensure they are all the exact same: "noleap"
+            out_ds.time.encoding["calendar"] = "noleap"
 
     elif check_is_monfreq(out_ds):
         # make sure we assign correct monthly frequency type
