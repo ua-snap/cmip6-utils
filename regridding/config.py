@@ -2,9 +2,6 @@
 
 import os
 from pathlib import Path
-from dotenv import load_dotenv
-
-load_dotenv()
 
 # path-based required env vars will throw error if None
 # path to root of this repo, for constructing absolute paths to scripts
