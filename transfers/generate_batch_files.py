@@ -9,7 +9,6 @@ Sample usage:
 import argparse
 import sys
 import pandas as pd
-import luts
 from config import *
 
 
@@ -35,7 +34,7 @@ def generate_transfer_paths(row, freq):
     """
     activity = "CMIP" if row["scenario"] == "historical" else "ScenarioMIP"
     model = row["model"]
-    institution = luts.model_inst_lu[model]
+    institution = model_inst_lu[model]
     group_path = Path().joinpath(
         activity,
         institution,

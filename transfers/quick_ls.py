@@ -9,10 +9,9 @@ import os
 import sys
 from pathlib import Path
 import utils
-import luts
 import globus_sdk
 from globus_sdk.scopes import TransferScopes
-from config import CLIENT_ID
+from config import CLIENT_ID, globus_esgf_endpoints
 
 
 def arguments(argv):
@@ -38,7 +37,7 @@ if __name__ == "__main__":
     # create an authorization client for Globus
     auth_client = globus_sdk.NativeAppAuthClient(CLIENT_ID)
     tc = utils.login_and_get_transfer_client(auth_client)
-    node_ep = luts.globus_esgf_endpoints[esgf_node]["ep"]
+    node_ep = globus_esgf_endpoints[esgf_node]["ep"]
 
     # I think this activation has to be done?
     tc.endpoint_autoactivate(node_ep)

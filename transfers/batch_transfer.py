@@ -5,7 +5,6 @@ import sys
 import globus_sdk
 from globus_sdk.scopes import TransferScopes
 from config import *
-import luts
 import utils
 
 
@@ -33,7 +32,7 @@ def create_transfer_from_batch_file(task_data, batch_fp):
 
 if __name__ == "__main__":
     ESGF_NODE = arguments(sys.argv)
-    source_ep_id = luts.globus_esgf_endpoints[ESGF_NODE]["ep"]
+    source_ep_id = globus_esgf_endpoints[ESGF_NODE]["ep"]
     
     # create an authorization client for Globus
     auth_client = globus_sdk.NativeAppAuthClient(CLIENT_ID)

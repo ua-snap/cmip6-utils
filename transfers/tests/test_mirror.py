@@ -5,7 +5,7 @@ Usage: from transfers folder, run python -m pytest tests/test_mirror.py
 
 import pandas as pd
 import xarray as xr
-from transfers.luts import model_inst_lu
+from config import model_inst_lu
 from multiprocessing import Pool
 
 
