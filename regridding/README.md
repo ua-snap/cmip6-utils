@@ -4,9 +4,28 @@ This directory is used for regridding the CMIP6 data mirrored on the ACDN to a c
 
 This pipeline also crops these datasets to a pan-arctic domain of 50N - 90N. 
 
-## Running the regridding pipeline
+## Regridding pipeline
 
-### 1. Set the environment variables
+### Structure
+
+Here is a description of the pipeline.
+
+* `batch_trasnfer.py`: script to submit transfer jobs for all existing batch files
+* `config.py`: sets some constant variables such as the **main list of models, scenarios, variables, and frequencies to mirror for our production data**.
+* `esgf_holdings.py`: script to run an audit which will generate a table of CMIP6 holdings on a given ESGF node using models, scenarios, variables, and frquencies provided in `config.py`
+* `generate_batch_files.py`: script to generate the batch files of \<source> \<destination> filepaths for transferring files
+* `llnl_esgf_holdings.csv`: table of data audit results for LLNL ESGF node produced by `esgf_holdings.py`
+* `llnl_manifest.csv`: table of files to mirror on ARDANO
+* `quick_ls.py`: script to run an `ls` operation on a particular Globus path
+* `select_variants.ipynb`: notebook for exploring the data available for variants of each model to determine which one to mirror
+* `tests.slurm`: slurm script to run tests on mirrored data
+* `transfer.py`: original script for running transfers, not based on the Globus SDK like `batch_transfer.py` is, and allows user to supply variable name and frequency if running a subset is of interest. 
+* `batch_files/`: batch files with \<source> \<destination> filepaths for transferring files
+* `tests/`: tests for verifying that the mirror is successful
+
+### Running the pipelin
+
+1. Set the environment variables
 
 First, define the following environment variables (assuming you have activated the cmip6-utils conda environment):
 
@@ -20,7 +39,7 @@ export SCRATCH_DIR=/center1/CMIP6/kmredilla/cmip6_regridding
 
 ##### `PROJECT_DIR`
 
-This should be set to the path of the `cmip6-utils` repo on the system. This is done for referencing scripts and constants without adding this path to the `PYTHONPATH` env var. E.g.:
+This should be set to the path of the `cmip6-utils` repo on the system. This is done for referencing scripts and constants as an alternative to adding this path to the `PYTHONPATH` env var. E.g.:
 
 ```sh
 export PROJECT_DIR=/home/kmredilla/repos/cmip6-utils
@@ -48,9 +67,9 @@ unset __conda_setup
 
 ##### `SLURM_EMAIL`
 
-Email address to send failed slurm job notifications to.
+Email address to send failed slurm job notifications to. Honestly not sure if this is working on Chinook04 currently.
 
-### 2. Generate batch files
+2. Generate batch files
 
 Here we will generate text files containing batches of CMIP6 filepaths that have a common grid to be worked on in a given slurm job. 
 
@@ -62,25 +81,15 @@ python generate_batch_files.py
 
 This could take a bit of time, as all of the grid information is being read in and grouped for each of the CMIP6 files. 
 
-### 3. Regrid the data
+3. Regrid the data
 
 Next, use the `regrid_cmip6.ipynb` to orchestrate the slurm jobs which will regrid all CMIP6 files listed in the batch files created in step 2. Follow the text in the notebook for instructions on running this step. 
 
-### 4. Crop the non-regridded files
+4. Use the `qc.ipynb` notebook to visually check a sample of the regridded data.
 
-For the files which were not regridded, we want to crop them to the same spatial extent as is done for the data in the regridding step. Run the `crop_non_regrid.py` script like so, probably from a screen session on a compute node:
+5. Run the `get_min_max.sh` script, then run the regridding test suite by executing `sbatch tests.slurm`. This will test all regridded files by variable and ensure that the regridded data falls within a tolerance of the minimums and maximums. The first script will extract the minimum and maximum values from the files to be regridded and write them in a `tmp/` directory for comparison. Note - if you have added new variables that are not yet in `get_min_max.sh`, you need to add those variables in the script or run the `write_get_min_max_all_variables_script.py` which will do so automatically.
 
-```sh
-python crop_non_regrid.py
-```
-
-### 5. Quality control on the regridded data
-
-1. Use the `qc.ipynb` notebook to visually check a sample of the regridded data.
-2. Run the `get_min_max.sh` script to extract the minimum and maximum values from the files to be regridded and write them in a `tmp/` directory. Note - if you have added new variables that are not yet in `get_min_max.sh`, you need to add those variables in the script or run the `write_get_min_max_all_variables_script.py` which will do so automatically.
-3. Run the regridding test suite by executing `sbatch tests.slurm`.  This will test all regridded files by variable and ensure that the regridded data falls within a tolerance of the minimums and maximums.
-
-### 6. Copy the regridded data off scratch space
+6. Copy the regridded data off scratch space
 
 Now, copy the regridded data off of scratch space to a permanent location. For now, this will be `/beegfs/CMIP6/arctic-cmip6/regrid`. This can be achieved with:
 
@@ -88,9 +97,11 @@ Now, copy the regridded data off of scratch space to a permanent location. For n
 rsync -av $SCRATCH_DIR/regrid /beegfs/CMIP6/arctic-cmip6/
 ```
 
-It is recommended to do this in a `screen` session as it could take a while. You may need to iterate by model or some other grouping factor in case of weird errors that can happen with rsync failing.
+It is recommended to do this in a `screen` session as it could take a while. 
 
-### 7. Crop the files not slated for regridding
+Note - you may need to iterate by model or some other grouping factor in case of weird errors that can happen with rsync failing (contacted RCS about these but unresolved). Things seem to work better if you run `rsync` on something like each model's directory. 
+
+7. Crop the files not slated for regridding
 
 This step will crop the files which already have the correct spatial grid to a panarctic extent and adjust the time dimension as needed.
 It might be best to make sure the output directory for this is clear (e.g. in case it is the same as the regridding output directory).
@@ -99,7 +110,7 @@ It might be best to make sure the output directory for this is clear (e.g. in ca
 python crop_non_regrid.py
 ```
 
-### 8. Run test on the cropped data
+8. Run a test on the cropped data
 
 This test just ensures that the cropped data really do have the target grid. 
 
@@ -115,7 +126,7 @@ Again, something like:
 rsync -av $SCRATCH_DIR/regrid /beegfs/CMIP6/arctic-cmip6/
 ```
 
-### 10. Ensure the permissions are set
+10. Ensure the permissions are set
 
 Make sure that the permissions are set correctly for this. A sane strategy would be to set directories to 755 (drwxr-xr-x) and set the files to 644 (-rw-r--r--). This can be done with:
 
