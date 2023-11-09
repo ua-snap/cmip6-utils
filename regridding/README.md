@@ -10,18 +10,20 @@ This pipeline also crops these datasets to a pan-arctic domain of 50N - 90N.
 
 Here is a description of the pipeline.
 
-* `batch_trasnfer.py`: script to submit transfer jobs for all existing batch files
-* `config.py`: sets some constant variables such as the **main list of models, scenarios, variables, and frequencies to mirror for our production data**.
-* `esgf_holdings.py`: script to run an audit which will generate a table of CMIP6 holdings on a given ESGF node using models, scenarios, variables, and frquencies provided in `config.py`
-* `generate_batch_files.py`: script to generate the batch files of \<source> \<destination> filepaths for transferring files
-* `llnl_esgf_holdings.csv`: table of data audit results for LLNL ESGF node produced by `esgf_holdings.py`
-* `llnl_manifest.csv`: table of files to mirror on ARDANO
-* `quick_ls.py`: script to run an `ls` operation on a particular Globus path
-* `select_variants.ipynb`: notebook for exploring the data available for variants of each model to determine which one to mirror
-* `tests.slurm`: slurm script to run tests on mirrored data
-* `transfer.py`: original script for running transfers, not based on the Globus SDK like `batch_transfer.py` is, and allows user to supply variable name and frequency if running a subset is of interest. 
-* `batch_files/`: batch files with \<source> \<destination> filepaths for transferring files
-* `tests/`: tests for verifying that the mirror is successful
+* `config.py`: sets some constant variables.
+* `crop_non_regrid.py`: crops the files which were not regridded, and fixes the time axis to be consistent with the regridded schema.
+* `explore_grids.ipyn;b`: notebook for initial exploration of the grids found in the mirrored data, look here for rationale on chosen common grid. 
+* `explore_regrid.py`: notebook for exploring the regridded data using interactive viz tools. 
+* `explore_regridding.ipynb`: notebook for exploring the process of regridding a file using `xesmf` package.
+* `generate_batch_files.py`: script to generate the batch files of files to be regridded in a single slurm job.
+* `get_min_max.py`: script to extract CMIP6 variable min/max values across all source files for a particular variable.
+* `get_min_max.sh`: script to call the corresponding python script for each variable listed. 
+* `qc.ipynb`: quality control notebook for evaluating a sample of regridded files visually. 
+* `regrid_cmip6.ipynb`: notebook for running the regridding of mirrored data.
+* `regrid.py`: main worker script for regridding a set of files. 
+* `slurm.py`: module with utilities for working with slurm.
+* `tests.slurm`: main script for running the tests from within in a slurm job. 
+* `write_get_min_max_all_variables_script.py`: helper script for updating the `get_min_max.sh` script, useful if there are many more variables added to the mirrored dataset. 
 
 ### Running the pipelin
 
