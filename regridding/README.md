@@ -25,7 +25,7 @@ Here is a description of the pipeline.
 * `tests.slurm`: main script for running the tests from within in a slurm job. 
 * `write_get_min_max_all_variables_script.py`: helper script for updating the `get_min_max.sh` script, useful if there are many more variables added to the mirrored dataset. 
 
-### Running the pipelin
+### Running the pipeline
 
 1. Set the environment variables
 
