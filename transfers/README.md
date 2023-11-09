@@ -66,7 +66,7 @@ python generate_batch_files.py --node llnl
 5. Use the `batch_transfer.py` script to run the transfer from the ESGF endpoint to the ACDN endpoint using the batch files.
 
 ```
-python batch_transfer.py
+python batch_transfer.py --node llnl
 ```
 
 Note - there may be multiple rounds of granting globus permissions/consents. For example, sometimes this error will pop up, maybe if it's the first time in a while?
