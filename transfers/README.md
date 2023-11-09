@@ -25,7 +25,7 @@ For the ACDN, the `<root>` folder is `/beegfs/CMIP6/arctic-cmip6/CMIP6/`, which 
 
 Here is a description of the pipeline.
 
-* `batch_trasnfer.py`: script to submit transfer jobs for all existing batch files
+* `batch_transfer.py`: script to submit transfer jobs for all existing batch files
 * `config.py`: sets some constant variables such as the **main list of models, scenarios, variables, and frequencies to mirror for our production data**.
 * `esgf_holdings.py`: script to run an audit which will generate a table of CMIP6 holdings on a given ESGF node using models, scenarios, variables, and frquencies provided in `config.py`
 * `generate_batch_files.py`: script to generate the batch files of \<source> \<destination> filepaths for transferring files
