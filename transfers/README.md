@@ -25,45 +25,71 @@ For the ACDN, the `<root>` folder is `/beegfs/CMIP6/arctic-cmip6/CMIP6/`, which 
 
 Here is a description of the pipeline.
 
-* `batch_transfer.py`: script to submit transfer jobs for all existing batch files
+* `batch_transfer.py`: script to submit transfer jobs for all existing batch files.
+* `conda_init.sh`: a shell script for initializing conda in a blank shell that does not read the typical `.bashrc`, as is the case with new slurm jobs.
 * `config.py`: sets some constant variables such as the **main list of models, scenarios, variables, and frequencies to mirror for our production data**.
-* `esgf_holdings.py`: script to run an audit which will generate a table of CMIP6 holdings on a given ESGF node using models, scenarios, variables, and frquencies provided in `config.py`
-* `generate_batch_files.py`: script to generate the batch files of \<source> \<destination> filepaths for transferring files
-* `llnl_esgf_holdings.csv`: table of data audit results for LLNL ESGF node produced by `esgf_holdings.py`
-* `llnl_manifest.csv`: table of files to mirror on ARDANO
-* `quick_ls.py`: script to run an `ls` operation on a particular Globus path
-* `select_variants.ipynb`: notebook for exploring the data available for variants of each model to determine which one to mirror
-* `tests.slurm`: slurm script to run tests on mirrored data
+* `esgf_holdings.py`: script to run an audit which will generate a table of CMIP6 holdings on a given ESGF node using models, scenarios, variables, and frequencies provided in `config.py`.
+* `generate_batch_files.py`: script to generate the batch files of \<source> \<destination> filepaths for transferring files.
+* `llnl_esgf_holdings.csv`: table of data audit results for LLNL ESGF node produced by `esgf_holdings.py`.
+* `llnl_manifest.csv`: table of files to mirror on ARDANO.
+* `quick_ls.py`: script to run an `ls` operation on a particular Globus path.
+* `select_variants.ipynb`: notebook for exploring the data available for variants of each model to determine which one to mirror.
+* `tests.slurm`: slurm script to run tests on mirrored data.
 * `transfer.py`: original script for running transfers, not based on the Globus SDK like `batch_transfer.py` is, and allows user to supply variable name and frequency if running a subset is of interest. 
-* `batch_files/`: batch files with \<source> \<destination> filepaths for transferring files
-* `tests/`: tests for verifying that the mirror is successful
+* `batch_files/`: batch files with \<source> \<destination> filepaths for transferring files.
+* `tests/`: tests for verifying that the mirror is successful.
 
 ### Running the pipeline
 
 1. Set up Globus using the "Globus setup" section below
-2. Use the `esgf_holdings.py` to create tables detailing availability on a particular ESGF node. This contains lists of the available filenames for all "requested" data, which is hard-coded in the python file. This may not need to be run as this file will likely be committed to version control. Run it as a script like so:
+
+2. Copy the `transfers/conda_init.sh` script to your home directory. Note that this script assumes you have `miniconda3` installed in your home directory.
+
+3. Set the environment variables. **NOTE**: these paths are passed as arguments to `slurm` functions, which do not recognize the tilde notation (`~/`) commonly used to alias a home directory. For this reason, the entire path must be explicitly defined e.g. `/home/kmredilla/path/to/dir` instead of `~/path/to/dir`.
+
+##### `TEST_OUT_DIR`
+
+This should be set to the path where you will write the test output files. Something like:
+
+```sh
+export TEST_OUT_DIR=/home/kmredilla/cmip6-test-outputs
+```
+
+##### `CONDA_INIT`
+
+This should be set to the path of the `conda_init.sh` script copied to your home directory.
+
+```sh
+export CONDA_INIT=/home/kmredilla/conda_init.sh
+```
+
+##### `SLURM_EMAIL`
+
+Email address to send failed slurm job notifications to. Honestly not sure if this is working on Chinook04 currently.
+
+```sh
+export SLURM_EMAIL=kmredilla@alaska.edu
+```
+
+4. Use the `esgf_holdings.py` to create tables detailing availability on a particular ESGF node. This contains lists of the available filenames for all "requested" data, which is hard-coded in the python file. (The relevant holdings at LLNL are summarized in the `llnl_esgf_holdings.csv` which has been committed to version control.) Run it as a script like so:
 
 ```
 python esgf_holdings.py --node llnl
 ```
 
-The relevant holdings at LLNL is summarized in the `llnl_esgf_holdings.csv` which has been committed to version control. 
-
-3. Use the `generate_manifest.py` script generate a complete manifest of all files to be mirrored on the ACDN.
+5. Use the `generate_manifest.py` script generate a complete manifest of all files to be mirrored on the ACDN. (The manifest has also been committed to version control for convenience.)
 
 ```
 python generate_manifest.py --node llnl
 ```
 
-The manifest has also been committed to version control for convenience. 
-
-4. Use the `generate_batch_files.py` script to generate batch files from the manifest to run the transfer in batches.
+6. Use the `generate_batch_files.py` script to generate batch files from the manifest to run the transfer in batches.
 
 ```
 python generate_batch_files.py --node llnl
 ```
 
-5. Use the `batch_transfer.py` script to run the transfer from the ESGF endpoint to the ACDN endpoint using the batch files.
+7. Use the `batch_transfer.py` script to run the transfer from the ESGF endpoint to the ACDN endpoint using the batch files.
 
 ```
 python batch_transfer.py --node llnl
@@ -82,13 +108,20 @@ Please run
 to login with the required scopes
 ```
 
-6. Run the tests in the `tests/` folder by submitting the `test.slurm` job script:
+8. Run the tests in the `tests/` folder by submitting the `test.slurm` job script. This will request resoruces for a compute node and will make sure every file in the manifest is present on the ACDN and that it opens with `xarray`.
 
 ```
 sbatch tests.slurm
 ```
 
-This will request resoruces for a compute node and will make sure every file in the manifest is present on the ACDN and that it opens with `xarray`.
+
+**NOTE**: If you have not already loaded the `slurm` module on your Chinook account, you will need to add the following new line to your `~/.bashrc` or `~/.bash_profile`:
+
+```
+module load slurm
+```
+
+
 
 
 ### Globus setup
@@ -104,7 +137,3 @@ You will also need to set the `CLIENT_ID` variable to the ID for the Globus clie
 ```
 a316babe-5447-43b0-a82e-4fc86c91b71a
 ```
-
-#### Endpoint authorization
-
-Finally, for any external Globus endpoints you will be working with (e.g. the LLNL ESGF node), you will need to log in to get the right permissions. This may be possible via the command line / SDK, but it is not implemented here. You must navigate to the Globus endpoint in the web app, and log in from there. You need to have an account created for that ESGF node to do so prior. 
