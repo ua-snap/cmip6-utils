@@ -13,17 +13,19 @@ import numpy as np
 import pandas as pd
 import xesmf as xe
 import xarray as xr
-from config import variables
+from config import variables, time_dim_error_file
 
 # ignore serializationWarnings from xarray for datasets with multiple FillValues
 import warnings
 
 warnings.filterwarnings("ignore", category=xr.SerializationWarning)
 
-
 # define the production latitude domain slice
 prod_lat_slice = slice(50, 90)
 
+#convert time dim error CSV to a list of filepaths
+err_df = pd.read_csv(time_dim_error_file, header=None)
+fps_missing_time_dim = list(err_df[0])
 
 def parse_args():
     """Parse some arguments"""
@@ -149,7 +151,11 @@ def open_and_crop_dataset(fp, lat_slice):
     """
     # we are cropping the dataset using the .sel method as we do not need to regrid the entire grid,
     #  only the part that will evetually wind up in the dataset.
-    src_ds = xr.open_dataset(fp, chunks={"time": 100}).sel(lat=lat_slice)
+    # if the file does not have a time dimension, do not chunk
+    try:
+        src_ds = xr.open_dataset(fp, chunks={"time": 100}).sel(lat=lat_slice)
+    except:
+        src_ds = xr.open_dataset(fp).sel(lat=lat_slice)
 
     return src_ds
 
@@ -379,9 +385,11 @@ def regrid_dataset(fp, regridder, out_fp, lat_slice):
     regrid_task = regridder(src_ds, keep_attrs=True)
     regrid_ds = regrid_task.compute()
 
-    out_fps = fix_time_and_write(regrid_ds, src_ds, out_fp)
-
-    return out_fps
+    if fp not in fps_missing_time_dim:
+        out_fps = fix_time_and_write(regrid_ds, src_ds, out_fp)
+        return out_fps
+    else:
+        return out_fps
 
 
 if __name__ == "__main__":

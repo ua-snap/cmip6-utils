@@ -2,14 +2,13 @@ import xarray as xr
 import glob
 import warnings
 from multiprocessing import Pool
-from config.py import PROJECT_DIR, cmip6_dir
+from config import PROJECT_DIR, cmip6_dir, time_dim_error_file
 
 warnings.simplefilter("ignore")
 
-#define csv file for logging (this is the blank csv created in the check_time_dim.slurm script)
-time_dim_error_file = PROJECT_DIR.joinpath('regridding/tests/time_dim_test.csv')
 #list all *.nc files in the CMIP6 directory
-files = glob.glob(cmip6_dir.joinpath('**/*.nc'), recursive = True)
+#files = glob.glob(cmip6_dir.joinpath('**/*.nc'), recursive = True)
+files = list(cmip6_dir.glob('**/*.nc'))
 
 #all files passing transfers/tests.slurm should be readable with xarray
 #this test assumes they are readable and tests for a time dimension
@@ -32,4 +31,4 @@ if __name__ == "__main__":
     for r in results:
         if r is not None:
             with open(time_dim_error_file, 'a') as f:
-                f.write(str(r + '\n'))
+                f.write((str(r) + '\n'))

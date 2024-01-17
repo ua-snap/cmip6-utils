@@ -13,11 +13,14 @@ try:
 except TypeError:
     slurm_email = None
 
+# path to csv of files with missing time dimension
+time_dim_error_file = PROJECT_DIR.joinpath('regridding/time_dim_test.csv')
+
 # path to script for regridding
 regrid_script = PROJECT_DIR.joinpath("regridding/regrid.py")
 
 # this will probably not change between users
-cmip6_dir = Path("/beegfs/CMIP6/arctic-cmip6/CMIP6")
+cmip6_dir = Path("/beegfs/CMIP6/arctic-cmip6/CMIP6_testing")
 
 # manifest file
 manifest_fp = PROJECT_DIR.joinpath("transfers/llnl_manifest.csv")

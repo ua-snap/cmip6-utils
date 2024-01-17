@@ -62,11 +62,16 @@ def get_grid(fp):
     grid_di.update(fp_to_attrs(fp))
     # also keep the filename for reference
     grid_di["fp"] = fp
-    # want to save the earliest time, because we will just ignore projections greater than 2100, for now at least.
-    ts_min = ds.time.values.min()
-    if not isinstance(ts_min, np.datetime64):
-        ts_min = np.datetime64(ts_min.strftime("%Y-%m-%d"))
-    grid_di["start_time"] = ts_min
+    # want to save the earliest time, because we will just ignore projections greater than 2100, for now at least
+    # if file does not have a time dimension, use a placeholder of 1/1/2000 to ensure a batch file is still created
+    try:
+        ts_min = ds.time.values.min()
+        if not isinstance(ts_min, np.datetime64):
+            ts_min = np.datetime64(ts_min.strftime("%Y-%m-%d"))
+        grid_di["start_time"] = ts_min
+    except:
+        grid_di["start_time"] = np.datetime64("2000-01-01")
+
     # save file size for better chunking into batches
     grid_di["filesize"] = fp.stat().st_size / (1e3**3)
 
