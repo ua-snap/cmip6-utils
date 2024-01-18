@@ -379,16 +379,17 @@ def regrid_dataset(fp, regridder, out_fp, lat_slice):
         out_fp (pathlib.Path): Path to output regridded file (just to return something)
     """
     # open the source dataset
-    # open the "exteneded" latitude domain so the regridding effort includes the minimum production latitude.
+    # open the "extended" latitude domain so the regridding effort includes the minimum production latitude.
     src_ds = open_and_crop_dataset(fp, lat_slice=lat_slice)
 
     regrid_task = regridder(src_ds, keep_attrs=True)
     regrid_ds = regrid_task.compute()
 
-    if fp not in fps_missing_time_dim:
-        out_fps = fix_time_and_write(regrid_ds, src_ds, out_fp)
-        return out_fps
+    if str(fp) in fps_missing_time_dim:
+        print(str(fp) + " has no time dimension, skipping fix_time_and_write() functions...")
+        return None
     else:
+        out_fps = fix_time_and_write(regrid_ds, src_ds, out_fp)
         return out_fps
 
 
