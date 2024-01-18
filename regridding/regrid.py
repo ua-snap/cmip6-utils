@@ -386,8 +386,10 @@ def regrid_dataset(fp, regridder, out_fp, lat_slice):
     regrid_ds = regrid_task.compute()
 
     if str(fp) in fps_missing_time_dim:
-        print(str(fp) + " has no time dimension, skipping fix_time_and_write() functions...")
-        return None
+        print(str(fp) + " has no time dimension, skipping fix_time_and_write() function, writing as-is...")
+        regrid_ds.to_netcdf(out_fp)
+        print(str(out_fp) + " done")
+        return [out_fp]
     else:
         out_fps = fix_time_and_write(regrid_ds, src_ds, out_fp)
         return out_fps
