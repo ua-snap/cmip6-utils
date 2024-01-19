@@ -95,10 +95,7 @@ def convert_times_to_years(time_da):
             cftime.num2date(t / 1e9, "seconds since 1970-01-01")
             for t in time_da.values.astype(int)
         ]
-    elif isinstance(
-        time_da.values[0],
-        cftime._cftime.Datetime360Day,
-    ) or isinstance(
+    elif isinstance(time_da.values[0], cftime._cftime.Datetime360Day,) or isinstance(
         time_da.values[0],
         cftime._cftime.DatetimeNoLeap,
     ):
@@ -197,6 +194,7 @@ def check_varid_indicator_compatibility(indicators, var_ids):
             f"Incompatible variables ({var_ids}) and indicators ({indicators}) encountered."
         )
 
+
 def find_var_files_and_create_fp_dict(model, scenario, var_ids, input_dir, backup_dir):
     """Check that input files exist in the input directory. If not, check the backup directory. Output a dictionary of filepaths."""
     # TO-DO: the frequency, currently "day", is hard-coded, although for future indicators
@@ -213,7 +211,7 @@ def find_var_files_and_create_fp_dict(model, scenario, var_ids, input_dir, backu
         for var_id in var_ids
     }
     # Check if there are files found in the input directory for each variable needed
-    # List variables that are missing files 
+    # List variables that are missing files
     missing_var_ids = []
     for k in fp_di:
         if len(fp_di[k]) == 0:
@@ -222,37 +220,51 @@ def find_var_files_and_create_fp_dict(model, scenario, var_ids, input_dir, backu
     # Again we build a dict to allow for possibility of more than one variable with missing files
     if len(missing_var_ids) > 0:
         bu_fp_di = {
-        var_id: list(
-            backup_dir.joinpath(f"{model}/{scenario}/{frequency}/{var_id}").glob("*.nc")
-        )
-        for var_id in missing_var_ids
+            var_id: list(
+                backup_dir.joinpath(f"{model}/{scenario}/{frequency}/{var_id}").glob(
+                    "*.nc"
+                )
+            )
+            for var_id in missing_var_ids
         }
-        # List variables that are missing files 
+        # List variables that are missing files
         bu_missing_var_ids = []
         for k in bu_fp_di:
             if len(bu_fp_di[k]) == 0:
                 bu_missing_var_ids.append(k)
         # If there are still variables with missing files, throw error that lists the missing files
-        if len(bu_missing_var_ids) > 0: 
+        if len(bu_missing_var_ids) > 0:
             raise Exception(
                 f"No files found in input directory or backup directory for model: {model}, scenario: {scenario}, frequency: {frequency}, variable(s): {bu_missing_var_ids}"
-                )
+            )
         # If the files are found in backup directory, attempt to copy the entire tree to the input directory
         #  and add the filepaths to the filepath dictionary output
         else:
             for var_id in missing_var_ids:
-                print(f"No files found in input directory for variable {var_id}, attempting to copy from backup directory...")
+                print(
+                    f"No files found in input directory for variable {var_id}, attempting to copy from backup directory..."
+                )
                 try:
-                    shutil.copytree(backup_dir.joinpath(f"{model}/{scenario}/{frequency}/{var_id}"),
-                                    input_dir.joinpath(f"{model}/{scenario}/{frequency}/{var_id}"),
-                                    )
-                    fp_di[var_id] = list(input_dir.joinpath(f"{model}/{scenario}/{frequency}/{var_id}").glob("*.nc"))
-                    print(f"Files successfully copied to input directory for variable {var_id}:")
+                    shutil.copytree(
+                        backup_dir.joinpath(f"{model}/{scenario}/{frequency}/{var_id}"),
+                        input_dir.joinpath(f"{model}/{scenario}/{frequency}/{var_id}"),
+                    )
+                    fp_di[var_id] = list(
+                        input_dir.joinpath(
+                            f"{model}/{scenario}/{frequency}/{var_id}"
+                        ).glob("*.nc")
+                    )
+                    print(
+                        f"Files successfully copied to input directory for variable {var_id}:"
+                    )
                     print(fp_di[var_id])
                 except:
-                    raise Exception(f"Could not copy files from backup directory to input directory for variable {var_id}.")
-                                                
+                    raise Exception(
+                        f"Could not copy files from backup directory to input directory for variable {var_id}."
+                    )
+
     return fp_di
+
 
 def generate_base_kwargs(model, scenario, indicators, var_ids, input_dir, backup_dir):
     """Function for creating some kwargs for the run_compute_indicators function.
@@ -268,7 +280,9 @@ def generate_base_kwargs(model, scenario, indicators, var_ids, input_dir, backup
     """
     check_varid_indicator_compatibility(indicators, var_ids)
 
-    fp_di = find_var_files_and_create_fp_dict(model, scenario, var_ids, input_dir, backup_dir)
+    fp_di = find_var_files_and_create_fp_dict(
+        model, scenario, var_ids, input_dir, backup_dir
+    )
 
     coord_labels = dict(
         scenario=scenario,
@@ -315,7 +329,7 @@ def parse_args():
         type=str,
         help="Path to backup input directory having filepath structure <model>/<scenario>/day/<variable ID>/<files>",
         required=True,
-        default=str(cmip6_dir.parent.joinpath("regrid"))
+        default=str(cmip6_dir.parent.joinpath("regrid")),
     )
     parser.add_argument(
         "--out_dir",
