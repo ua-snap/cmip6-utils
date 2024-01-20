@@ -1,5 +1,5 @@
 """Script for computing a set of indicators for a given set of files. 
-This means a set of indciators that share the same source variable or variables, and for a given model and scenario.
+This means a set of indicators that share the same source variable or variables, and for a given model and scenario.
 Handling of missing data (e.g. a model-scenario-variable combination that does not exist) should be done outside of this script.
 
 Usage: 
@@ -14,6 +14,8 @@ import numpy as np
 import xarray as xr
 import xclim.indices as xci
 import shutil
+import sys
+import datetime
 
 # needed for other indicators but not yet
 # from xclim.core.calendar import percentile_doy
@@ -195,6 +197,42 @@ def check_varid_indicator_compatibility(indicators, var_ids):
         )
 
 
+def validate_outputs(indicators, out_fps_to_validate):
+    """Run some validations on a list of output filepaths."""
+    # first validate that indicator input arguments are reflected in the number of output files, and their filenames.
+    if len(indicators) == len(out_fps_to_validate):
+        fp_inds = [fp.parts[-1].split("_")[0] for fp in out_fps_to_validate]
+        if set(fp_inds).issubset(indicators):
+            print("Success: File written for each indicator.")
+        else:
+            print("Fail: Missing indicator files. Check output directory.")
+    else:
+        print(
+            "Fail: Number of indicators and number of output files not equal. Possible missing indicator files, check output directory."
+        )
+
+    # validate that files were modified in the last 10 minutes
+    # this might be useful info if we are overwriting existing indicator files, to make sure we have actually created a new file
+    # may need to be adjusted based on real processing times
+    for fp in out_fps_to_validate:
+        mod_time = datetime.datetime.fromtimestamp(Path(fp).stat().st_mtime)
+        elapsed = datetime.datetime.now() - mod_time
+        if elapsed.seconds < 600:
+            print(f"Success: File {str(fp)} was modified in last 10 minutes.")
+        else:
+            print(
+                f"Fail: File {str(fp)} was modified over 10 minutes ago. If you are trying to overwrite an existing indicator file, it may not have worked."
+            )
+
+    # next validate that xarray can open each one of the output files.
+    for fp in out_fps_to_validate:
+        try:
+            xr.open_dataset(fp)
+            print("Success: File could be opened by xarray.")
+        except:
+            print("Fail: File could not be opened by xarray.")
+
+
 def find_var_files_and_create_fp_dict(model, scenario, var_ids, input_dir, backup_dir):
     """Check that input files exist in the input directory. If not, check the backup directory. Output a dictionary of filepaths."""
     # TO-DO: the frequency, currently "day", is hard-coded, although for future indicators
@@ -235,14 +273,14 @@ def find_var_files_and_create_fp_dict(model, scenario, var_ids, input_dir, backu
         # If there are still variables with missing files, throw error that lists the missing files
         if len(bu_missing_var_ids) > 0:
             raise Exception(
-                f"No files found in input directory or backup directory for model: {model}, scenario: {scenario}, frequency: {frequency}, variable(s): {bu_missing_var_ids}"
+                f"Fail: No files found in input directory or backup directory for model: {model}, scenario: {scenario}, frequency: {frequency}, variable(s): {bu_missing_var_ids}"
             )
         # If the files are found in backup directory, attempt to copy the entire tree to the input directory
         #  and add the filepaths to the filepath dictionary output
         else:
             for var_id in missing_var_ids:
                 print(
-                    f"No files found in input directory for variable {var_id}, attempting to copy from backup directory..."
+                    f"No files found in input directory for variable: {var_id}, attempting to copy from backup directory..."
                 )
                 try:
                     shutil.copytree(
@@ -254,13 +292,18 @@ def find_var_files_and_create_fp_dict(model, scenario, var_ids, input_dir, backu
                             f"{model}/{scenario}/{frequency}/{var_id}"
                         ).glob("*.nc")
                     )
-                    print(
-                        f"Files successfully copied to input directory for variable {var_id}:"
-                    )
-                    print(fp_di[var_id])
+                    no_files_copied = len(fp_di[var_id])
+                    if no_files_copied > 0:
+                        print(
+                            f"Success: {str(no_files_copied)} files successfully copied to input directory for variable: {var_id}."
+                        )
+                    else:
+                        print(
+                            f"Fail: No files copied to input directory for variable: {var_id}."
+                        )
                 except:
                     raise Exception(
-                        f"Could not copy files from backup directory to input directory for variable {var_id}."
+                        f"Fail: Could not copy files from backup directory to input directory for variable {var_id}. Processing aborted."
                     )
 
     return fp_di
@@ -372,6 +415,7 @@ if __name__ == "__main__":
 
     indicators_ds = xr.merge(run_compute_indicators(**kwargs)).compute()
     # write each indicator to its own file for now
+    out_fps_to_validate = []
     for idx in indicators_ds.data_vars:
         out_fp = out_dir.joinpath(
             model,
@@ -381,4 +425,10 @@ if __name__ == "__main__":
         )
         # ensure this nested path exists
         out_fp.parent.mkdir(exist_ok=True, parents=True)
+        # write
         indicators_ds[idx].to_dataset().to_netcdf(out_fp)
+        # add filepath to list for validation
+        out_fps_to_validate.append(out_fp)
+
+    # validate outputs
+    validate_outputs(indicators, out_fps_to_validate)
