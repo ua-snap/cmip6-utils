@@ -179,7 +179,6 @@ if __name__ == "__main__":
     ) = parse_args()
 
     # make batch files for each model / scenario / variable combination
-    sbatch_fps = []
     sbatch_dir = slurm_dir.joinpath("indicators")
     _ = [fp.unlink() for fp in sbatch_dir.glob("*.slurm")]
     sbatch_dir.mkdir(exist_ok=True)
@@ -214,4 +213,4 @@ if __name__ == "__main__":
                     "sbatch_head": sbatch_head,
                 }
                 write_sbatch_indicators(**sbatch_indicators_kwargs)
-                sbatch_fps.append(sbatch_fp)
+                submit_sbatch(sbatch_fp)
