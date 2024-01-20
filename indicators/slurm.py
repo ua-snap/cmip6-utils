@@ -84,6 +84,8 @@ def write_sbatch_indicators(
         pycommands += "--no-clobber \n\n"
     else:
         pycommands += "\n\n"
+
+    pycommands += f"echo End {indicator} indicator generation && date\n"
     commands = sbatch_head.format(sbatch_out_fp=sbatch_out_fp) + pycommands
 
     with open(sbatch_fp, "w") as f:
