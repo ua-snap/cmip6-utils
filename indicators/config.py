@@ -6,12 +6,20 @@ from pathlib import Path
 
 # path-based required env vars will throw error if None
 # path to root of this repo, for constructing absolute paths to scripts
-PROJECT_DIR = Path(os.getenv("PROJECT_DIR")) or Path("/home/rltorgerson/cmip6-utils/")
-SCRATCH_DIR = Path(os.getenv("SCRATCH_DIR")) or Path(
-    "/beegfs/CMIP6/rltorgerson/indicators/"
+PROJECT_DIR = (
+    Path(os.getenv("PROJECT_DIR"))
+    if "PROJECT_DIR" in os.environ
+    else Path("/home/rltorgerson/cmip6-utils/")
 )
-conda_init_script = Path(os.getenv("CONDA_INIT")) or PROJECT_DIR.joinpath(
-    "indicators/conda_init.sh"
+SCRATCH_DIR = (
+    Path(os.getenv("SCRATCH_DIR"))
+    if "SCRATCH_DIR" in os.environ
+    else Path("/beegfs/CMIP6/rltorgerson/indicators/")
+)
+conda_init_script = (
+    Path(os.getenv("CONDA_INIT"))
+    if "CONDA_INIT" in os.environ
+    else PROJECT_DIR.joinpath("indicators/conda_init.sh")
 )
 try:
     slurm_email = Path(os.getenv("SLURM_EMAIL"))
