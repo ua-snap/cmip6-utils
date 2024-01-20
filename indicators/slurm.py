@@ -77,6 +77,7 @@ def write_sbatch_indicators(
         f"--model {model} "
         f"--scenario {scenario} "
         f"--input_dir {input_dir} "
+        f"--backup_dir {backup_dir}"
         f"--out_dir {indicators_dir} "
     )
     if no_clobber:
