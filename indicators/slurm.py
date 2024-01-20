@@ -204,6 +204,7 @@ if __name__ == "__main__":
                     "indicator": indicator,
                     "model": model,
                     "scenario": scenario,
+                    "input_dir": input_dir,
                     "indicators_script": indicators_script,
                     "indicators_dir": SCRATCH_DIR,
                     "no_clobber": no_clobber,
