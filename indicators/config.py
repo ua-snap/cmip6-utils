@@ -14,7 +14,7 @@ PROJECT_DIR = (
 SCRATCH_DIR = (
     Path(os.getenv("SCRATCH_DIR"))
     if "SCRATCH_DIR" in os.environ
-    else Path("/beegfs/CMIP6/snapdata/indicators/")
+    else Path("/beegfs/CMIP6/snapdata/")
 )
 conda_init_script = (
     Path(os.getenv("CONDA_INIT"))
@@ -29,7 +29,7 @@ except TypeError:
 # this will probably not change between users
 cmip6_dir = Path("/beegfs/CMIP6/arctic-cmip6/")
 regrid_dir = Path("/beegfs/CMIP6/arctic-cmip6/regrid/")
-slurm_dir = SCRATCH_DIR.parent.joinpath("slurm")
+slurm_dir = SCRATCH_DIR.joinpath("slurm")
 
 # path to script for regridding
 indicators_script = PROJECT_DIR.joinpath("indicators/indicators.py")
