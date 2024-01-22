@@ -29,7 +29,7 @@ except TypeError:
 # this will probably not change between users
 cmip6_dir = Path("/beegfs/CMIP6/arctic-cmip6/")
 regrid_dir = Path("/beegfs/CMIP6/arctic-cmip6/regrid/")
-slurm_dir = Path("/beegfs/CMIP6/rltorgerson/slurm/")
+slurm_dir = SCRATCH_DIR.parent.joinpath("slurm")
 
 # path to script for regridding
 indicators_script = PROJECT_DIR.joinpath("indicators/indicators.py")
