@@ -9,12 +9,12 @@ from pathlib import Path
 PROJECT_DIR = (
     Path(os.getenv("PROJECT_DIR"))
     if "PROJECT_DIR" in os.environ
-    else Path("/home/rltorgerson/cmip6-utils/")
+    else Path("/home/snapdata/cmip6-utils/")
 )
 SCRATCH_DIR = (
     Path(os.getenv("SCRATCH_DIR"))
     if "SCRATCH_DIR" in os.environ
-    else Path("/beegfs/CMIP6/rltorgerson/indicators/")
+    else Path("/beegfs/CMIP6/snapdata/indicators/")
 )
 conda_init_script = (
     Path(os.getenv("CONDA_INIT"))
