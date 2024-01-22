@@ -183,6 +183,7 @@ if __name__ == "__main__":
     _ = [fp.unlink() for fp in sbatch_dir.glob("*.slurm")]
     sbatch_dir.mkdir(exist_ok=True)
 
+    # TODO Make this utilize the luts.py file when indicators use the same data loaded as a single job
     for model in models:
         for scenario in scenarios:
             for indicator in indicators:
