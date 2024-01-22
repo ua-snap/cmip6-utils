@@ -8,7 +8,6 @@ Usage:
 
 import argparse
 from pathlib import Path
-import warnings
 import cftime
 import numpy as np
 import xarray as xr
@@ -97,7 +96,10 @@ def convert_times_to_years(time_da):
             cftime.num2date(t / 1e9, "seconds since 1970-01-01")
             for t in time_da.values.astype(int)
         ]
-    elif isinstance(time_da.values[0], cftime._cftime.Datetime360Day,) or isinstance(
+    elif isinstance(
+        time_da.values[0],
+        cftime._cftime.Datetime360Day,
+    ) or isinstance(
         time_da.values[0],
         cftime._cftime.DatetimeNoLeap,
     ):
@@ -380,13 +382,12 @@ def parse_args():
         help="Path to directory where indicators data should be written",
         required=True,
     )
-    # this could be potentially useful
-    # parser.add_argument(
-    #     "--no-clobber",
-    #     action="store_true",
-    #     default=False,
-    #     help="Do not overwrite files if they exists in out_dir",
-    # )
+    parser.add_argument(
+        "--no-clobber",
+        action="store_true",
+        default=False,
+        help="Do not overwrite files if they exists in out_dir",
+    )
     args = parser.parse_args()
 
     return (
@@ -396,11 +397,20 @@ def parse_args():
         Path(args.input_dir),
         Path(args.backup_dir),
         Path(args.out_dir),
+        args.no_clobber,
     )
 
 
 if __name__ == "__main__":
-    indicators, model, scenario, input_dir, backup_dir, out_dir = parse_args()
+    (
+        indicators,
+        model,
+        scenario,
+        input_dir,
+        backup_dir,
+        out_dir,
+        no_clobber,
+    ) = parse_args()
     # this is the part where we get all variable IDs for all indicators
     # assuming the first indicator uses the same as all others
     var_ids = idx_varid_lu[indicators[0]]
