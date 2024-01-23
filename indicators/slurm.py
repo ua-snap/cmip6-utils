@@ -196,7 +196,7 @@ if __name__ == "__main__":
     # slurm info (doesn't need to be hardcoded, but OK for now?)
     "partition": "t2small",
     "ncpus": 24,
-    "conda_init_script": '/beegfs/CMIP6/jdpaul3/scratch/cmip6_utils/indicators/conda_init.sh',
+    "conda_init_script": '/beegfs/CMIP6/jdpaul3/scratch/cmip6-utils/indicators/conda_init.sh',
     "slurm_email": slurm_email,
     }
 
