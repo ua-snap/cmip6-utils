@@ -191,14 +191,16 @@ if __name__ == "__main__":
     with open(qc_file, "w") as q:
         pass
 
-    #sbatch head
+    #sbatch head - replaces config.py params for now!
     sbatch_head_kwargs = {
-    # slurm info (doesn't need to be hardcoded, but OK for now?)
     "partition": "t2small",
     "ncpus": 24,
     "conda_init_script": '/beegfs/CMIP6/jdpaul3/scratch/cmip6-utils/indicators/conda_init.sh',
     "slurm_email": slurm_email,
     }
+
+    #indicator script - replaces config.py params for now!
+    indicators_script = "/beegfs/CMIP6/jdpaul3/scratch/cmip6-utils/indicators/indicators.py"
 
     # TODO Make this utilize the luts.py file when indicators use the same data loaded as a single job
     for model in models:
