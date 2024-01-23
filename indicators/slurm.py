@@ -85,7 +85,9 @@ def write_sbatch_indicators(
     else:
         pycommands += "\n\n"
 
-    pycommands += f"echo End {indicator} indicator generation && date\n"
+    pycommands += (f"echo End {indicator} indicator generation && date\n"
+                   "Job Completed"
+                   )
     commands = sbatch_head.format(sbatch_out_fp=sbatch_out_fp) + pycommands
 
     with open(sbatch_fp, "w") as f:
