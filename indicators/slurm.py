@@ -179,13 +179,13 @@ if __name__ == "__main__":
     ) = parse_args()
 
     # make batch files for each model / scenario / variable combination
-    sbatch_dir = out_dir.joinpath("/slurm/indicators")
+    sbatch_dir = out_dir.joinpath("slurm/indicators")
     _ = [fp.unlink() for fp in sbatch_dir.glob("*.slurm")]
     sbatch_dir.mkdir(exist_ok=True)
 
     # make QC dir and "to-do" list for each model / scenario / indicator combination
     # the "w" accessor should overwrite any previous qc.txt files encountered
-    qc_dir = slurm_dir.joinpath("indicators", "qc")
+    qc_dir = out_dir.joinpath("indicators", "qc")
     qc_dir.mkdir(exist_ok=True)
     qc_file = qc_dir.joinpath("qc.csv")
     with open(qc_file, "w") as q:
