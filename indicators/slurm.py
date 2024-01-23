@@ -244,4 +244,4 @@ if __name__ == "__main__":
                     ),
                 )
                 with open(qc_file, "a") as f:
-                    f.write(f"{indicator},{indicator_fp},{sbatch_out_fp}")
+                    f.write(f"{indicator},{indicator_fp},{sbatch_out_fp}\n")
