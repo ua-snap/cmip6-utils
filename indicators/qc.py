@@ -98,7 +98,7 @@ if __name__ == "__main__":
     df = pd.read_csv(qc_file)
     # build error file path from SCRATCH_DIR and create error file
     error_file = out_dir.joinpath("indicators", "qc", "qc_error.txt")
-    with open(error_file, "w") as e:
+    with open(error_file, "x") as e:
         pass
 
     print("QC process started...")
