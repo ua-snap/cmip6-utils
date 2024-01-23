@@ -217,7 +217,7 @@ if __name__ == "__main__":
                     "scenario": scenario,
                     "input_dir": input_dir,
                     "indicators_script": indicators_script,
-                    "indicators_dir": SCRATCH_DIR.joinpath("indicators"),
+                    "indicators_dir": out_dir,
                     "no_clobber": no_clobber,
                     "sbatch_head": sbatch_head,
                 }
