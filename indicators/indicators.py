@@ -96,10 +96,7 @@ def convert_times_to_years(time_da):
             cftime.num2date(t / 1e9, "seconds since 1970-01-01")
             for t in time_da.values.astype(int)
         ]
-    elif isinstance(
-        time_da.values[0],
-        cftime._cftime.Datetime360Day,
-    ) or isinstance(
+    elif isinstance(time_da.values[0], cftime._cftime.Datetime360Day,) or isinstance(
         time_da.values[0],
         cftime._cftime.DatetimeNoLeap,
     ):
