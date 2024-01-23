@@ -196,42 +196,6 @@ def check_varid_indicator_compatibility(indicators, var_ids):
         )
 
 
-def validate_outputs(indicators, out_fps_to_validate):
-    """Run some validations on a list of output filepaths."""
-    # first validate that indicator input arguments are reflected in the number of output files, and their filenames.
-    if len(indicators) == len(out_fps_to_validate):
-        fp_inds = [fp.parts[-1].split("_")[0] for fp in out_fps_to_validate]
-        if set(fp_inds).issubset(indicators):
-            print("Success: File written for each indicator.")
-        else:
-            print("Fail: Missing indicator files. Check output directory.")
-    else:
-        print(
-            "Fail: Number of indicators and number of output files not equal. Possible missing indicator files, check output directory."
-        )
-
-    # validate that files were modified in the last 10 minutes
-    # this might be useful info if we are overwriting existing indicator files, to make sure we have actually created a new file
-    # may need to be adjusted based on real processing times
-    for fp in out_fps_to_validate:
-        mod_time = datetime.datetime.fromtimestamp(Path(fp).stat().st_mtime)
-        elapsed = datetime.datetime.now() - mod_time
-        if elapsed.seconds < 600:
-            print(f"Success: File {str(fp)} was modified in last 10 minutes.")
-        else:
-            print(
-                f"Fail: File {str(fp)} was modified over 10 minutes ago. If you are trying to overwrite an existing indicator file, it may not have worked."
-            )
-
-    # next validate that xarray can open each one of the output files.
-    for fp in out_fps_to_validate:
-        try:
-            xr.open_dataset(fp)
-            print("Success: File could be opened by xarray.")
-        except:
-            print("Fail: File could not be opened by xarray.")
-
-
 def find_var_files_and_create_fp_dict(model, scenario, var_ids, input_dir, backup_dir):
     """Check that input files exist in the input directory. If not, check the backup directory. Output a dictionary of filepaths."""
     # TO-DO: the frequency, currently "day", is hard-coded, although for future indicators
@@ -437,6 +401,3 @@ if __name__ == "__main__":
         indicators_ds[idx].to_dataset().to_netcdf(out_fp)
         # add filepath to list for validation
         out_fps_to_validate.append(out_fp)
-
-    # validate outputs
-    validate_outputs(indicators, out_fps_to_validate)
