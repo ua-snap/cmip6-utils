@@ -2,6 +2,7 @@ import argparse
 import pandas as pd
 import os
 import xarray as xr
+import numpy as np
 from pathlib import Path
 from luts import units_lu, ranges_lu
 
@@ -57,11 +58,11 @@ def qc_by_row(row, error_file):
         min_val = ranges_lu[qc_indicator_string]["min"]
         max_val = ranges_lu[qc_indicator_string]["max"]
 
-        if True in np.unique(ds[ind].values < min_val):
+        if True in np.unique(ds[ds_indicator_string].values < min_val):
             error_strings.append(
                 f"ERROR: Minimum values outside range in dataset: {row[1]}."
             )
-        if True in np.unique(ds[ind].values > max_val):
+        if True in np.unique(ds[ds_indicator_string].values > max_val):
             error_strings.append(
                 f"ERROR: Maximum values outside range in dataset: {row[1]}."
             )
@@ -85,7 +86,7 @@ def parse_args():
 
     args = parser.parse_args()
 
-    return (Path(args.out_dir))
+    return Path(args.out_dir)
 
 
 if __name__ == "__main__":
@@ -98,13 +99,13 @@ if __name__ == "__main__":
     df = pd.read_csv(qc_file)
     # build error file path from SCRATCH_DIR and create error file
     error_file = out_dir.joinpath("qc", "qc_error.txt")
-    with open(error_file, "x") as e:
+    with open(error_file, "w") as e:
         pass
 
     print("QC process started...")
 
     error_count = 0
-    for row in df.iterrows():
+    for _index, row in df.iterrows():
         row_errs = qc_by_row(row, error_file)
         error_count = error_count + row_errs
 
@@ -113,12 +114,7 @@ if __name__ == "__main__":
     )
 
 
-
-
-
-
-
-#DRAFT VALIDATION FUNCTIONS FORMERLY IN INDICATORS.PY ..... should probably delete!
+# DRAFT VALIDATION FUNCTIONS FORMERLY IN INDICATORS.PY ..... should probably delete!
 # def validate_outputs(indicators, out_fps_to_validate):
 #     """Run some validations on a list of output filepaths."""
 #     # first validate that indicator input arguments are reflected in the number of output files, and their filenames.
