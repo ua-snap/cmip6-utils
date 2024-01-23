@@ -233,10 +233,10 @@ if __name__ == "__main__":
                     "sbatch_head": sbatch_head,
                 }
                 write_sbatch_indicators(**sbatch_indicators_kwargs)
-                submit_sbatch(sbatch_fp)
+                job_id = submit_sbatch(sbatch_fp)
 
                 # append indicator filepath and sbatch job filepath to qc file
-                # build expected indicator output filepath using fp template directly from config (identical to how output fp is built in indicators.py)
+                # build expected indicator output filepath using fp template directly from config (identical to how output fp is built in indicators.py) plus job ID from submit_sbatch() above
                 indicator_fp = out_dir.joinpath(
                     model,
                     scenario,
@@ -245,5 +245,7 @@ if __name__ == "__main__":
                         indicator=indicator, model=model, scenario=scenario
                     ),
                 )
+
+                sbatch_out_fp_with_jobid = sbatch_out_fp.name.replace("_%j", str(job_id))
                 with open(qc_file, "a") as f:
-                    f.write(f"{indicator},{indicator_fp},{sbatch_out_fp}\n")
+                    f.write(f"{indicator},{indicator_fp},{sbatch_out_fp_with_jobid}\n")
