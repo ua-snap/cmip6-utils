@@ -179,7 +179,7 @@ if __name__ == "__main__":
     ) = parse_args()
 
     # make batch files for each model / scenario / variable combination
-    sbatch_dir = slurm_dir.joinpath("indicators")
+    sbatch_dir = out_dir.joinpath("/slurm/indicators")
     _ = [fp.unlink() for fp in sbatch_dir.glob("*.slurm")]
     sbatch_dir.mkdir(exist_ok=True)
 
