@@ -179,7 +179,7 @@ if __name__ == "__main__":
     ) = parse_args()
 
     # make batch files for each model / scenario / variable combination
-    sbatch_dir = out_dir.joinpath("slurm/indicators")
+    sbatch_dir = out_dir.joinpath("slurm")
     _ = [fp.unlink() for fp in sbatch_dir.glob("*.slurm")]
     sbatch_dir.mkdir(exist_ok=True)
 
@@ -238,6 +238,7 @@ if __name__ == "__main__":
                 # append indicator filepath and sbatch job filepath to qc file
                 # build expected indicator output filepath using fp template directly from config (identical to how output fp is built in indicators.py) plus job ID from submit_sbatch() above
                 indicator_fp = out_dir.joinpath(
+                    "output",
                     model,
                     scenario,
                     indicator,

@@ -1,3 +1,4 @@
+import argparse
 import pandas as pd
 import os
 import xarray as xr
@@ -72,13 +73,28 @@ def qc_by_row(row, error_file):
     return len(error_strings)
 
 
+def parse_args():
+    """Parse arguments"""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--out_dir",
+        type=str,
+        help="Path to directory where indicators data, QC files, and slurm files were written",
+        required=True,
+    )
+
+    args = parser.parse_args()
+
+    return (Path(args.out_dir))
+
+
 if __name__ == "__main__":
 
-    #out_dir =
+    out_dir = parse_args()
 
-    # build qc file path from config's slurm_dir and load qc file;
+    # build qc file path from out_dir argument and load qc file;
     # first row is indicator name, second row is indicators .nc filepath, third row is slurm job output filepath
-    qc_file = out_dir.joinpath("indicators", "qc", "qc.csv")
+    qc_file = out_dir.joinpath("qc", "qc.csv")
     df = pd.read_csv(qc_file)
     # build error file path from SCRATCH_DIR and create error file
     error_file = out_dir.joinpath("indicators", "qc", "qc_error.txt")
