@@ -97,7 +97,7 @@ if __name__ == "__main__":
     qc_file = out_dir.joinpath("qc", "qc.csv")
     df = pd.read_csv(qc_file)
     # build error file path from SCRATCH_DIR and create error file
-    error_file = out_dir.joinpath("indicators", "qc", "qc_error.txt")
+    error_file = out_dir.joinpath("qc", "qc_error.txt")
     with open(error_file, "x") as e:
         pass
 
