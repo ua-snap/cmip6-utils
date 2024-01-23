@@ -425,6 +425,7 @@ if __name__ == "__main__":
     out_fps_to_validate = []
     for idx in indicators_ds.data_vars:
         out_fp = out_dir.joinpath(
+            "output",
             model,
             scenario,
             idx,
