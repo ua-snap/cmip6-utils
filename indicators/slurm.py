@@ -86,7 +86,7 @@ def write_sbatch_indicators(
         pycommands += "\n\n"
 
     pycommands += (f"echo End {indicator} indicator generation && date\n"
-                   "Job Completed"
+                   "echo Job Completed"
                    )
     commands = sbatch_head.format(sbatch_out_fp=sbatch_out_fp) + pycommands
 
@@ -249,6 +249,6 @@ if __name__ == "__main__":
                     ),
                 )
 
-                sbatch_out_fp_with_jobid = sbatch_out_fp.name.replace("_%j", str(job_id))
+                sbatch_out_fp_with_jobid = sbatch_out_fp.name.replace("%j", str(job_id))
                 with open(qc_file, "a") as f:
                     f.write(f"{indicator},{indicator_fp},{sbatch_out_fp_with_jobid}\n")
