@@ -1,34 +1,83 @@
 import pandas as pd
-from config import SCRATCH_DIR
+import os
+import xarray as xr
+from pathlib import Path
+from config import slurm_dir
+from luts import units_lu, ranges_lu
 
 
+def qc_by_row(row, error_file):
 
-qc_file = SCRATCH_DIR.joinpath("slurm", "indicators", "qc", "qc.csv")
-error_file = SCRATCH_DIR.joinpath("slurm", "indicators", "qc", "qc_error.csv")
-
-
-def qc_by_row(row):
-
-    #set up list to collect errors
+    #set up list to collect error strings
     error_strings = []
 
-    #QC 1: do the indicator .nc files exist?
-    check_if_file_exists(indicator_fp)
+    #QC 1: does the slurm job output file exist? And does it show success message?
+    #TODO: add a success string in "..._%j.out" files that can be quickly parsed
+    #this should be checked first, because if the slurm job failed all tests below will fail too!
+    if os.path.isfile(row[2]) == False:
+        error_strings.append(f"ERROR: Expected job output file {row[2]} not found.")
+    else: pass
+        #parse output file for success message
 
-    #QC 2: do the files contain reasonable values? might need to create a min/max lookup table for this?
-    check_for_reasonable_values(indicator, indicator_fp)
+    #QC 2: does the indicator .nc file exist?
+    if os.path.isfile(row[1]) == False:
+        error_strings.append(f"ERROR: Expected indicator file {row[1]} not found.")
 
-    #QC 3: are there any suspicious NA values, or all NA values?
-    check_na_values(indicator_fp)
+    #QC 2: do the indicator string, indicator .nc filename, and indicator variable name in dataset match?
+    qc_indicator_string = row[0]
+    fp = Path(row[1])
+    fp_indicator_string = fp.parts[-1].split("_")[0]
 
-    #QC 4: does slurm job output show success?
-    check_sbatch_output(sbatch_out_fp)
+    try: #also checks that the dataset opens
+        ds = xr.open_dataset(fp)
+        ds_indicator_string = list(ds.data_vars)[0]
+    except:
+        error_strings.append(f"ERROR: Could not open dataset: {row[1]}.")
+        ds_indicator_string = "ERROR"
+
+    if not fp_indicator_string == ds_indicator_string == qc_indicator_string:
+        error_strings.append(f"ERROR: Mismatch of indicator strings found between parameter: {qc_indicator_string}, filename: {row[1]}, and dataset variable: {ds_indicator_string}.")
+
+    #skip the final QC steps if the file could not be opened 
+    if ds_indicator_string != "ERROR":
+
+        #QC 3: do the unit attributes in the first year data array match expected values in the lookup table?
+        if not ds[ds_indicator_string].isel(model=0, scenario=0, year=0).attrs == units_lu[qc_indicator_string]:
+            error_strings.append(f"ERROR: Mismatch of unit dictionary found between dataset and lookup table in filename: {row[1]}.")
+
+        #QC 4: do the files contain reasonable values as defined in the lookup table?
+        min_val = ranges_lu[qc_indicator_string]['min']
+        max_val = ranges_lu[qc_indicator_string]['max']
+        
+        if True in np.unique(ds[ind].values < min_val):
+            error_strings.append(f"ERROR: Minimum values outside range in dataset: {row[1]}.")
+        if True in np.unique(ds[ind].values > max_val):
+            error_strings.append(f"ERROR: Maximum values outside range in dataset: {row[1]}.")
 
     #Log the errors: write any errors into the error file
-    write_errors(error_strings)
+    with open(error_file, "a") as e:
+        e.write(('\n'.join(error_strings)))
+
+    return len(error_strings)
 
 
+if __name__ == "__main__":
 
-df = pd.read_csv(qc_file)
-for row in df.iterrows():
-    qc_by_row(row)
+    #build qc file path from config's slurm_dir and load qc file;
+    #first row is indicator name, second row is indicators .nc filepath, third row is slurm job output filepath
+    qc_file = slurm_dir.joinpath("indicators", "qc", "qc.csv")
+    df = pd.read_csv(qc_file)
+    #build error file path from SCRATCH_DIR and create error file
+    error_file = slurm_dir.joinpath("indicators", "qc", "qc_error.txt")
+    with open(error_file, "w") as e: pass
+
+    print("QC process started...")
+
+    error_count = 0
+    for row in df.iterrows():
+        row_errs = qc_by_row(row, error_file)
+        error_count = error_count + row_errs
+    
+
+    print(f"QC process complete: {str(error_count)} errors found. See {str(error_file)} for error log.")
+

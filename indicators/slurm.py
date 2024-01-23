@@ -185,7 +185,7 @@ if __name__ == "__main__":
 
     # make QC dir and "to-do" list for each model / scenario / indicator combination
     # the "w" accessor should overwrite any previous qc.txt files encountered
-    qc_dir = sbatch_dir.joinpath("qc")
+    qc_dir = slurm_dir.joinpath("indicators", "qc")
     qc_dir.mkdir(exist_ok=True)
     qc_file = qc_dir.joinpath("qc.csv")
     with open(qc_file, "w") as q: pass
@@ -227,4 +227,4 @@ if __name__ == "__main__":
                 #build expected indicator output filepath using fp template directly from config (identical to how output fp is built in indicators.py)
                 indicator_fp = out_dir.joinpath(model,scenario,indicator,indicator_tmp_fp.format(indicator=indicator, model=model, scenario=scenario)) 
                 with open(qc_file, "a") as f:
-                    f.write(f"{indicator_fp},{sbatch_out_fp}")
+                    f.write(f"{indicator},{indicator_fp},{sbatch_out_fp}")
