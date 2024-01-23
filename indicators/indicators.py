@@ -114,7 +114,7 @@ def compute_indicator(da, idx, coord_labels, kwargs={}):
     """Summarize a DataArray according to a specified index / aggregation function
 
     Args:
-        da (xarray.DataArray): the DataArray object containing the base variable data to b summarized according to aggr
+        da (xarray.DataArray): the DataArray object containing the base variable data to be summarized according to aggr
         idx (str): String corresponding to the name of the indicator to compute (assumes value is equal to the name of the corresponding global function)
         coord_labels (dict): dict with model and scenario as keys for labeling resulting xarray dataset coordinates.
         kwargs (dict): additional arguments for the index function being called
