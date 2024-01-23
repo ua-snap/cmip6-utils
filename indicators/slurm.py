@@ -188,7 +188,8 @@ if __name__ == "__main__":
     qc_dir = slurm_dir.joinpath("indicators", "qc")
     qc_dir.mkdir(exist_ok=True)
     qc_file = qc_dir.joinpath("qc.csv")
-    with open(qc_file, "w") as q: pass
+    with open(qc_file, "w") as q:
+        pass
 
     # TODO Make this utilize the luts.py file when indicators use the same data loaded as a single job
     for model in models:
@@ -223,8 +224,15 @@ if __name__ == "__main__":
                 write_sbatch_indicators(**sbatch_indicators_kwargs)
                 submit_sbatch(sbatch_fp)
 
-                #append indicator filepath and sbatch job filepath to qc file
-                #build expected indicator output filepath using fp template directly from config (identical to how output fp is built in indicators.py)
-                indicator_fp = out_dir.joinpath(model,scenario,indicator,indicator_tmp_fp.format(indicator=indicator, model=model, scenario=scenario)) 
+                # append indicator filepath and sbatch job filepath to qc file
+                # build expected indicator output filepath using fp template directly from config (identical to how output fp is built in indicators.py)
+                indicator_fp = out_dir.joinpath(
+                    model,
+                    scenario,
+                    indicator,
+                    indicator_tmp_fp.format(
+                        indicator=indicator, model=model, scenario=scenario
+                    ),
+                )
                 with open(qc_file, "a") as f:
                     f.write(f"{indicator},{indicator_fp},{sbatch_out_fp}")
