@@ -1,3 +1,11 @@
+"""Script for performing QC checks on files produced via indicators.py and their individual slurm job output files.
+This script uses the {out_dir}/qc/qc.csv file produced in the indicators/slurm.py script as a "to-do list" of files to check.
+QC errors are written to {out_dir}/qc/qc_error.txt. 
+
+Usage:
+    python qc.py --out_dir /beegfs/CMIP6/jdpaul3/scratch
+"""
+
 import argparse
 import pandas as pd
 import os
@@ -13,19 +21,20 @@ def qc_by_row(row, error_file):
     error_strings = []
 
     # QC 1: does the slurm job output file exist? And does it show success message?
-    # TODO: add a success string in "..._%j.out" files that can be quickly parsed
-    # this should be checked first, because if the slurm job failed all tests below will fail too!
     if os.path.isfile(row[2]) == False:
         error_strings.append(f"ERROR: Expected job output file {row[2]} not found.")
     else:
         pass
-    # parse output file for success message
+    # parse output file for success message in last line: "Job Completed"
+    with open(row[2], "r") as o:
+        if not o.read().splitlines()[-1] == 'Job Completed':
+            error_strings.append(f"ERROR: Slurm job not completed. See {row[2]}.")
 
     # QC 2: does the indicator .nc file exist?
     if os.path.isfile(row[1]) == False:
         error_strings.append(f"ERROR: Expected indicator file {row[1]} not found.")
 
-    # QC 2: do the indicator string, indicator .nc filename, and indicator variable name in dataset match?
+    # QC 3: do the indicator string, indicator .nc filename, and indicator variable name in dataset match?
     qc_indicator_string = row[0]
     fp = Path(row[1])
     fp_indicator_string = fp.parts[-1].split("_")[0]
@@ -45,7 +54,7 @@ def qc_by_row(row, error_file):
     # skip the final QC steps if the file could not be opened
     if ds_indicator_string != "ERROR":
 
-        # QC 3: do the unit attributes in the first year data array match expected values in the lookup table?
+        # QC 4: do the unit attributes in the first year data array match expected values in the lookup table?
         if (
             not ds[ds_indicator_string].isel(model=0, scenario=0, year=0).attrs
             == units_lu[qc_indicator_string]
@@ -54,7 +63,7 @@ def qc_by_row(row, error_file):
                 f"ERROR: Mismatch of unit dictionary found between dataset and lookup table in filename: {row[1]}."
             )
 
-        # QC 4: do the files contain reasonable values as defined in the lookup table?
+        # QC 5: do the files contain reasonable values as defined in the lookup table?
         min_val = ranges_lu[qc_indicator_string]["min"]
         max_val = ranges_lu[qc_indicator_string]["max"]
 
@@ -112,40 +121,3 @@ if __name__ == "__main__":
     print(
         f"QC process complete: {str(error_count)} errors found. See {str(error_file)} for error log."
     )
-
-
-# DRAFT VALIDATION FUNCTIONS FORMERLY IN INDICATORS.PY ..... should probably delete!
-# def validate_outputs(indicators, out_fps_to_validate):
-#     """Run some validations on a list of output filepaths."""
-#     # first validate that indicator input arguments are reflected in the number of output files, and their filenames.
-#     if len(indicators) == len(out_fps_to_validate):
-#         fp_inds = [fp.parts[-1].split("_")[0] for fp in out_fps_to_validate]
-#         if set(fp_inds).issubset(indicators):
-#             print("Success: File written for each indicator.")
-#         else:
-#             print("Fail: Missing indicator files. Check output directory.")
-#     else:
-#         print(
-#             "Fail: Number of indicators and number of output files not equal. Possible missing indicator files, check output directory."
-#         )
-
-#     # validate that files were modified in the last 10 minutes
-#     # this might be useful info if we are overwriting existing indicator files, to make sure we have actually created a new file
-#     # may need to be adjusted based on real processing times
-#     for fp in out_fps_to_validate:
-#         mod_time = datetime.datetime.fromtimestamp(Path(fp).stat().st_mtime)
-#         elapsed = datetime.datetime.now() - mod_time
-#         if elapsed.seconds < 600:
-#             print(f"Success: File {str(fp)} was modified in last 10 minutes.")
-#         else:
-#             print(
-#                 f"Fail: File {str(fp)} was modified over 10 minutes ago. If you are trying to overwrite an existing indicator file, it may not have worked."
-#             )
-
-#     # next validate that xarray can open each one of the output files.
-#     for fp in out_fps_to_validate:
-#         try:
-#             xr.open_dataset(fp)
-#             print("Success: File could be opened by xarray.")
-#         except:
-#             print("Fail: File could not be opened by xarray.")
