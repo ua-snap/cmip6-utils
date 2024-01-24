@@ -24,11 +24,15 @@ def qc_by_row(row, error_file):
     if os.path.isfile(row[2]) == False:
         error_strings.append(f"ERROR: Expected job output file {row[2]} not found.")
     else:
-        pass
-    # parse output file for success message in last line: "Job Completed"
-    with open(row[2], "r") as o:
-        if not o.read().splitlines()[-1] == 'Job Completed':
-            error_strings.append(f"ERROR: Slurm job not completed. See {row[2]}.")
+        with open(row[2], "r") as o:
+            print(row[2])
+            lines = o.read().splitlines()
+            print(lines[-1])
+            if len(lines) > 0:
+                if not lines[-1] == 'Job Completed':
+                    error_strings.append(f"ERROR: Slurm job not completed. See {row[2]}.")
+            else:
+                error_strings.append(f"ERROR: Slurm job output is empty. See {row[2]}.")
 
     # QC 2: does the indicator .nc file exist?
     if os.path.isfile(row[1]) == False:
@@ -105,7 +109,7 @@ if __name__ == "__main__":
     # build qc file path from out_dir argument and load qc file;
     # first row is indicator name, second row is indicators .nc filepath, third row is slurm job output filepath
     qc_file = out_dir.joinpath("qc", "qc.csv")
-    df = pd.read_csv(qc_file)
+    df = pd.read_csv(qc_file, header=None)
     # build error file path from SCRATCH_DIR and create error file
     error_file = out_dir.joinpath("qc", "qc_error.txt")
     with open(error_file, "w") as e:
