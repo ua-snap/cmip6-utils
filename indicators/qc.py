@@ -25,9 +25,7 @@ def qc_by_row(row, error_file):
         error_strings.append(f"ERROR: Expected job output file {row[2]} not found.")
     else:
         with open(row[2], "r") as o:
-            print(row[2])
             lines = o.read().splitlines()
-            print(lines[-1])
             if len(lines) > 0:
                 if not lines[-1] == 'Job Completed':
                     error_strings.append(f"ERROR: Slurm job not completed. See {row[2]}.")
