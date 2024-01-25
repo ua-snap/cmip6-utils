@@ -16,7 +16,6 @@ from luts import units_lu, ranges_lu
 
 
 def qc_by_row(row, error_file):
-
     # set up list to collect error strings
     error_strings = []
 
@@ -27,8 +26,10 @@ def qc_by_row(row, error_file):
         with open(row[2], "r") as o:
             lines = o.read().splitlines()
             if len(lines) > 0:
-                if not lines[-1] == 'Job Completed':
-                    error_strings.append(f"ERROR: Slurm job not completed. See {row[2]}.")
+                if not lines[-1] == "Job Completed":
+                    error_strings.append(
+                        f"ERROR: Slurm job not completed. See {row[2]}."
+                    )
             else:
                 error_strings.append(f"ERROR: Slurm job output is empty. See {row[2]}.")
 
@@ -56,12 +57,8 @@ def qc_by_row(row, error_file):
 
     # skip the final QC steps if the file could not be opened
     if ds is not None:
-
         # QC 4: do the unit attributes in the first year data array match expected values in the lookup table?
-        if (
-            not ds[ds_indicator_string].attrs
-            == units_lu[qc_indicator_string]
-        ):
+        if not ds[ds_indicator_string].attrs == units_lu[qc_indicator_string]:
             error_strings.append(
                 f"ERROR: Mismatch of unit dictionary found between dataset and lookup table in filename: {row[1]}."
             )
@@ -70,11 +67,15 @@ def qc_by_row(row, error_file):
         min_val = ranges_lu[qc_indicator_string]["min"]
         max_val = ranges_lu[qc_indicator_string]["max"]
 
-        if any(ds[ds_indicator_string].values < min_val):
+        if any(ds[ds_indicator_string].values < min_val) or all(
+            ds[ds_indicator_string].values < min_val
+        ):
             error_strings.append(
                 f"ERROR: Minimum values outside range in dataset: {row[1]}."
             )
-        if any(ds[ds_indicator_string].values > max_val):
+        if any(ds[ds_indicator_string].values > max_val) or all(
+            ds[ds_indicator_string].values > max_val
+        ):
             error_strings.append(
                 f"ERROR: Maximum values outside range in dataset: {row[1]}."
             )
@@ -102,7 +103,6 @@ def parse_args():
 
 
 if __name__ == "__main__":
-
     out_dir = parse_args()
 
     # build qc file path from out_dir argument and load qc file;
