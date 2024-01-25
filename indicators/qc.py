@@ -59,7 +59,7 @@ def qc_by_row(row, error_file):
 
         # QC 4: do the unit attributes in the first year data array match expected values in the lookup table?
         if (
-            not ds[ds_indicator_string].isel(model=0, scenario=0, year=0).attrs
+            not ds[ds_indicator_string].attrs
             == units_lu[qc_indicator_string]
         ):
             error_strings.append(
