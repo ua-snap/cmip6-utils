@@ -96,7 +96,10 @@ def convert_times_to_years(time_da):
             cftime.num2date(t / 1e9, "seconds since 1970-01-01")
             for t in time_da.values.astype(int)
         ]
-    elif isinstance(time_da.values[0], cftime._cftime.Datetime360Day,) or isinstance(
+    elif isinstance(
+        time_da.values[0],
+        cftime._cftime.Datetime360Day,
+    ) or isinstance(
         time_da.values[0],
         cftime._cftime.DatetimeNoLeap,
     ):
@@ -389,7 +392,6 @@ if __name__ == "__main__":
     out_fps_to_validate = []
     for idx in indicators_ds.data_vars:
         out_fp = out_dir.joinpath(
-            "output",
             model,
             scenario,
             idx,
