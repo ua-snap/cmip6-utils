@@ -55,7 +55,7 @@ def qc_by_row(row, error_file):
         )
 
     # skip the final QC steps if the file could not be opened
-    if ds_indicator_string != "ERROR":
+    if ds is not None:
 
         # QC 4: do the unit attributes in the first year data array match expected values in the lookup table?
         if (
