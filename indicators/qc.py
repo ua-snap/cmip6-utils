@@ -106,7 +106,7 @@ if __name__ == "__main__":
     out_dir = parse_args()
 
     # build qc file path from out_dir argument and load qc file;
-    # first row is indicator name, second row is indicators .nc filepath, third row is slurm job output filepath
+    # first column is indicator name, second column is indicators .nc filepath, third column is slurm job output filepath
     qc_file = out_dir.joinpath("qc", "qc.csv")
     df = pd.read_csv(qc_file, header=None)
     # build error file path from SCRATCH_DIR and create error file
