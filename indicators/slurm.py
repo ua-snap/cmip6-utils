@@ -180,14 +180,16 @@ if __name__ == "__main__":
         no_clobber,
     ) = parse_args()
 
+    output_dir = working_dir.joinpath("output")
+
     # make batch files for each model / scenario / variable combination
-    sbatch_dir = working_dir.joinpath("slurm")
+    sbatch_dir = output_dir.joinpath("slurm")
     sbatch_dir.mkdir(exist_ok=True)
     _ = [fp.unlink() for fp in sbatch_dir.glob("*.slurm")]
 
     # make QC dir and "to-do" list for each model / scenario / indicator combination
     # the "w" accessor should overwrite any previous qc.txt files encountered
-    qc_dir = working_dir.joinpath("qc")
+    qc_dir = output_dir.joinpath("qc")
     qc_dir.mkdir(exist_ok=True)
     qc_file = qc_dir.joinpath("qc.csv")
     with open(qc_file, "w") as q:
@@ -203,8 +205,6 @@ if __name__ == "__main__":
 
     # indicator script - replaces config.py params for now!
     indicators_script = f"{working_dir}/cmip6-utils/indicators/indicators.py"
-
-    output_dir = working_dir.joinpath("output")
 
     # TODO Make this utilize the luts.py file when indicators use the same data loaded as a single job
     for model in models:
