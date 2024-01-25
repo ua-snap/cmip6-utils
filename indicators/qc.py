@@ -73,7 +73,7 @@ def qc_by_row(row, error_file):
             error_strings.append(
                 f"ERROR: Minimum values outside range in dataset: {row[1]}."
             )
-        if True in np.unique(ds[ds_indicator_string].values > max_val):
+        if any(ds[ds_indicator_string].values > max_val):
             error_strings.append(
                 f"ERROR: Maximum values outside range in dataset: {row[1]}."
             )
