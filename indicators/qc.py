@@ -46,7 +46,8 @@ def qc_by_row(row, error_file):
         ds_indicator_string = list(ds.data_vars)[0]
     except:
         error_strings.append(f"ERROR: Could not open dataset: {row[1]}.")
-        ds_indicator_string = "ERROR"
+        ds_indicator_string = "None"
+        ds = None
 
     if not fp_indicator_string == ds_indicator_string == qc_indicator_string:
         error_strings.append(
