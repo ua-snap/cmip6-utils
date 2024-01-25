@@ -181,6 +181,7 @@ if __name__ == "__main__":
     ) = parse_args()
 
     output_dir = working_dir.joinpath("output")
+    output_dir.mkdir(exist_ok=True)
 
     # make batch files for each model / scenario / variable combination
     sbatch_dir = output_dir.joinpath("slurm")
