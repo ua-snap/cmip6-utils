@@ -70,11 +70,11 @@ def qc_by_row(row, error_file):
         min_val = ranges_lu[qc_indicator_string]["min"]
         max_val = ranges_lu[qc_indicator_string]["max"]
 
-        if any(ds[ds_indicator_string].values < min_val):
+        if (ds[ds_indicator_string].values < min_val).any():
             error_strings.append(
                 f"ERROR: Minimum values outside range in dataset: {row[1]}."
             )
-        if any(ds[ds_indicator_string].values > max_val):
+        if (ds[ds_indicator_string].values > max_val).any():
             error_strings.append(
                 f"ERROR: Maximum values outside range in dataset: {row[1]}."
             )
