@@ -22,7 +22,7 @@ import datetime
 # from xclim.indices.generic import threshold_count
 from xclim.indicators import atmos  # , icclim
 from config import *
-from luts import idx_varid_lu
+from luts import idx_varid_lu, varid_freqs
 
 
 def rx1day(pr):
@@ -198,16 +198,16 @@ def check_varid_indicator_compatibility(indicators, var_ids):
 
 def find_var_files_and_create_fp_dict(model, scenario, var_ids, input_dir, backup_dir):
     """Check that input files exist in the input directory. If not, check the backup directory. Output a dictionary of filepaths."""
-    # TO-DO: the frequency, currently "day", is hard-coded, although for future indicators
-    #  that rely on variables in other domains (e.g. ocean) that have other frequencies
-    #  (e.g. "Oday") this will fail. Perhaps use a lookup table to identify variables that don't use "day"
-    #  and run if/then routine to use correct frequency
-    frequency = "day"
 
-    # We build a dict to allow for possibility of more than one variable
+    # Lookup correct "day" frequency for each var id by searching for substring - this should grab "0day" and "SIday"
+    # We build dicts for frequency and filepath to allow for possibility of more than one variable
+    freq_di = {
+        var_id: [i for i in varid_freqs[var_id] if "day" in i] for var_id in var_ids
+        }
+
     fp_di = {
         var_id: list(
-            input_dir.joinpath(f"{model}/{scenario}/{frequency}/{var_id}").glob("*.nc")
+            input_dir.joinpath(f"{model}/{scenario}/{freq_di[var_id][0]}/{var_id}").glob("*.nc")
         )
         for var_id in var_ids
     }
@@ -222,7 +222,7 @@ def find_var_files_and_create_fp_dict(model, scenario, var_ids, input_dir, backu
     if len(missing_var_ids) > 0:
         bu_fp_di = {
             var_id: list(
-                backup_dir.joinpath(f"{model}/{scenario}/{frequency}/{var_id}").glob(
+                backup_dir.joinpath(f"{model}/{scenario}/{freq_di[var_id][0]}/{var_id}").glob(
                     "*.nc"
                 )
             )
@@ -233,11 +233,12 @@ def find_var_files_and_create_fp_dict(model, scenario, var_ids, input_dir, backu
         for k in bu_fp_di:
             if len(bu_fp_di[k]) == 0:
                 bu_missing_var_ids.append(k)
-        # If there are still variables with missing files, throw error that lists the missing files
+        # If there are still variables with missing files, collect error messages that list the missing files and raise exception
         if len(bu_missing_var_ids) > 0:
-            raise Exception(
-                f"Fail: No files found in input directory or backup directory for model: {model}, scenario: {scenario}, frequency: {frequency}, variable(s): {bu_missing_var_ids}"
-            )
+            messages = []
+            for var_id in bu_missing_var_ids:
+                messages.append(f"Fail: No files found in input directory or backup directory for model: {model}, scenario: {scenario}, frequency: {freq_di[var_id][0]}, variable: {var_id}")
+            raise Exception(str(messages))
         # If the files are found in backup directory, attempt to copy the entire tree to the input directory
         #  and add the filepaths to the filepath dictionary output
         else:
@@ -247,12 +248,12 @@ def find_var_files_and_create_fp_dict(model, scenario, var_ids, input_dir, backu
                 )
                 try:
                     shutil.copytree(
-                        backup_dir.joinpath(f"{model}/{scenario}/{frequency}/{var_id}"),
-                        input_dir.joinpath(f"{model}/{scenario}/{frequency}/{var_id}"),
+                        backup_dir.joinpath(f"{model}/{scenario}/{freq_di[var_id][0]}/{var_id}"),
+                        input_dir.joinpath(f"{model}/{scenario}/{freq_di[var_id][0]}/{var_id}"),
                     )
                     fp_di[var_id] = list(
                         input_dir.joinpath(
-                            f"{model}/{scenario}/{frequency}/{var_id}"
+                            f"{model}/{scenario}/{freq_di[var_id][0]}/{var_id}"
                         ).glob("*.nc")
                     )
                     no_files_copied = len(fp_di[var_id])
