@@ -217,58 +217,9 @@ def find_var_files_and_create_fp_dict(model, scenario, var_ids, input_dir, backu
     for k in fp_di:
         if len(fp_di[k]) == 0:
             missing_var_ids.append(k)
-    # If there are variables with missing files, check the backup directory
-    # Again we build a dict to allow for possibility of more than one variable with missing files
-    if len(missing_var_ids) > 0:
-        bu_fp_di = {
-            var_id: list(
-                backup_dir.joinpath(f"{model}/{scenario}/{freq_di[var_id][0]}/{var_id}").glob(
-                    "*.nc"
-                )
-            )
-            for var_id in missing_var_ids
-        }
-        # List variables that are missing files
-        bu_missing_var_ids = []
-        for k in bu_fp_di:
-            if len(bu_fp_di[k]) == 0:
-                bu_missing_var_ids.append(k)
-        # If there are still variables with missing files, collect error messages that list the missing files and raise exception
-        if len(bu_missing_var_ids) > 0:
-            messages = []
-            for var_id in bu_missing_var_ids:
-                messages.append(f"Fail: No files found in input directory or backup directory for model: {model}, scenario: {scenario}, frequency: {freq_di[var_id][0]}, variable: {var_id}")
-            raise Exception(str(messages))
-        # If the files are found in backup directory, attempt to copy the entire tree to the input directory
-        #  and add the filepaths to the filepath dictionary output
-        else:
-            for var_id in missing_var_ids:
-                print(
-                    f"No files found in input directory for variable: {var_id}, attempting to copy from backup directory..."
-                )
-                try:
-                    shutil.copytree(
-                        backup_dir.joinpath(f"{model}/{scenario}/{freq_di[var_id][0]}/{var_id}"),
-                        input_dir.joinpath(f"{model}/{scenario}/{freq_di[var_id][0]}/{var_id}"),
-                    )
-                    fp_di[var_id] = list(
-                        input_dir.joinpath(
-                            f"{model}/{scenario}/{freq_di[var_id][0]}/{var_id}"
-                        ).glob("*.nc")
-                    )
-                    no_files_copied = len(fp_di[var_id])
-                    if no_files_copied > 0:
-                        print(
-                            f"Success: {str(no_files_copied)} files successfully copied to input directory for variable: {var_id}."
-                        )
-                    else:
-                        print(
-                            f"Fail: No files copied to input directory for variable: {var_id}."
-                        )
-                except:
-                    raise Exception(
-                        f"Fail: Could not copy files from backup directory to input directory for variable {var_id}. Processing aborted."
-                    )
+    for var_id in missing_var_ids:
+        print(f"File not found in input directory: {fp_di[var_id]}. Process aborted.")
+        raise Exception(f"File not found in input directory: {fp_di[var_id]}. Process aborted.")
 
     return fp_di
 
