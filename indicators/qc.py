@@ -23,7 +23,9 @@ def qc_by_row(row, error_file):
     # QC 1: does the slurm job output file exist? And does it show success message?
     if os.path.isfile(row[2]) == False:
         error_strings.append(f"ERROR: Expected job output file {row[2]} not found.")
+        job_output_exists = None
     else:
+        job_output_exists = True
         with open(row[2], "r") as o:
             lines = o.read().splitlines()
             if len(lines) > 0:
@@ -37,50 +39,61 @@ def qc_by_row(row, error_file):
     # QC 2: does the indicator .nc file exist?
     if os.path.isfile(row[1]) == False:
         error_strings.append(f"ERROR: Expected indicator file {row[1]} not found.")
+        indicator_output_exists = None
+    else:
+        indicator_output_exists = True
 
-    # QC 3: do the indicator string, indicator .nc filename, and indicator variable name in dataset match?
-    qc_indicator_string = row[0]
-    fp = Path(row[1])
-    fp_indicator_string = fp.parts[-1].split("_")[0]
+    if job_output_exists is not None and indicator_output_exists is not None:
 
-    try:  # also checks that the dataset opens
-        ds = xr.open_dataset(fp)
-        ds_indicator_string = list(ds.data_vars)[0]
-    except:
-        error_strings.append(f"ERROR: Could not open dataset: {row[1]}.")
-        ds_indicator_string = "None"
-        ds = None
+        # QC 3: do the indicator string, indicator .nc filename, and indicator variable name in dataset match?
+        qc_indicator_string = row[0]
+        fp = Path(row[1])
+        fp_indicator_string = fp.parts[-1].split("_")[0]
 
-    if not fp_indicator_string == ds_indicator_string == qc_indicator_string:
-        error_strings.append(
-            f"ERROR: Mismatch of indicator strings found between parameter: {qc_indicator_string}, filename: {row[1]}, and dataset variable: {ds_indicator_string}."
-        )
+        try:  # also checks that the dataset opens
+            ds = xr.open_dataset(fp)
+            ds_indicator_string = list(ds.data_vars)[0]
+        except:
+            error_strings.append(f"ERROR: Could not open dataset: {row[1]}.")
+            ds = None
 
-    # skip the final QC steps if the file could not be opened
-    if ds is not None:
+        if ds is not None:
+            if not fp_indicator_string == ds_indicator_string == qc_indicator_string:
+                error_strings.append(
+                    f"ERROR: Mismatch of indicator strings found between parameter: {qc_indicator_string}, filename: {row[1]}, and dataset variable: {ds_indicator_string}."
+                )
 
-        # QC 4: do the unit attributes in the first year data array match expected values in the lookup table?
-        if not ds[ds_indicator_string].attrs == units_lu[qc_indicator_string]:
-            error_strings.append(
-                f"ERROR: Mismatch of unit dictionary found between dataset and lookup table in filename: {row[1]}."
-            )
+        # skip the final QC steps if the file could not be opened
+        if ds is not None:
 
-        # QC 5: do the files contain reasonable values as defined in the lookup table?
-        min_val = ranges_lu[qc_indicator_string]["min"]
-        max_val = ranges_lu[qc_indicator_string]["max"]
+            # QC 4: do the unit attributes in the first year data array match expected values in the lookup table?
 
-        if (ds[ds_indicator_string].values < min_val).any():
-            error_strings.append(
-                f"ERROR: Minimum values outside range in dataset: {row[1]}."
-            )
-        if (ds[ds_indicator_string].values > max_val).any():
-            error_strings.append(
-                f"ERROR: Maximum values outside range in dataset: {row[1]}."
-            )
+            ds_units = ds[ds_indicator_string].attrs["units"]
+            lu_units = units_lu[qc_indicator_string]
+
+            if not ds[ds_indicator_string].attrs["units"] == units_lu[qc_indicator_string]:
+                error_strings.append(
+                    f"ERROR: Mismatch of unit dictionary found between dataset and lookup table in filename: {row[1]}. {ds_units} and {lu_units}."
+                )
+
+            # QC 5: do the files contain reasonable values as defined in the lookup table?
+            min_val = ranges_lu[qc_indicator_string]["min"]
+            max_val = ranges_lu[qc_indicator_string]["max"]
+
+            if ((ds[ds_indicator_string].values < min_val) & (ds[ds_indicator_string].values != -9999)).any():
+                error_strings.append(
+                    f"ERROR: Minimum values outside range in dataset: {row[1]}."
+                )
+            if (ds[ds_indicator_string].values > max_val).any():
+                error_strings.append(
+                    f"ERROR: Maximum values outside range in dataset: {row[1]}."
+                )
 
     # Log the errors: write any errors into the error file
-    with open(error_file, "a") as e:
-        e.write(("\n".join(error_strings)))
+    if len(error_strings)>0:
+        with open(error_file, "a") as e:
+            e.write(("\n".join(error_strings)))
+            e.write("\n")
 
     return len(error_strings)
 

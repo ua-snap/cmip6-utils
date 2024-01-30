@@ -18,9 +18,8 @@ idx_varid_lu = {
     "rx1day": ["pr"],
 }
 
-# units dict for each indicator, used for QC
-# empty values are unitless indices, most likely a simple count (# of days, etc)
-units_lu = {"rx1day": {"units": "mm"}, "su": {"units":"d"}, "dw": {"units":"d"}, "ftc": {"units":"d"}}
+# units str for each indicator, used for QC
+units_lu = {"rx1day": "mm", "su": "d", "dw": "d", "ftc": "d"}
 
 # ranges dict for each indicator, used for QC
 # range references:
