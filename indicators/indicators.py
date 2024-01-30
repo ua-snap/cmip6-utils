@@ -206,11 +206,13 @@ def find_var_files_and_create_fp_dict(model, scenario, var_ids, input_dir, backu
     # We build dicts for frequency and filepath to allow for possibility of more than one variable
     freq_di = {
         var_id: [i for i in varid_freqs[var_id] if "day" in i] for var_id in var_ids
-        }
+    }
 
     fp_di = {
         var_id: list(
-            input_dir.joinpath(f"{model}/{scenario}/{freq_di[var_id][0]}/{var_id}").glob("*.nc")
+            input_dir.joinpath(
+                f"{model}/{scenario}/{freq_di[var_id][0]}/{var_id}"
+            ).glob("*.nc")
         )
         for var_id in var_ids
     }
@@ -222,7 +224,9 @@ def find_var_files_and_create_fp_dict(model, scenario, var_ids, input_dir, backu
             missing_var_ids.append(k)
     for var_id in missing_var_ids:
         print(f"File not found in input directory: {fp_di[var_id]}. Process aborted.")
-        raise Exception(f"File not found in input directory: {fp_di[var_id]}. Process aborted.")
+        raise Exception(
+            f"File not found in input directory: {fp_di[var_id]}. Process aborted."
+        )
 
     return fp_di
 
