@@ -12,8 +12,31 @@ import os
 import xarray as xr
 import numpy as np
 from pathlib import Path
-from luts import units_lu, ranges_lu
+from luts import units_lu, ranges_lu, idx_varid_lu
 
+
+def check_nodata(idx, output):
+    """Check for no data equivalence between inputs and outputs. 
+    Parse the filename to find indicator/model/scenario combo and locate appropriate input file(s).
+    Output True/False."""
+
+    ###########################################
+    #TODO: add filename parsing / input lookup!
+    input = xr.open_dataset(input_filepath_goes_here!)
+    var = idx_varid_lu[idx][0]
+    ###########################################
+
+    #get True/False array of nodata values from input; these should also be no data values in output
+    input_nodata = np.broadcast_to(np.isnan(input[var].sel(time=input["time"].values[0])), output[idx].shape)
+    #check if the actual output no data values match
+    #use dtypes to choose between -9999 and np.nan
+    if output[idx].dtype in [np.int32, np.int64]:
+        output_nodata = output[idx].values == -9999
+        return np.array_equal(output_nodata, input_nodata)
+    else:
+        output_nodata = output[idx].values == np.nan
+        return np.array_equal(output_nodata, input_nodata)
+    
 
 def qc_by_row(row, error_file):
 
@@ -88,6 +111,9 @@ def qc_by_row(row, error_file):
                 error_strings.append(
                     f"ERROR: Maximum values outside range in dataset: {row[1]}."
                 )
+
+            # QC 6: do the nodata cells in the output match nodata cells in the input?
+            if check_nodata(row[0], ds, )
 
     # Log the errors: write any errors into the error file
     if len(error_strings)>0:
