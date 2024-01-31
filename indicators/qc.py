@@ -66,7 +66,7 @@ def check_nodata_against_inputs(idx, output_fp, ds, in_dir):
 
 
 def qc_by_row(row, error_file, in_dir):
-    print(row[1])
+    print(f"Performing QC check on file: {row[1]}...")
 
     # set up list to collect error strings
     error_strings = []
@@ -74,7 +74,7 @@ def qc_by_row(row, error_file, in_dir):
     # QC 1: does the slurm job output file exist? And does it show success message?
     if os.path.isfile(row[2]) == False:
         error_strings.append(f"ERROR: Expected job output file {row[2]} not found.")
-        job_output_exists = None
+        job_output_exists = False
     else:
         job_output_exists = True
         with open(row[2], "r") as o:
@@ -90,11 +90,11 @@ def qc_by_row(row, error_file, in_dir):
     # QC 2: does the indicator .nc file exist?
     if os.path.isfile(row[1]) == False:
         error_strings.append(f"ERROR: Expected indicator file {row[1]} not found.")
-        indicator_output_exists = None
+        indicator_output_exists = False
     else:
         indicator_output_exists = True
 
-    if job_output_exists is not None and indicator_output_exists is not None:
+    if job_output_exists == True and indicator_output_exists == True:
 
         # QC 3: do the indicator string, indicator .nc filename, and indicator variable name in dataset match?
         qc_indicator_string = row[0]
@@ -123,17 +123,9 @@ def qc_by_row(row, error_file, in_dir):
                 not ds[ds_indicator_string].attrs["units"]
                 == units_lu[qc_indicator_string]
             ):
-                ds_units = ds[ds_indicator_string].attrs["units"]
-                lu_units = units_lu[qc_indicator_string]
-
                 error_strings.append(
-                    f"ERROR: Mismatch of unit dictionary found between dataset and lookup table in filename: {row[1]}. {ds_units} and {lu_units}."
+                    f"ERROR: Mismatch of unit dictionary found between dataset and lookup table in filename: {row[1]}."
                 )
-
-                del (
-                    ds_units,
-                    lu_units,
-                )  # delete to prevent resetting attr in next iteration!
 
             # QC 5: do the files contain reasonable values as defined in the lookup table?
             min_val = ranges_lu[qc_indicator_string]["min"]
@@ -158,6 +150,8 @@ def qc_by_row(row, error_file, in_dir):
                     error_strings.append(r)
                 else:
                     pass
+            
+            ds.close()
 
     # Log the errors: write any errors into the error file
     if len(error_strings) > 0:
