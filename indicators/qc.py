@@ -12,33 +12,56 @@ import os
 import xarray as xr
 import numpy as np
 from pathlib import Path
-from luts import units_lu, ranges_lu, idx_varid_lu
+from luts import units_lu, ranges_lu, idx_varid_lu, varid_freqs
 
 
-def check_nodata(idx, output):
+def check_nodata(idx, output_fp, ds, in_dir):
     """Check for no data equivalence between inputs and outputs. 
     Parse the filename to find indicator/model/scenario combo and locate appropriate input file(s).
-    Output True/False."""
+    Assumes that yearly .nc input files have the same no data extent, and uses the first file to define no data cells.
+    Outputs True/False."""
 
     ###########################################
     #TODO: add filename parsing / input lookup!
-    input = xr.open_dataset(input_filepath_goes_here!)
-    var = idx_varid_lu[idx][0]
-    ###########################################
 
-    #get True/False array of nodata values from input; these should also be no data values in output
-    input_nodata = np.broadcast_to(np.isnan(input[var].sel(time=input["time"].values[0])), output[idx].shape)
-    #check if the actual output no data values match
-    #use dtypes to choose between -9999 and np.nan
-    if output[idx].dtype in [np.int32, np.int64]:
-        output_nodata = output[idx].values == -9999
-        return np.array_equal(output_nodata, input_nodata)
-    else:
-        output_nodata = output[idx].values == np.nan
-        return np.array_equal(output_nodata, input_nodata)
+    #get list of variables used to compute indicator
+    vars = idx_varid_lu[idx]
+    print(vars)
+    input_nodata_arrays = []
+    for var in vars:
+        #parse output filepath and use parts to build input dir
+        freq = varid_freqs[var][0]
+        model, scenario = Path(output_fp).parts[7], Path(output_fp).parts[8]
+        path_to_input_dir = in_dir.joinpath(model, scenario, freq, var)
+        #get first .nc file from input dir
+        first_input_file = [f for f in path_to_input_dir.glob('**/*.nc')][0]
+        in_ds = xr.open_dataset(first_input_file)
+        #get True/False array of nodata values from input; these should also be no data values in output
+        input_nodata_array = np.broadcast_to(np.isnan(in_ds[var].sel(time=in_ds["time"].values[0])), ds[idx].shape)
+        input_nodata_arrays.append(input_nodata_array)
+
+    results = []
+    for i in input_nodata_arrays:
+        #check if the actual output no data values match input no data array
+        #use dtypes to choose between -9999 and np.nan
+        if ds[idx].dtype in [np.int32, np.int64]:
+            output_nodata = ds[idx].values == -9999
+            if np.array_equal(output_nodata, i) == False:
+                results.append(False)
+            else:
+                results.append(True)
+        else:
+            output_nodata = np.isnan(ds[idx].values)
+            if np.array_equal(output_nodata, i) == False:
+                results.append(False)
+            else:
+                results.append(True)
+
+    return results
+
     
 
-def qc_by_row(row, error_file):
+def qc_by_row(row, error_file, in_dir):
 
     # set up list to collect error strings
     error_strings = []
@@ -113,7 +136,10 @@ def qc_by_row(row, error_file):
                 )
 
             # QC 6: do the nodata cells in the output match nodata cells in the input?
-            if check_nodata(row[0], ds, )
+            if False in check_nodata(row[0], row[1], ds, in_dir):
+                error_strings.append(
+                    f"ERROR: No data cells in input variable(s) do not match no data cells in output dataset: {row[1]}."
+                )
 
     # Log the errors: write any errors into the error file
     if len(error_strings)>0:
@@ -134,14 +160,21 @@ def parse_args():
         required=True,
     )
 
+    parser.add_argument(
+        "--in_dir",
+        type=str,
+        help="Path to directory containing source input files",
+        required=True,
+    )
+
     args = parser.parse_args()
 
-    return Path(args.out_dir)
+    return Path(args.out_dir), Path(args.in_dir)
 
 
 if __name__ == "__main__":
 
-    out_dir = parse_args()
+    out_dir, in_dir = parse_args()
 
     # build qc file path from out_dir argument and load qc file;
     # first column is indicator name, second column is indicators .nc filepath, third column is slurm job output filepath
@@ -156,7 +189,7 @@ if __name__ == "__main__":
 
     error_count = 0
     for _index, row in df.iterrows():
-        row_errs = qc_by_row(row, error_file)
+        row_errs = qc_by_row(row, error_file, in_dir)
         error_count = error_count + row_errs
 
     print(
