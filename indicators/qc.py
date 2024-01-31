@@ -151,6 +151,9 @@ def qc_by_row(row, error_file, in_dir):
                 else:
                     pass
 
+            # Close ds
+            ds.close()
+
     # Log the errors: write any errors into the error file
     if len(error_strings) > 0:
         with open(error_file, "a") as e:
@@ -190,7 +193,7 @@ if __name__ == "__main__":
     # first column is indicator name, second column is indicators .nc filepath, third column is slurm job output filepath
     qc_file = out_dir.joinpath("qc", "qc.csv")
     df = pd.read_csv(qc_file, header=None)
-    # build error file path from SCRATCH_DIR and create error file
+    # build error file path from our_dir and create error file
     error_file = out_dir.joinpath("qc", "qc_error.txt")
     with open(error_file, "w") as e:
         pass
