@@ -62,7 +62,6 @@ def check_nodata(idx, output_fp, ds, in_dir):
     
 
 def qc_by_row(row, error_file, in_dir):
-
     # set up list to collect error strings
     error_strings = []
 
@@ -75,6 +74,10 @@ def qc_by_row(row, error_file, in_dir):
         with open(row[2], "r") as o:
             lines = o.read().splitlines()
             if len(lines) > 0:
+                if not lines[-1] == "Job Completed":
+                    error_strings.append(
+                        f"ERROR: Slurm job not completed. See {row[2]}."
+                    )
                 if not lines[-1] == "Job Completed":
                     error_strings.append(
                         f"ERROR: Slurm job not completed. See {row[2]}."
@@ -195,3 +198,4 @@ if __name__ == "__main__":
     print(
         f"QC process complete: {str(error_count)} errors found. See {str(error_file)} for error log."
     )
+

@@ -145,9 +145,9 @@ def parse_args():
         default=str(cmip6_dir.parent.joinpath("regrid")),
     )
     parser.add_argument(
-        "--out_dir",
+        "--working_dir",
         type=str,
-        help="Path to directory where indicators data should be written",
+        help="Path to directory where all underlying directories and files are written.",
         required=True,
     )
     parser.add_argument(
@@ -164,7 +164,7 @@ def parse_args():
         args.scenarios.split(" "),
         Path(args.input_dir),
         Path(args.backup_dir),
-        Path(args.out_dir),
+        Path(args.working_dir),
         args.no_clobber,
     )
 
@@ -176,18 +176,21 @@ if __name__ == "__main__":
         scenarios,
         input_dir,
         backup_dir,
-        out_dir,
+        working_dir,
         no_clobber,
     ) = parse_args()
 
+    output_dir = working_dir.joinpath("output")
+    output_dir.mkdir(exist_ok=True)
+
     # make batch files for each model / scenario / variable combination
-    sbatch_dir = out_dir.joinpath("slurm")
-    _ = [fp.unlink() for fp in sbatch_dir.glob("*.slurm")]
+    sbatch_dir = output_dir.joinpath("slurm")
     sbatch_dir.mkdir(exist_ok=True)
+    _ = [fp.unlink() for fp in sbatch_dir.glob("*.slurm")]
 
     # make QC dir and "to-do" list for each model / scenario / indicator combination
     # the "w" accessor should overwrite any previous qc.txt files encountered
-    qc_dir = out_dir.joinpath("qc")
+    qc_dir = output_dir.joinpath("qc")
     qc_dir.mkdir(exist_ok=True)
     qc_file = qc_dir.joinpath("qc.csv")
     with open(qc_file, "w") as q:
@@ -197,14 +200,12 @@ if __name__ == "__main__":
     sbatch_head_kwargs = {
         "partition": "t2small",
         "ncpus": 24,
-        "conda_init_script": "/beegfs/CMIP6/jdpaul3/scratch/cmip6-utils/indicators/conda_init.sh",
+        "conda_init_script": f"{working_dir}/cmip6-utils/indicators/conda_init.sh",
         "slurm_email": slurm_email,
     }
 
     # indicator script - replaces config.py params for now!
-    indicators_script = (
-        "/beegfs/CMIP6/jdpaul3/scratch/cmip6-utils/indicators/indicators.py"
-    )
+    indicators_script = f"{working_dir}/cmip6-utils/indicators/indicators.py"
 
     # TODO Make this utilize the luts.py file when indicators use the same data loaded as a single job
     for model in models:
@@ -232,7 +233,7 @@ if __name__ == "__main__":
                     "scenario": scenario,
                     "input_dir": input_dir,
                     "indicators_script": indicators_script,
-                    "indicators_dir": out_dir,
+                    "indicators_dir": output_dir,
                     "no_clobber": no_clobber,
                     "sbatch_head": sbatch_head,
                 }
@@ -241,8 +242,7 @@ if __name__ == "__main__":
 
                 # append indicator filepath and sbatch job filepath to qc file
                 # build expected indicator output filepath using fp template directly from config (identical to how output fp is built in indicators.py) plus job ID from submit_sbatch() above
-                indicator_fp = out_dir.joinpath(
-                    "output",
+                indicator_fp = output_dir.joinpath(
                     model,
                     scenario,
                     indicator,
