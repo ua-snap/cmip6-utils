@@ -16,7 +16,6 @@ from luts import units_lu, ranges_lu
 
 
 def qc_by_row(row, error_file):
-
     # set up list to collect error strings
     error_strings = []
 
@@ -58,7 +57,6 @@ def qc_by_row(row, error_file):
 
     # skip the final QC steps if the file could not be opened
     if ds is not None:
-
         # QC 4: do the unit attributes in the first year data array match expected values in the lookup table?
         if not ds[ds_indicator_string].attrs == units_lu[qc_indicator_string]:
             error_strings.append(
@@ -101,7 +99,6 @@ def parse_args():
 
 
 if __name__ == "__main__":
-
     out_dir = parse_args()
 
     # build qc file path from out_dir argument and load qc file;
