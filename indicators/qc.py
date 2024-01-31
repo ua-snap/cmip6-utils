@@ -115,8 +115,7 @@ def qc_by_row(row, error_file, in_dir):
         # skip the final QC steps if the file could not be opened
         if ds is not None:
 
-            # QC 4: do the unit attributes in the first year data array match expected values in the lookup table?
-
+            # QC 4: do the unit attributes in the data array match expected values in the lookup table?
             ds_units = ds[ds_indicator_string].attrs["units"]
             lu_units = units_lu[qc_indicator_string]
 
