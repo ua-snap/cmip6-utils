@@ -78,10 +78,6 @@ def qc_by_row(row, error_file, in_dir):
                     error_strings.append(
                         f"ERROR: Slurm job not completed. See {row[2]}."
                     )
-                if not lines[-1] == "Job Completed":
-                    error_strings.append(
-                        f"ERROR: Slurm job not completed. See {row[2]}."
-                    )
             else:
                 error_strings.append(f"ERROR: Slurm job output is empty. See {row[2]}.")
 
