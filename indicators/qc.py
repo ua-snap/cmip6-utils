@@ -14,6 +14,7 @@ import numpy as np
 from pathlib import Path
 from luts import units_lu, ranges_lu, idx_varid_lu, varid_freqs
 
+
 def check_nodata_against_inputs(idx, output_fp, ds, in_dir):
     """Check for no data equivalence between inputs and outputs.
     Parse the filename to find indicator/model/scenario combo and locate appropriate input file(s).
@@ -94,7 +95,6 @@ def qc_by_row(row, error_file, in_dir):
         indicator_output_exists = True
 
     if job_output_exists == True and indicator_output_exists == True:
-
         # QC 3: do the indicator string, indicator .nc filename, and indicator variable name in dataset match?
         qc_indicator_string = row[0]
         fp = Path(row[1])
@@ -115,7 +115,6 @@ def qc_by_row(row, error_file, in_dir):
 
         # skip the final QC steps if the file could not be opened
         if ds is not None:
-
             # QC 4: do the unit attributes in the data array match expected values in the lookup table?
 
             if (
@@ -184,14 +183,13 @@ def parse_args():
 
 
 if __name__ == "__main__":
-
     out_dir, in_dir = parse_args()
 
     # build qc file path from out_dir argument and load qc file;
     # first column is indicator name, second column is indicators .nc filepath, third column is slurm job output filepath
     qc_file = out_dir.joinpath("qc", "qc.csv")
     df = pd.read_csv(qc_file, header=None)
-    # build error file path from our_dir and create error file
+    # build error file path from out_dir and create error file
     error_file = out_dir.joinpath("qc", "qc_error.txt")
     with open(error_file, "w") as e:
         pass
