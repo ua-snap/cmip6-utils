@@ -14,7 +14,6 @@ import numpy as np
 from pathlib import Path
 from luts import units_lu, ranges_lu, idx_varid_lu, varid_freqs
 
-
 def check_nodata_against_inputs(idx, output_fp, ds, in_dir):
     """Check for no data equivalence between inputs and outputs.
     Parse the filename to find indicator/model/scenario combo and locate appropriate input file(s).
