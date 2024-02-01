@@ -77,7 +77,7 @@ def ftc(tasmax, tasmin):
     Returns:
         Number of freeze-thaw days for each year
     """
-    return atmos.daily_freezethaw_cycles(
+    ftc = atmos.daily_freezethaw_cycles(
         tasmin,
         tasmax,
         thresh_tasmin="0 degC",
@@ -85,6 +85,13 @@ def ftc(tasmax, tasmin):
         op_tasmin="<=",
         op_tasmax=">",
     )
+
+    # change units from "days" to "d" to prevent decode_cf issues when opening ftc output later on
+    # change dtype from float to integer
+    ftc.attrs["units"] = "d"
+    ftc = ftc.astype(np.int64)
+
+    return ftc
 
 
 def convert_times_to_years(time_da):
@@ -122,11 +129,12 @@ def compute_indicator(da, idx, coord_labels, kwargs={}):
     Returns:
         A new data array with dimensions year, latitude, longitude, in that order containing the summarized information
     """
+    # dask array must be computed here in order to change nodata values
     new_da = (
         globals()[idx](da, **kwargs)
         # .transpose("time", "lat", "lon")
         # .reset_coords(["longitude", "latitude", "height"], drop=True)
-    )
+    ).compute()
     new_da.name = idx
     # get the nodata mask from first time slice
     nodata = np.broadcast_to(np.isnan(da.sel(time=da["time"].values[0])), new_da.shape)
@@ -343,7 +351,7 @@ if __name__ == "__main__":
         backup_dir=backup_dir,
     )
 
-    indicators_ds = xr.merge(run_compute_indicators(**kwargs)).compute()
+    indicators_ds = xr.merge(run_compute_indicators(**kwargs))
     # write each indicator to its own file for now
     out_fps_to_validate = []
     for idx in indicators_ds.data_vars:

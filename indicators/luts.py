@@ -18,18 +18,17 @@ idx_varid_lu = {
     "rx1day": ["pr"],
 }
 
-# units dict for each indicator, used for QC
-# empty values are unitless indices, most likely a simple count (# of days, etc)
-units_lu = {"rx1day": {"units": "mm"}, "su": {}, "dw": {}, "ftc": {}}
+# units str for each indicator, used for QC
+units_lu = {"rx1day": "mm", "su": "d", "dw": "d", "ftc": "d"}
 
 # ranges dict for each indicator, used for QC
 # range references:
 # rx1day: max recorded in historical record is <400mm(16") https://journals.ametsoc.org/view/journals/bams/95/8/bams-d-13-00027.1.xml#:~:text=The%20National%20Climatic%20Data%20Center,single%20calendar%2Dday%20precipitation%20amount.
 ranges_lu = {
     "rx1day": {"min": 0, "max": 500},
-    "su": {"min": 0, "max": 100},
-    "dw": {"min": 0, "max": 100},
-    "ftc": {"min": 0, "max": 100},
+    "su": {"min": 0, "max": 200},
+    "dw": {"min": 0, "max": 275},
+    "ftc": {"min": 0, "max": 250},
 }
 
 # lookup table of frequencies by variable id
