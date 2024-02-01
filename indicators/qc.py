@@ -150,7 +150,7 @@ def qc_by_row(row, error_file, in_dir):
                     error_strings.append(r)
                 else:
                     pass
-            
+
             ds.close()
 
     # Log the errors: write any errors into the error file
