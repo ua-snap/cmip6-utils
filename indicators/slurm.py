@@ -86,10 +86,10 @@ def write_sbatch_indicators(
         pycommands += "\n\n"
 
     pycommands += (
-        "if [ $? -ne 0 ]; then"
-        "echo 'Error: Indicator generation failed.'"
-        "exit 1"
-        "fi"
+        "if [ $? -ne 0 ]; then;"
+        "echo 'Error: Indicator generation failed.';"
+        "exit 1;"
+        "fi;"
     )
     pycommands += (
         f"echo End {indicator} indicator generation && date\n" "echo Job Completed"
