@@ -185,9 +185,9 @@ if __name__ == "__main__":
         input_dir,
         reference_dir,
         working_dir,
-        no_clobber,
         partition,
         ncpus,
+        no_clobber,
     ) = parse_args()
 
     working_dir.mkdir(exist_ok=True)
