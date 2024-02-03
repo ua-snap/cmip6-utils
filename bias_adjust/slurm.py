@@ -47,6 +47,7 @@ def write_sbatch_biasadjust(
     model,
     scenario,
     input_dir,
+    reference_dir,
     biasadjust_script,
     output_dir,
     no_clobber,
@@ -219,7 +220,7 @@ if __name__ == "__main__":
                 )
                 # excluding node 138 until issue resolved
                 sbatch_head = make_sbatch_head(**sbatch_head_kwargs)
-                sbatch_indicators_kwargs = {
+                sbatch_biasadjust_kwargs = {
                     "sbatch_fp": sbatch_fp,
                     "sbatch_out_fp": sbatch_out_fp,
                     "var_id": var_id,
@@ -232,7 +233,7 @@ if __name__ == "__main__":
                     "no_clobber": no_clobber,
                     "sbatch_head": sbatch_head,
                 }
-                write_sbatch_biasadjust(**sbatch_indicators_kwargs)
+                write_sbatch_biasadjust(**sbatch_biasadjust_kwargs)
                 job_id = submit_sbatch(sbatch_fp)
 
                 sbatch_out_fp_with_jobid = sbatch_dir.joinpath(
