@@ -5,14 +5,13 @@ import subprocess
 from pathlib import Path
 
 
-def make_sbatch_head(partition, conda_init_script, ncpus, exclude_nodes=None):
+def make_sbatch_head(partition, conda_init_script, ncpus):
     """Make a string of SBATCH commands that can be written into a .slurm script
 
     Args:
         partition (str): name of the partition to use
         conda_init_script (path_like): path to a script that contains commands for initializing the shells on the compute nodes to use conda activate
         ncpus (int): number of cpus to request
-        exclude_nodes (str): comma-separated string of nodes to exclude
 
     Returns:
         sbatch_head (str): string of SBATCH commands ready to be used as parameter in sbatch-writing functions. The following gaps are left for filling with .format:
@@ -22,7 +21,6 @@ def make_sbatch_head(partition, conda_init_script, ncpus, exclude_nodes=None):
     sbatch_head = (
         "#!/bin/sh\n"
         "#SBATCH --nodes=1\n"
-        f"#SBATCH --exclude={exclude_nodes}\n"
         f"#SBATCH --cpus-per-task={ncpus}\n"
         "#SBATCH --mail-type=FAIL\n"
         f"#SBATCH -p {partition}\n"
