@@ -147,6 +147,16 @@ def parse_args():
         help="Path to working directory, where outputs and ancillary files will be written",
     )
     parser.add_argument(
+        "--partition",
+        type=str,
+        help="slurm partition",
+    )
+    parser.add_argument(
+        "--ncpus",
+        type=str,
+        help="CPUs per node",
+    )
+    parser.add_argument(
         "--no-clobber",
         action="store_true",
         default=False,
@@ -161,6 +171,8 @@ def parse_args():
         Path(args.input_dir),
         Path(args.reference_dir),
         Path(args.working_dir),
+        args.partition,
+        args.ncpus,
         args.no_clobber,
     )
 
@@ -174,6 +186,8 @@ if __name__ == "__main__":
         reference_dir,
         working_dir,
         no_clobber,
+        partition,
+        ncpus,
     ) = parse_args()
 
     working_dir.mkdir(exist_ok=True)
@@ -195,8 +209,8 @@ if __name__ == "__main__":
 
     # sbatch head - replaces config.py params for now!
     sbatch_head_kwargs = {
-        "partition": "t2small",
-        "ncpus": 24,
+        "partition": partition,
+        "ncpus": ncpus,
         "conda_init_script": working_dir.joinpath(
             "/cmip6-utils/indicators/conda_init.sh"
         ),
