@@ -7,7 +7,7 @@ from luts import sim_ref_var_lu
 
 
 def generate_adjusted_filepaths(output_dir, var_ids, models, scenarios, years):
-    """Generate the adjusted filepaths
+    """Generate the adjusted filepaths. Args are lists to allow multiple combinations
 
     Args:
         output_dir (pathlib.Path): path to parent output directory
@@ -25,7 +25,7 @@ def generate_adjusted_filepaths(output_dir, var_ids, models, scenarios, years):
             model,
             scenario,
             var_id,
-            year,
+            str(year),
             tmp_fn.format(model=model, scenario=scenario, var_id=var_id, year=year),
         )
         for model, scenario, var_id, year in product(models, scenarios, var_ids, years)
@@ -79,9 +79,9 @@ def parse_args():
     args = parser.parse_args()
 
     return (
-        args.var_ids.split(" "),
-        args.models.split(" "),
-        args.scenarios.split(" "),
+        args.var_id,
+        args.model,
+        args.scenario,
         Path(args.input_dir),
         Path(args.reference_dir),
         Path(args.output_dir),
