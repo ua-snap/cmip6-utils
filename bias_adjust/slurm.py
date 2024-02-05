@@ -51,7 +51,7 @@ def write_sbatch_biasadjust(
     no_clobber,
     sbatch_head,
 ):
-    """Write an sbatch script for executing the indicators script for a given group and variable, executes for a given list of years
+    """Write an sbatch script for executing the bias adjustment script for a given model, scenario, and variable
 
     Args:
         sbatch_fp (path_like): path to .slurm script to write sbatch commands to
@@ -199,7 +199,7 @@ if __name__ == "__main__":
     sbatch_dir.mkdir(exist_ok=True)
     _ = [fp.unlink() for fp in sbatch_dir.glob("*.slurm")]
 
-    # make QC dir and "to-do" list for each model / scenario / indicator combination
+    # make QC dir and "to-do" list for each model / scenario / variable combination
     # the "w" accessor should overwrite any previous qc.txt files encountered
     qc_dir = output_dir.joinpath("qc")
     qc_dir.mkdir(exist_ok=True)
@@ -212,7 +212,7 @@ if __name__ == "__main__":
         "partition": partition,
         "ncpus": ncpus,
         "conda_init_script": working_dir.joinpath(
-            "/cmip6-utils/indicators/conda_init.sh"
+            "/cmip6-utils/bias_adjust/conda_init.sh"
         ),
     }
 
