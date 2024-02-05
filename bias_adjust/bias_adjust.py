@@ -1,7 +1,7 @@
 """"""
 
 import argparse
-from itertools import Product
+from itertools import product
 from pathlib import Path
 from luts import sim_ref_var_lu
 
@@ -28,7 +28,7 @@ def generate_adjusted_filepaths(output_dir, var_ids, models, scenarios, years):
             year,
             tmp_fn.format(model=model, scenario=scenario, var_id=var_id, year=year),
         )
-        for model, scenario, var_id, year in Product(models, scenarios, var_ids, years)
+        for model, scenario, var_id, year in product(models, scenarios, var_ids, years)
     ]
 
     return adj_fps
