@@ -212,7 +212,7 @@ if __name__ == "__main__":
         "partition": partition,
         "ncpus": ncpus,
         "conda_init_script": working_dir.joinpath(
-            "/cmip6-utils/bias_adjust/conda_init.sh"
+            "cmip6-utils/bias_adjust/conda_init.sh"
         ),
     }
 
