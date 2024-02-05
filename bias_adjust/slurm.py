@@ -191,17 +191,17 @@ if __name__ == "__main__":
     ) = parse_args()
 
     working_dir.mkdir(exist_ok=True)
-    output_dir = working_dir.joinpath("adjusted")
+    output_dir = working_dir.joinpath("bias_adjust")
     output_dir.mkdir(exist_ok=True)
 
     # make batch files for each model / scenario / variable combination
-    sbatch_dir = working_dir.joinpath("slurm")
+    sbatch_dir = output_dir.joinpath("slurm")
     sbatch_dir.mkdir(exist_ok=True)
     _ = [fp.unlink() for fp in sbatch_dir.glob("*.slurm")]
 
     # make QC dir and "to-do" list for each model / scenario / indicator combination
     # the "w" accessor should overwrite any previous qc.txt files encountered
-    qc_dir = working_dir.joinpath("qc")
+    qc_dir = output_dir.joinpath("qc")
     qc_dir.mkdir(exist_ok=True)
     qc_file = qc_dir.joinpath("qc.csv")
     # remove exisitng
