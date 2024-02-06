@@ -1,9 +1,15 @@
 """"""
 
 import argparse
+import multiprocessing as mp
 from itertools import product
 from pathlib import Path
-from luts import sim_ref_var_lu
+import xarray as xr
+import dask
+from dask.distributed import LocalCluster
+from xclim import sdba
+from xclim.sdba.detrending import LoessDetrend
+from luts import sim_ref_var_lu, varid_adj_kind_lu
 
 
 def generate_adjusted_filepaths(output_dir, var_ids, models, scenarios, years):
@@ -100,6 +106,7 @@ if __name__ == "__main__":
         no_clobber,
     ) = parse_args()
 
+    # get reference files
     ref_var_id = sim_ref_var_lu[var_id]
     ref_start_year = 1993
     ref_end_year = 2022
@@ -111,6 +118,7 @@ if __name__ == "__main__":
         for year in ref_years
     ]
 
+    # get modeled historical files
     hist_start_year = 1993
     hist_end_year = 2014
     hist_years = list(range(hist_start_year, hist_end_year + 1))
@@ -130,6 +138,7 @@ if __name__ == "__main__":
         for year in hist_years
     ]
 
+    # get modeled projected files for the remainder of reference period not available in modeled historical
     # these are the years we will be including from ScenarioMIP projections to match the reference period
     sim_ref_start_year = 2015
     sim_ref_end_year = 2022
@@ -148,7 +157,68 @@ if __name__ == "__main__":
         for year in sim_ref_years
     ]
 
-    adj_fps = generate_adjusted_filepaths(
-        output_dir, [var_id], [model], [scenario], ref_years
-    )
-    print(adj_fps)
+    # get all remaining projected files
+    sim_start_year = 2023
+    sim_end_year = 2100
+    sim_years = list(range(sim_start_year, sim_end_year + 1))
+    sim_fps = [
+        input_dir.joinpath(
+            model,
+            scenario,
+            "day",
+            var_id,
+            cmip6_tmp_fn.format(
+                var_id=var_id, model=model, scenario=scenario, year=year
+            ),
+        )
+        for year in sim_ref_years
+    ]
+
+    kind = varid_adj_kind_lu[var_id]
+
+    # suggestion from dask for ignoring large chunk warnings
+    with dask.config.set(**{"array.slicing.split_large_chunks": False}):
+        with LocalCluster(
+            n_workers=int(0.9 * mp.cpu_count()),
+            memory_limit="4GB",
+        ) as cluster:
+            # open connection to data
+            hist_ds = xr.open_mfdataset(hist_fps + sim_ref_fps)
+            proj_ds = xr.open_mfdataset(sim_fps)
+
+            # convert calendar to noleap to match CMIP6
+            ref_ds = xr.open_mfdataset(ref_fps).convert_calendar("noleap")
+            # need to re-chunk the data - cannot have multiple chunks along the adjustment dimension (time)
+            ref = ref_ds[ref_var_id]
+            hist = hist_ds[var_id]
+            ref.data = ref.data.rechunk({0: -1, 1: 20, 2: 20})
+            hist.data = hist.data.rechunk({0: -1, 1: 20, 2: 20})
+
+            dqm = sdba.DetrendedQuantileMapping.train(
+                ref, hist, nquantiles=50, group="time.dayofyear", window=31, kind=kind
+            )
+            # Create the detrending object
+            det = LoessDetrend(
+                group="time.dayofyear", d=0, niter=1, f=0.2, weights="tricube"
+            )
+
+            # create a dataset containing all modeled data to be adjusted
+            # need to rechunk this one too, same reason as for training data
+            sim = xr.merge([hist, proj_ds[var_id]])[var_id]
+            sim.data = sim.data.rechunk({0: -1, 1: 20, 2: 20})
+            scen = dqm.adjust(
+                sim, extrapolation="constant", interp="nearest", detrend=det
+            ).compute()
+
+    print("adjustment complete, writing data")
+
+    adj_years = ref_years + sim_years
+    # now write the adjusted data to disk by year
+    for year in adj_years:
+        adj_fp = generate_adjusted_filepaths(
+            output_dir, [var_id], [model], [scenario], [year]
+        )[0]
+        # ensure dir exists before writing
+        adj_fp.parent.mkdir(exist_ok=True, parents=True)
+        scen.sel(time=str(year)).to_dataset().to_netcdf(adj_fp)
+        print(year, "done", end=", ")
