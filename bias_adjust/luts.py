@@ -1,1 +1,4 @@
-sim_ref_var_lu = {"tasmax": "t2mmax", "tasmin": "t2mmin", "pr": "tp"}
+sim_ref_var_lu = {"tasmax": "t2mmax", "dtr": "dtr", "pr": "tp"}
+
+# lookup for "kind" arg of DQM training function
+varid_adj_kind_lu = {"tasmax": "+", "dtr": "*", "pr": "*"}
