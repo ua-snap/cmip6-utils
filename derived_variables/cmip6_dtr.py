@@ -55,8 +55,15 @@ if __name__ == "__main__":
         with xr.open_mfdataset(tasmax_fps) as tasmax_ds:
             with xr.open_mfdataset(tasmin_fps) as tasmin_ds:
                 dtr = tasmax_ds["tasmax"] - tasmin_ds["tasmin"]
+                units = tasmax_ds["tasmax"].attrs["units"]
+                assert units == tasmin_ds["tasmin"].attrs["units"]
 
         dtr.name = "dtr"
+        dtr.attrs = {
+            "long_name": "Daily temperature range",
+            "units": units,
+        }
+
         dtr_ds = dtr.to_dataset()
         dtr_ds.attrs = {
             k: v for k, v in tasmax_ds.attrs.items() & tasmin_ds.attrs.items()
