@@ -199,14 +199,6 @@ if __name__ == "__main__":
     sbatch_dir.mkdir(exist_ok=True)
     _ = [fp.unlink() for fp in sbatch_dir.glob("*.slurm")]
 
-    # make QC dir and "to-do" list for each model / scenario / variable combination
-    # the "w" accessor should overwrite any previous qc.txt files encountered
-    qc_dir = output_dir.joinpath("qc")
-    qc_dir.mkdir(exist_ok=True)
-    qc_file = qc_dir.joinpath("qc.csv")
-    # remove exisitng
-    qc_file.unlink(missing_ok=True)
-
     # sbatch head - replaces config.py params for now!
     sbatch_head_kwargs = {
         "partition": partition,
@@ -252,5 +244,3 @@ if __name__ == "__main__":
                     sbatch_out_fp.name.replace("%j", str(job_id))
                 )
                 job_ids.append(job_id)
-
-print(job_ids)
