@@ -1,7 +1,7 @@
 """Script for constructing slurm jobs for computing daily temperature range for CMIP6 data.
 
 Example usage:
-    python slurm_dtr.py --models "GFDL-ESM4 CESM2" --scenarios "ssp245 ssp585" --input_dir /import/beegfs/CMIP6/arctic-cmip6/regrid --working_dir /import/beegfs/CMIP6/kmredilla --partition debug --ncpus 24
+    python slurm_dtr.py --models "GFDL-ESM4 CESM2" --scenarios "ssp245 ssp585" --input_dir /import/beegfs/CMIP6/arctic-cmip6/regrid --working_dir /import/beegfs/CMIP6/kmredilla/dtr_processing --partition debug --ncpus 24
 """
 
 import argparse
@@ -44,10 +44,9 @@ def make_sbatch_head(partition, conda_init_script, ncpus):
 def write_sbatch_dtr(
     sbatch_fp,
     sbatch_out_fp,
-    model,
-    scenario,
-    input_dir,
     dtr_script,
+    tasmax_dir,
+    tasmin_dir,
     output_dir,
     sbatch_head,
 ):
@@ -56,26 +55,21 @@ def write_sbatch_dtr(
     Args:
         sbatch_fp (path_like): path to .slurm script to write sbatch commands to
         sbatch_out_fp (path_like): path to where sbatch stdout should be written
-        model (str): model being adjusted
-        scenario (str): scenario being adjusted
-        input_dir (path-like): path to directory of files to be adjusted (likely the regridded files)
         dtr_script (path_like): path to the script to be called to run the dtr computation
+        tasmax_dir (path-like): path to directory of tasmax files
+        tasmin_dir (path-like): path to directory of tasmin files (should correspond to files in tasmax_dir)
         output_dir (path-like): directory to write the dtr data
         sbatch_head (dict): string for sbatch head script
 
     Returns:
         None, writes the commands to sbatch_fp
-
-    Notes:
-        since these jobs seem to take on the order of 5 minutes or less, seems better to just run through all years once a node is secured for a job, instead of making a single job for every year / variable combination
     """
     pycommands = "\n"
     pycommands += (
         f"python {dtr_script} "
-        f"--model {model} "
-        f"--scenario {scenario} "
-        f"--input_dir {input_dir} "
-        f"--output_dir {output_dir} "
+        f"--tasmax_dir {tasmax_dir} "
+        f"--tasmin_dir {tasmin_dir} "
+        f"--output_dir {output_dir}\n"
     )
 
     pycommands += f"echo End dtr processing && date\n" "echo Job Completed"
@@ -160,7 +154,7 @@ if __name__ == "__main__":
     ) = parse_args()
 
     working_dir.mkdir(exist_ok=True)
-    output_dir = working_dir.joinpath("dtr_processing")
+    output_dir = working_dir.joinpath("dtr")
     output_dir.mkdir(exist_ok=True)
 
     # make batch files for each model / scenario / variable combination
@@ -177,12 +171,18 @@ if __name__ == "__main__":
         ),
     }
 
-    dtr_script = working_dir.joinpath("cmip6-utils/bias_adjust/cmip6_dtr.py")
-    dtr_script = Path("/home/kmredilla/repos/cmip6-utils/bias_adjust/cmip6_dtr.py")
+    dtr_script = working_dir.joinpath("cmip6-utils/derived_variables/cmip6_dtr.py")
+    dtr_script = Path(
+        "/home/kmredilla/repos/cmip6-utils/derived_variables/cmip6_dtr.py"
+    )
 
     job_ids = []
     for model in models:
         for scenario in scenarios:
+            # get directories for tasmax and tasmin
+            tasmax_dir = input_dir.joinpath(model, scenario, "day", "tasmax")
+            tasmin_dir = input_dir.joinpath(model, scenario, "day", "tasmin")
+
             # filepath for slurm script
             sbatch_fp = sbatch_dir.joinpath(f"{model}_{scenario}_process_dtr.slurm")
             # filepath for slurm stdout
@@ -191,17 +191,16 @@ if __name__ == "__main__":
             )
             # excluding node 138 until issue resolved
             sbatch_head = make_sbatch_head(**sbatch_head_kwargs)
-            sbatch_biasadjust_kwargs = {
+            sbatch_dtr_kwargs = {
                 "sbatch_fp": sbatch_fp,
                 "sbatch_out_fp": sbatch_out_fp,
-                "model": model,
-                "scenario": scenario,
-                "input_dir": input_dir,
                 "dtr_script": dtr_script,
+                "tasmax_dir": tasmax_dir,
+                "tasmin_dir": tasmin_dir,
                 "output_dir": output_dir,
                 "sbatch_head": sbatch_head,
             }
-            write_sbatch_dtr(**sbatch_biasadjust_kwargs)
+            write_sbatch_dtr(**sbatch_dtr_kwargs)
             job_id = submit_sbatch(sbatch_fp)
 
             sbatch_out_fp_with_jobid = sbatch_dir.joinpath(

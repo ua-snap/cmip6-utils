@@ -90,6 +90,6 @@ if __name__ == "__main__":
         for year in years:
             dtr_ds.sel(time=str(year)).to_netcdf(
                 output_dir.joinpath(
-                    dtr_tmp_fn.joinpath(model=model, scenario=scenario, year=year)
+                    dtr_tmp_fn.format(model=model, scenario=scenario, year=year)
                 )
             )
