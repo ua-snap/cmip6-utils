@@ -85,7 +85,7 @@ def add_global_attrs(ds, src_fp):
             # experimental idea - store attributes from source file in an attribute for reference
             # use a string as netcdf cannot be serialized if this is a dict
             # (it can be reconstructed with eval() if desired later)
-            "parent_attributes": str(ds.attrs),
+            "parent_attributes": str(src_ds.attrs),
         }
 
     ds.attrs = new_attrs
