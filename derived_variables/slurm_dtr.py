@@ -1,7 +1,7 @@
 """Script for constructing slurm jobs for computing daily temperature range for CMIP6 data.
 
 Example usage:
-    python slurm_dtr.py --models "GFDL-ESM4 CESM2" --scenarios "ssp245 ssp585" --input_dir /import/beegfs/CMIP6/arctic-cmip6/regrid --working_dir /import/beegfs/CMIP6/kmredilla/dtr_processing --partition debug --ncpus 24
+    python slurm_dtr.py --models "GFDL-ESM4 CESM2" --scenarios "ssp245 ssp585" --input_dir /import/beegfs/CMIP6/arctic-cmip6/regrid --working_dir /import/beegfs/CMIP6/kmredilla --partition debug --ncpus 24
 """
 
 import argparse
@@ -154,13 +154,15 @@ if __name__ == "__main__":
     ) = parse_args()
 
     working_dir.mkdir(exist_ok=True)
-    output_dir = working_dir.joinpath("dtr")
+    output_dir = working_dir.joinpath("dtr_processing")
     output_dir.mkdir(exist_ok=True)
 
     # make batch files for each model / scenario / variable combination
     sbatch_dir = output_dir.joinpath("slurm")
     sbatch_dir.mkdir(exist_ok=True)
     _ = [fp.unlink() for fp in sbatch_dir.glob("*.slurm")]
+    dtr_dir = output_dir.joinpath("dtr")
+    dtr_dir.mkdir(exist_ok=True)
 
     # sbatch head - replaces config.py params for now!
     sbatch_head_kwargs = {
@@ -197,7 +199,7 @@ if __name__ == "__main__":
                 "dtr_script": dtr_script,
                 "tasmax_dir": tasmax_dir,
                 "tasmin_dir": tasmin_dir,
-                "output_dir": output_dir,
+                "output_dir": dtr_dir,
                 "sbatch_head": sbatch_head,
             }
             write_sbatch_dtr(**sbatch_dtr_kwargs)
