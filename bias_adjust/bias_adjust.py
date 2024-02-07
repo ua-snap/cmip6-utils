@@ -82,7 +82,10 @@ def add_global_attrs(ds, src_fp):
             "contact": "uaf-snap-data-tools@alaska.edu",
             "Conventions": "CF-1.7",
             "creation_date": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
-            "parent_attributes": ds.attrs,
+            # experimental idea - store attributes from source file in an attribute for reference
+            # use a string as netcdf cannot be serialized if this is a dict
+            # (it can be reconstructed with eval() if desired later)
+            "parent_attributes": str(ds.attrs),
         }
 
     ds.attrs = new_attrs
@@ -252,7 +255,9 @@ if __name__ == "__main__":
             ["time", "lat", "lon", var_id]
         ]
         # get the source CMIP6 data file used for the attributes
-        src_fp = generate_cmip6_fp(input_dir, model, scenario, var_id, year)
+        src_scenario = "historical" if year < 2015 else scenario
+        src_fp = generate_cmip6_fp(input_dir, model, src_scenario, var_id, year)
         out_ds = add_global_attrs(out_ds, src_fp)
+        out_ds.to_netcdf(adj_fp)
 
         print(year, "done", end=", ")
