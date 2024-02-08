@@ -45,6 +45,7 @@ def write_sbatch_dtr(
     sbatch_fp,
     sbatch_out_fp,
     dtr_script,
+    dtr_test_script,
     tasmax_dir,
     tasmin_dir,
     output_dir,
@@ -55,7 +56,8 @@ def write_sbatch_dtr(
     Args:
         sbatch_fp (path_like): path to .slurm script to write sbatch commands to
         sbatch_out_fp (path_like): path to where sbatch stdout should be written
-        dtr_script (path_like): path to the script to be called to run the dtr computation
+        dtr_script (path_like): path to the script to be called to run the dtr processing
+        dtr_test_script (path_like): path to the script to be called to run the test script on the processed dtr outputs
         tasmax_dir (path-like): path to directory of tasmax files
         tasmin_dir (path-like): path to directory of tasmin files (should correspond to files in tasmax_dir)
         output_dir (path-like): directory to write the dtr data
@@ -72,7 +74,17 @@ def write_sbatch_dtr(
         f"--output_dir {output_dir}\n"
     )
 
-    pycommands += f"echo End dtr processing && date\n" "echo Job Completed"
+    pycommands += f"echo End dtr processing && date\n\n"
+    pycommands += f"echo begin dtr testing && date\n\n"
+
+    pycommands += (
+        f"python {dtr_test_script} "
+        f"--tasmax_dir {tasmax_dir} "
+        f"--tasmin_dir {tasmin_dir} "
+        f"--output_dir {output_dir}\n"
+    )
+
+    pycommands += f"echo End dtr testing && date\n" "echo Job Completed"
     commands = sbatch_head.format(sbatch_out_fp=sbatch_out_fp) + pycommands
 
     with open(sbatch_fp, "w") as f:
@@ -174,8 +186,15 @@ if __name__ == "__main__":
     }
 
     dtr_script = working_dir.joinpath("cmip6-utils/derived_variables/cmip6_dtr.py")
+    dtr_test_script = working_dir.joinpath(
+        "cmip6-utils/derived_variables/tests/test_cmip6_dtr.py"
+    )
+    # TODO: remove after testing!!
     dtr_script = Path(
         "/home/kmredilla/repos/cmip6-utils/derived_variables/cmip6_dtr.py"
+    )
+    dtr_test_script = Path(
+        "/home/kmredilla/repos/cmip6-utils/derived_variables/tests/test_cmip6_dtr.py"
     )
 
     job_ids = []
@@ -197,6 +216,7 @@ if __name__ == "__main__":
                 "sbatch_fp": sbatch_fp,
                 "sbatch_out_fp": sbatch_out_fp,
                 "dtr_script": dtr_script,
+                "dtr_test_script": dtr_test_script,
                 "tasmax_dir": tasmax_dir,
                 "tasmin_dir": tasmin_dir,
                 "output_dir": dtr_dir,
