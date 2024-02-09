@@ -185,16 +185,14 @@ if __name__ == "__main__":
         ),
     }
 
-    dtr_script = working_dir.joinpath("cmip6-utils/derived_variables/cmip6_dtr.py")
+    dtr_script = working_dir.joinpath("cmip6-utils/derived/cmip6_dtr.py")
     dtr_test_script = working_dir.joinpath(
-        "cmip6-utils/derived_variables/tests/test_cmip6_dtr.py"
+        "cmip6-utils/derived/tests/test_cmip6_dtr.py"
     )
     # TODO: remove after testing!!
-    dtr_script = Path(
-        "/home/kmredilla/repos/cmip6-utils/derived_variables/cmip6_dtr.py"
-    )
+    dtr_script = Path("/home/kmredilla/repos/cmip6-utils/derived/cmip6_dtr.py")
     dtr_test_script = Path(
-        "/home/kmredilla/repos/cmip6-utils/derived_variables/tests/test_cmip6_dtr.py"
+        "/home/kmredilla/repos/cmip6-utils/derived/tests/test_cmip6_dtr.py"
     )
 
     job_ids = []
