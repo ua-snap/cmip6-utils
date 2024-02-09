@@ -152,62 +152,64 @@ variables = {
 # For now we will just have a separate workflow for the WRF variables at a subdaily frequency
 #  instead of trying to wrap it into existing workflow for daily and monthly data.
 
-# The first inconsistency among modeling groups to note is that the "frequency" is either 6hr or 6hrPt
-# 6hrPt == "sampled 6 hourly, at specified time point within the time period"
-# The file naming scheme / directory structure is actually based off of the "table ID",
-#  which may or may not be the same the frequency.
-# There are three potential values here: "6hrLev", "6hrPlev", "6hrPlevPt"
-# For example, for ta (3D air temperature), the MPI-ESM1-2-* models use 6hrPlevPt and
-#  CESM2 uses 6hrLev, so we have to check for both in the audit
-# what's more is there is some inconsistency between variables, apparently - for example, MPI-ESM1-2-* models
-#  use 6hrPlev for hurs (relative humidity) and 6hrPlevPt for ta (temperature)
+# The first inconsistency among modeling groups to note is that
 #  so if there is more than one listed in the "freqs" list, that measn this inconsistency was seen in MetaGrid
 # was originall working with only 6-hour variables, but some had more availability for 3hr
+
+# there is a complete mess of "table IDs" used for each of these that are fairaly inconsistent across models and variables.
+# The file naming scheme / directory structure is based off of this.
+# so, we will provide a list of all possible subdaily table ID names, so that all may be checked every variable.
+
+# For example, for 6hr ta (3D air temperature), the MPI-ESM1-2-* models use 6hrPlevPt and
+#  CESM2 uses 6hrLev.
+# MPI-ESM1-2-* models use 6hrPlev for hurs (relative humidity) and 6hrPlevPt for ta (temperature)
+
+# here is the list of all possible subdaily table ID's
+subdaily_table_ids = [
+    "6hrLev",
+    "6hrPlev",
+    "6hrPlevPt",
+    "3hr",
+    "E3hr",
+    "E3hrPt",
+    "CF3hr",
+]
 wrf_variables = {
     "ta": {
         "name": "air_temperature",
-        "freqs": ["6hrLev", "6hrPlev", "6hrPlevPt", "E3hrPt"],
     },
-    # Ignore this one for now, it looks like there is no 3d relative humidity at subdaily
-    # "hur": {"name": "relative_humidity", "freqs": ["6hrLev", "6hrPlev", "6hrPLevPt"]},
-    # note, specific humidity is not needed if relative humidity is and vice versa
-    # no 3hr for hus
-    "hus": {"name": "specific_humidity", "freqs": ["6hrLev", "6hrPlev", "6hrPlevPt"]},
+    # It doesn't looke like there is any 3d relative humidity at subdaily, but included anyway
+    "hur": {"name": "relative_humidity"},
+    "hus": {"name": "specific_humidity"},
     "ua": {
         "name": "eastward_wind",
-        "freqs": ["6hrLev", "6hrPlev", "6hrPlevPt", "E3hrPt"],
     },
     "va": {
         "name": "northward_wind",
-        "freqs": ["6hrLev", "6hrPlev", "6hrPlevPt", "E3hrPt"],
     },
-    # no 3hr for zg
-    "zg": {"name": "geopotential_height", "freqs": ["6hrPlevPt"]},
-    # air pressure - this one is out for now, only available for a couple of models at 6hr
-    #  which are not in our ensemble
-    "ps": {"name": "surface_air_pressure", "freqs": ["6hrLev", "3hr"]},
-    "psl": {"name": "sea_level_pressure", "freqs": ["6hrPlev", "6hrPlevPt", "E3hr"]},
+    "zg": {"name": "geopotential_height"},
+    # air pressure - this one is out for now, only available for a couple of models which are not in out ensemble (at subdaily)
+    "ps": {"name": "surface_air_pressure"},
+    "psl": {"name": "sea_level_pressure"},
     # I think this is what we want for "skin temperature"
-    "ts": {"name": "surface_temperature", "freqs": ["6hrPlevPt", "CF3hr"]},
+    "ts": {"name": "surface_temperature"},
     # what is "soil height"? Surface altitude, orog? might be a fixed variable, ignoring for now
     # not sure if you can get "2m temperature" from "air_temperature", but will include tas as separate for now
     # Also this one is called "air_temperature" like the 3-D version, which is confusing
     # Definitely called near surface air temp in current tas files we have for monthly
-    "tas": {"name": "air_temperature", "freqs": ["6hrPlevPt", "6hrPlev", "3hr"]},
+    "tas": {"name": "air_temperature"},
     # unlike the 3D version, there does appear to be data for near surface relative humidity
     # no 3hr hurs though
-    "hurs": {"name": "relative_humidity", "freqs": ["6hrPlevPt", "6hrPlev"]},
-    "huss": {"name": "specific_humidity", "freqs": ["6hrPlevPt", "3hr"]},
-    "uas": {"name": "eastward_wind", "freqs": ["6hrPlevPt", "6hrPlev", "3hr", "E3hr"]},
-    "vas": {"name": "northward_wind", "freqs": ["6hrPlevPt", "6hrPlev", "3hr", "E3hr"]},
+    "hurs": {"name": "relative_humidity"},
+    "huss": {"name": "specific_humidity"},
+    "uas": {"name": "eastward_wind"},
+    "vas": {"name": "northward_wind"},
     # now we need soil moisture. This one seems tricky as there are multiple possibilities
+    # mrso, total_soil_moisture_content, is not available in subdaily
     "mrsos": {
         "name": "moisture_in_upper_portion_of_soil_column",
-        "freqs": ["6hrPlevPt", "3hr"],
     },
-    # mrso, total_soil_moisture_content, is not available in subdaily
-    # soil temperature, no 3hr
-    "tsl": {"name": "soil_temperature", "freqs": ["6hrPlevPt"]},
+    "tsl": {"name": "soil_temperature"},
 }
 
 globus_esgf_endpoints = {
