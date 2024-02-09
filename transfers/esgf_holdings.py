@@ -24,10 +24,15 @@ def arguments(argv):
     parser.add_argument(
         "--ncpus", type=int, help="Number of cores to use", required=False, default=8
     )
+    parser.add_argument(
+        "--wrf",
+        action="store_true",
+        help="Whether or not to audit holdings for WRF variables, at sub-daily resolutions.",
+    )
     args = parser.parse_args()
-    esgf_node, ncpus = args.node, args.ncpus
+    esgf_node, ncpus, wrf_vars = args.node, args.ncpus, args.wrf
 
-    return esgf_node, ncpus
+    return esgf_node, ncpus, wrf_vars
 
 
 def list_variants(tc, node_ep, node_prefix, activity, model, scenario):
@@ -126,14 +131,14 @@ def get_filenames(
     return row_di
 
 
-def make_holdings_table(tc, node_ep, node_prefix, variant_lut, ncpus):
+def make_holdings_table(tc, node_ep, node_prefix, variant_lut, ncpus, variable_lut):
     """Create a table of filename availability for all models, scenarios, variants, and variable names"""
     # generate lists of arguments from all combinations of variables, models, and scenarios
     args = []
     for i, row in variant_lut.iterrows():
         activity = "CMIP" if row["scenario"] == "historical" else "ScenarioMIP"
-        for var_id in variables:
-            for freq in variables[var_id]["freqs"]:
+        for var_id in variable_lut:
+            for freq in variable_lut[var_id]["freqs"]:
                 args.extend(
                     # make these into lists so we can iterate over variables/freqs and add
                     product(
@@ -158,7 +163,7 @@ def make_holdings_table(tc, node_ep, node_prefix, variant_lut, ncpus):
 
 
 if __name__ == "__main__":
-    esgf_node, ncpus = arguments(sys.argv)
+    esgf_node, ncpus, wrf_vars = arguments(sys.argv)
 
     # create an authorization client for Globus
     auth_client = globus_sdk.NativeAppAuthClient(CLIENT_ID)
@@ -191,7 +196,26 @@ if __name__ == "__main__":
             "Key error. Check that you have logged into the endpoint via the Globus app."
         )
 
-    # amke the holdings table
-    holdings_df = make_holdings_table(tc, node_ep, node_prefix, variant_lut, ncpus)
+    # make the holdings table
+    if wrf_vars:
+        variable_lut = wrf_variables
+        # to keep consistent with process for auditing standard variables,
+        #  we need to add a "freqs" key to each child dict in the WRF variable dict.
+        #  We will do so using the main list of all possible subdaily table IDs.
+        for var_id in variable_lut:
+            variable_lut[var_id]["freqs"] = subdaily_table_ids
+        outfn_suffix = "_wrf"
+    else:
+        variable_lut = variables
+        outfn_suffix = ""
 
-    holdings_df.to_csv(f"{esgf_node}_esgf_holdings.csv", index=False)
+    holdings_df = make_holdings_table(
+        tc=tc,
+        node_ep=node_ep,
+        node_prefix=node_prefix,
+        variant_lut=variant_lut,
+        ncpus=ncpus,
+        variable_lut=variable_lut,
+    )
+
+    holdings_df.to_csv(f"{esgf_node}_esgf_holdings{outfn_suffix}.csv", index=False)
