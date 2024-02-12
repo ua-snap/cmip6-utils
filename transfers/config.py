@@ -83,6 +83,7 @@ model_inst_lu = {
 # we will just use this dict as the reference for production variables.
 variables = {
     "tas": {"name": "near_surface_air_temperature", "freqs": ["Amon", "day"]},
+    "ts": {"name": "surface_temperature", "freqs": ["Amon", "day"]},
     "tasmax": {
         "name": "maximum_near_surface_air_temperature",
         "freqs": ["Amon", "day"],
@@ -109,7 +110,11 @@ variables = {
     "mrro": {"name": "total_runoff", "freqs": ["Amon", "day"]},
     "mrsos": {
         "name": "moisture_in_upper_portion_of_soil_column",
-        "freqs": ["Amon", "day"],
+        "freqs": ["Lmon", "day"],
+    },
+    "mrsol": {
+        "name": "moisture_in_upper_portion_of_soil_column",
+        "freqs": ["Emon", "Eday"],
     },
     "prsn": {"name": "snowfall_flux", "freqs": ["Amon", "day"]},
     "snd": {"name": "surface_snow_thickness", "freqs": ["Llmon", "Eday"]},
@@ -139,6 +144,8 @@ variables = {
     "clt": {"name": "cloud_area_fraction", "freqs": ["Amon", "day"]},
     "tos": {"name": "sea_surface_temperature", "freqs": ["Omon", "Oday"]},
     "siconc": {"name": "sea_ice_area_fraction", "freqs": ["SImon", "SIday"]},
+    # there is also "siconca", which has the same name, but the files are generally much smaller,
+    #  so they are likely a subset os summary in some way of the siconc data
     "sithick": {"name": "sea_ice_thickness", "freqs": ["SImon", "SIday"]},
     "hfls": {"name": "surface_upward_latent_heat_flux", "freqs": ["Amon", "day"]},
     "hfss": {"name": "surface_upward_sensible_heat_flux", "freqs": ["Amon", "day"]},
@@ -209,10 +216,6 @@ wrf_variables = {
     "huss": {"name": "specific_humidity"},
     "uas": {"name": "eastward_wind"},
     "vas": {"name": "northward_wind"},
-}
-
-# these variables do not appear to have subdaily data available, so this is just to keep them separate
-wrf_nondaily_variables = {
     # there are multiple soil moisture possibilities
     # mrso, total_soil_moisture_content, is not available in subdaily, also not listed by downscalers
     # this one was not selected by downscaling group
@@ -223,13 +226,10 @@ wrf_nondaily_variables = {
         # this one has three names used for the same variable ID: moisture_content_of_soil_layer,
         #  total_water_content_of_soil_layer, and mass_content_of_water_in_soil_layer
         # mass_content_of_water_in_soil_layer is the most common one apparently, so we will go with that for now
-        "name": "mass_content_of_water_in_soil_layer"
+        "name": "mass_content_of_water_in_soil_layer",
     },
     "tsl": {"name": "soil_temperature"},
-    "snw": {"name": "surface_snow_amount"},
-    "siconc": {"name": "sea_ice_area_fraction"}
-    # there is also "siconca", which has the same name, but the files are generally much smaller,
-    #  so they are likely a subset os summary in some way of the siconc data
+    # will not have the snw and siconc variables in here as we know there is no subdaily
 }
 
 globus_esgf_endpoints = {

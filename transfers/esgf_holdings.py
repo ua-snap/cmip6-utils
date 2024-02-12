@@ -4,6 +4,10 @@ The table resulting from this should have the following columns: model, scenario
 
 Usage:
     python esgf_holdings.py --node llnl --ncpus 24
+    
+    or
+
+    python esgf_holdings.py --node llnl --ncpus 24 --wrf
 """
 
 import argparse
