@@ -174,12 +174,17 @@ subdaily_table_ids = [
     "E3hrPt",
     "CF3hr",
 ]
+
+# the downlscalers ended up providing a list of CMIP6 variables for WRF during development of this one.
+#  So, I have commented out some variables that are mentioned in the WRF inputs spec but which were not
+#   included in their list, for visibility purposes
+
 wrf_variables = {
     "ta": {
         "name": "air_temperature",
     },
     # It doesn't looke like there is any 3d relative humidity at subdaily, but included anyway
-    "hur": {"name": "relative_humidity"},
+    # "hur": {"name": "relative_humidity"}, # not listed by downscalers
     "hus": {"name": "specific_humidity"},
     "ua": {
         "name": "eastward_wind",
@@ -200,16 +205,31 @@ wrf_variables = {
     "tas": {"name": "air_temperature"},
     # unlike the 3D version, there does appear to be data for near surface relative humidity
     # no 3hr hurs though
-    "hurs": {"name": "relative_humidity"},
+    # "hurs": {"name": "relative_humidity"}, # not listed by downscalers
     "huss": {"name": "specific_humidity"},
     "uas": {"name": "eastward_wind"},
     "vas": {"name": "northward_wind"},
-    # now we need soil moisture. This one seems tricky as there are multiple possibilities
-    # mrso, total_soil_moisture_content, is not available in subdaily
-    "mrsos": {
-        "name": "moisture_in_upper_portion_of_soil_column",
+}
+
+# these variables do not appear to have subdaily data available, so this is just to keep them separate
+wrf_nondaily_variables = {
+    # there are multiple soil moisture possibilities
+    # mrso, total_soil_moisture_content, is not available in subdaily, also not listed by downscalers
+    # this one was not selected by downscaling group
+    # "mrsos": {
+    #     "name": "moisture_in_upper_portion_of_soil_column",
+    # },
+    "mrsol": {
+        # this one has three names used for the same variable ID: moisture_content_of_soil_layer,
+        #  total_water_content_of_soil_layer, and mass_content_of_water_in_soil_layer
+        # mass_content_of_water_in_soil_layer is the most common one apparently, so we will go with that for now
+        "name": "mass_content_of_water_in_soil_layer"
     },
     "tsl": {"name": "soil_temperature"},
+    "snw": {"name": "surface_snow_amount"},
+    "siconc": {"name": "sea_ice_area_fraction"}
+    # there is also "siconca", which has the same name, but the files are generally much smaller,
+    #  so they are likely a subset os summary in some way of the siconc data
 }
 
 globus_esgf_endpoints = {
