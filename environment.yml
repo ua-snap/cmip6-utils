@@ -1,4 +1,4 @@
-name: cmip6-utils2
+name: cmip6-utils
 channels:
   - conda-forge
   - defaults
