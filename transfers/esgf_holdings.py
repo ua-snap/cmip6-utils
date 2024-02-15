@@ -34,9 +34,9 @@ def arguments(argv):
         help="Whether or not to audit holdings for WRF variables, at sub-daily resolutions.",
     )
     args = parser.parse_args()
-    esgf_node, ncpus, wrf_vars = args.node, args.ncpus, args.wrf
+    esgf_node, ncpus, do_wrf = args.node, args.ncpus, args.wrf
 
-    return esgf_node, ncpus, wrf_vars
+    return esgf_node, ncpus, do_wrf
 
 
 def list_variants(tc, node_ep, node_prefix, activity, model, scenario):
@@ -175,7 +175,7 @@ def make_holdings_table(tc, node_ep, node_prefix, variant_lut, ncpus, variable_l
 
 
 if __name__ == "__main__":
-    esgf_node, ncpus, wrf_vars = arguments(sys.argv)
+    esgf_node, ncpus, do_wrf = arguments(sys.argv)
 
     # create an authorization client for Globus
     auth_client = globus_sdk.NativeAppAuthClient(CLIENT_ID)
@@ -209,13 +209,13 @@ if __name__ == "__main__":
         )
 
     # make the holdings table
-    if wrf_vars:
+    if do_wrf:
         variable_lut = wrf_variables
         # to keep consistent with process for auditing standard variables,
         #  we need to add a "table_id" key to each child dict in the WRF variable dict.
         #  We will do so using the main list of all possible subdaily table IDs.
         for var_id in variable_lut:
-            variable_lut[var_id]["table_id"] = subdaily_table_ids
+            variable_lut[var_id]["table_ids"] = subdaily_table_ids
         outfn_suffix = "_wrf"
     else:
         variable_lut = variables

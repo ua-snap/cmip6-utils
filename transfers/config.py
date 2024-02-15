@@ -33,7 +33,7 @@ manifest_tmp_fn = "{esgf_node}_manifest{suffix}.csv"
 batch_dir = Path("batch_files")
 batch_dir.mkdir(exist_ok=True)
 # template name for batch files
-batch_tmp_fn = "batch_{esgf_node}_{freq}_{var_id}.txt"
+batch_tmp_fn = "batch_{esgf_node}_{table_id}_{var_id}.txt"
 
 # names of the ScenarioMIP scenarios that we are interested in,
 #  matching directory names in ESGF archives

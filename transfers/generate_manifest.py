@@ -27,9 +27,9 @@ def arguments(argv):
         help="Whether or not to generate the manifest for the WRF variables, at sub-daily resolutions.",
     )
     args = parser.parse_args()
-    esgf_node, wrf_vars = args.node, args.wrf
+    esgf_node, do_wrf = args.node, args.wrf
 
-    return esgf_node, wrf_vars
+    return esgf_node, do_wrf
 
 
 def get_ymd_from_str(ymd_str):
@@ -82,10 +82,10 @@ def split_by_filenames(row, variable_lut):
 
 if __name__ == "__main__":
     # this script only runs for a single ESGF node
-    ESGF_NODE, wrf_vars = arguments(sys.argv)
+    ESGF_NODE, do_wrf = arguments(sys.argv)
 
     # make the holdings table
-    if wrf_vars:
+    if do_wrf:
         variable_lut = wrf_variables
         #  we need to add a "table_ids" key to each child dict in the WRF variable dict.
         #  We will do so using the main list of all possible subdaily table IDs.

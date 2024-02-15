@@ -16,10 +16,15 @@ def arguments(argv):
     """Parse some args"""
     parser = argparse.ArgumentParser()
     parser.add_argument("--node", type=str, help="ESGF node to query", required=True)
+    parser.add_argument(
+        "--wrf",
+        action="store_true",
+        help="Whether or not to generate the batch files for the WRF variables, at sub-daily resolutions.",
+    )
     args = parser.parse_args()
-    esgf_node = args.node
+    esgf_node, do_wrf = args.node, args.wrf
 
-    return esgf_node
+    return esgf_node, do_wrf
 
 
 def generate_transfer_paths(row, table_id):
@@ -66,16 +71,22 @@ def write_batch_file(table_id, var_id, transfer_paths):
 
 if __name__ == "__main__":
     # this script only runs for a single ESGF node
-    ESGF_NODE = arguments(sys.argv)
+    ESGF_NODE, do_wrf = arguments(sys.argv)
 
     # use the manifest file for generating batch files
+    suffix = "_wrf" if do_wrf else ""
     manifest = pd.read_csv(
-        manifest_tmp_fn.format(esgf_node=ESGF_NODE),
+        manifest_tmp_fn.format(esgf_node=ESGF_NODE, suffix=suffix),
     )
 
     # group batch files by variable name and
     for var_id, var_df in manifest.groupby("variable"):
         for table_id, freq_df in var_df.groupby("table_id"):
+
+            # skipping fx variables for now
+            if table_id in ["fx", "Ofx"]:
+                continue
+
             transfer_paths = []
             for i, row in freq_df.iterrows():
                 transfer_paths.append(generate_transfer_paths(row, table_id))
