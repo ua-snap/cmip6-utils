@@ -53,7 +53,7 @@ def get_ymd_from_str(ymd_str):
 def split_by_filenames(row, variable_lut):
     row_di = row.to_dict()
     row_di["filename"] = [fn.replace("'", "") for fn in row_di["filenames"]]
-    if variable_lut[row_di["variable"]]["table_id"][0] in ["fx", "Ofx"]:
+    if variable_lut[row_di["variable"]]["table_ids"][0] in ["fx", "Ofx"]:
         # these variables do not have time ranges
         row_di["start_year"] = [None]
         row_di["start_month"] = [None]
@@ -87,10 +87,10 @@ if __name__ == "__main__":
     # make the holdings table
     if wrf_vars:
         variable_lut = wrf_variables
-        #  we need to add a "table_id" key to each child dict in the WRF variable dict.
+        #  we need to add a "table_ids" key to each child dict in the WRF variable dict.
         #  We will do so using the main list of all possible subdaily table IDs.
         for var_id in variable_lut:
-            variable_lut[var_id]["table_id"] = subdaily_table_ids
+            variable_lut[var_id]["table_ids"] = subdaily_table_ids
         suffix = "_wrf"
         # for WRF, we only are after two models, for now:
         models = ["CNRM-CM6-1-HR", "MIROC6"]
