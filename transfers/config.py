@@ -23,10 +23,11 @@ ceda_ep = "ee3aa1a0-7e4c-11e6-afc4-22000b92c261"
 llnl_prefix = Path("/css03_data/CMIP6")
 
 # template name for an  ESGF holdings audit table
-holdings_tmp_fn = "{esgf_node}_esgf_holdings.csv"
+# wrf versions will have _wrf suffix
+holdings_tmp_fn = "{esgf_node}_esgf_holdings{suffix}.csv"
 
 # template name for an  ESGF holdings audit table
-manifest_tmp_fn = "{esgf_node}_manifest.csv"
+manifest_tmp_fn = "{esgf_node}_manifest{suffix}.csv"
 
 # name of directory in home folder for writing batch files
 batch_dir = Path("batch_files")
@@ -234,7 +235,7 @@ wrf_variables = {
 
 globus_esgf_endpoints = {
     "llnl": {
-        "ep": "1889ea03-25ad-4f9f-8110-1ce8833a9d7e",
+        "ep": llnl_ep,
         "prefix": "/css03_data/CMIP6",
     }
 }

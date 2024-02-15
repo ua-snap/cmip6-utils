@@ -2,6 +2,10 @@
 
 Sample usage: 
     python generate_manifest.py --node llnl
+    
+    or
+
+    python generate_manifest.py --node llnl --wrf
 """
 
 import argparse
@@ -15,10 +19,15 @@ def arguments(argv):
     """Parse some args"""
     parser = argparse.ArgumentParser()
     parser.add_argument("--node", type=str, help="ESGF node to query", required=True)
+    parser.add_argument(
+        "--wrf",
+        action="store_true",
+        help="Whether or not to generate the manifest for the WRF variables, at sub-daily resolutions.",
+    )
     args = parser.parse_args()
-    esgf_node = args.node
+    esgf_node, wrf_vars = args.node, args.wrf
 
-    return esgf_node
+    return esgf_node, wrf_vars
 
 
 def get_ymd_from_str(ymd_str):
@@ -29,6 +38,9 @@ def get_ymd_from_str(ymd_str):
     elif len(ymd_str) == 8:
         dt = datetime.strptime(ymd_str, "%Y%m%d")
         ymd_tuple = dt.year, dt.month, dt.day
+    elif len(ymd_str) == 12:
+        dt = datetime.strptime(ymd_str, "%Y%m%d%H%M")
+        ymd_tuple = dt.year, dt.month, dt.day
     else:
         print(ymd_str)
         exit()
@@ -36,10 +48,10 @@ def get_ymd_from_str(ymd_str):
     return ymd_tuple
 
 
-def split_by_filenames(row):
+def split_by_filenames(row, variable_lut):
     row_di = row.to_dict()
     row_di["filename"] = [fn.replace("'", "") for fn in row_di["filenames"]]
-    if variables[row_di["variable"]]["freqs"][0] in ["fx", "Ofx"]:
+    if variable_lut[row_di["variable"]]["freqs"][0] in ["fx", "Ofx"]:
         # these variables do not have time ranges
         row_di["start_year"] = [None]
         row_di["start_month"] = [None]
@@ -68,10 +80,26 @@ def split_by_filenames(row):
 
 if __name__ == "__main__":
     # this script only runs for a single ESGF node
-    ESGF_NODE = arguments(sys.argv)
+    ESGF_NODE, wrf_vars = arguments(sys.argv)
+
+    # make the holdings table
+    if wrf_vars:
+        variable_lut = wrf_variables
+        #  we need to add a "freqs" key to each child dict in the WRF variable dict.
+        #  We will do so using the main list of all possible subdaily table IDs.
+        for var_id in variable_lut:
+            variable_lut[var_id]["freqs"] = subdaily_table_ids
+        suffix = "_wrf"
+        # for WRF, we only are after two models, for now:
+        models = ["CNRM-CM6-1-HR", "MIROC6"]
+    else:
+        variable_lut = variables
+        suffix = ""
+        # we want all models in prod_variant_lu if not WRF
+        models = list(prod_variant_lu.keys())
 
     holdings = pd.read_csv(
-        holdings_tmp_fn.format(esgf_node=ESGF_NODE),
+        holdings_tmp_fn.format(esgf_node=ESGF_NODE, suffix=suffix),
         # filenames column should be list for each row
         converters={"filenames": lambda x: x.strip("[]").split(", ")},
     )
@@ -79,9 +107,10 @@ if __name__ == "__main__":
     holdings = holdings.query("~n_files.isnull()")
 
     pre_manifest = []
+
     # group batch files by variable name and
-    for var_id in variables:
-        for freq in variables[var_id]["freqs"]:
+    for var_id in variable_lut:
+        for freq in variable_lut[var_id]["freqs"]:
             transfer_paths = []
             # holdings table is created from production scenarios only, so all scenarios in here should be included
             # iterate over model so that we can subset by the correct variant to be mirrored:
@@ -93,7 +122,9 @@ if __name__ == "__main__":
 
     pre_manifest = pd.concat(pre_manifest)
 
-    manifest = pre_manifest.apply(lambda row: split_by_filenames(row), axis=1)
+    manifest = pre_manifest.apply(
+        lambda row: split_by_filenames(row, variable_lut), axis=1
+    )
     manifest = pd.concat(manifest.to_list())
 
     # ignore these files, for one reason or another!
@@ -102,4 +133,6 @@ if __name__ == "__main__":
         "filename != 'psl_day_CESM2-WACCM_historical_r1i1p1f1_gn_18500101-20150101.nc'"
     )
 
-    manifest.to_csv(manifest_tmp_fn.format(esgf_node=ESGF_NODE), index=False)
+    manifest.to_csv(
+        manifest_tmp_fn.format(esgf_node=ESGF_NODE, suffix=suffix), index=False
+    )
