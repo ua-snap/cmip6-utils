@@ -1,4 +1,6 @@
-"""Use this script to generate the manifest of complete filepaths to mirror for a given ESGF node. Creates a CSV file named "<ESGF node>_manifest.csv", that contains the filepaths from the rows in the corresponding "holdings" table that contain target production data for mirroring on the ACDN. This is generated from the different "production" attributes (model variants, variables, frequencies, etc) in the config file.
+"""Use this script to generate the manifest of complete filepaths to mirror for a given ESGF node. 
+Creates a CSV file named "<ESGF node>_manifest.csv", that contains the filepaths from the rows in the corresponding "holdings" table that contain target production data for mirroring on the ACDN. 
+This is generated from the different "production" attributes (model variants, variables, table IDs, etc) in the config file.
 
 Sample usage: 
     python generate_manifest.py --node llnl
@@ -51,7 +53,7 @@ def get_ymd_from_str(ymd_str):
 def split_by_filenames(row, variable_lut):
     row_di = row.to_dict()
     row_di["filename"] = [fn.replace("'", "") for fn in row_di["filenames"]]
-    if variable_lut[row_di["variable"]]["freqs"][0] in ["fx", "Ofx"]:
+    if variable_lut[row_di["variable"]]["table_id"][0] in ["fx", "Ofx"]:
         # these variables do not have time ranges
         row_di["start_year"] = [None]
         row_di["start_month"] = [None]
@@ -85,10 +87,10 @@ if __name__ == "__main__":
     # make the holdings table
     if wrf_vars:
         variable_lut = wrf_variables
-        #  we need to add a "freqs" key to each child dict in the WRF variable dict.
+        #  we need to add a "table_id" key to each child dict in the WRF variable dict.
         #  We will do so using the main list of all possible subdaily table IDs.
         for var_id in variable_lut:
-            variable_lut[var_id]["freqs"] = subdaily_table_ids
+            variable_lut[var_id]["table_id"] = subdaily_table_ids
         suffix = "_wrf"
         # for WRF, we only are after two models, for now:
         models = ["CNRM-CM6-1-HR", "MIROC6"]
@@ -110,14 +112,14 @@ if __name__ == "__main__":
 
     # group batch files by variable name and
     for var_id in variable_lut:
-        for freq in variable_lut[var_id]["freqs"]:
+        for t_id in variable_lut[var_id]["table_ids"]:
             transfer_paths = []
             # holdings table is created from production scenarios only, so all scenarios in here should be included
             # iterate over model so that we can subset by the correct variant to be mirrored:
             for model in models:
                 # subset to the variant we will be mirroring
                 variant = prod_variant_lu[model]
-                query_str = f"model == '{model}' & variant == '{variant}' & frequency == '{freq}' & variable == '{var_id}'"
+                query_str = f"model == '{model}' & variant == '{variant}' & table_id == '{t_id}' & variable == '{var_id}'"
                 pre_manifest.append(holdings.query(query_str))
 
     pre_manifest = pd.concat(pre_manifest)

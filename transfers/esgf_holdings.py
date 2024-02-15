@@ -1,6 +1,6 @@
 """Generate a reference table of CMIP6 holdings on a given ESGF node.
 
-The table resulting from this should have the following columns: model, scenario, variant, frequency, variable, grid_type, version, n_files, filenames
+The table resulting from this should have the following columns: model, scenario, variant, table_id, variable, grid_type, version, n_files, filenames
 
 Usage:
     python esgf_holdings.py --node llnl --ncpus 24
@@ -74,7 +74,7 @@ def make_model_variants_lut(tc, node_ep, node_prefix, models, scenarios, ncpus):
 
 
 def get_filenames(
-    tc, node_ep, node_prefix, activity, model, scenario, variant, frequency, varname
+    tc, node_ep, node_prefix, activity, model, scenario, variant, table_id, varname
 ):
     """Get the file names for a some combination of model, scenario, and variable."""
     # the subdirectory under the variable name is the grid type.
@@ -86,7 +86,7 @@ def get_filenames(
         model,
         scenario,
         variant,
-        frequency,
+        table_id,
         varname,
     )
     grid_type = utils.operation_ls(tc, node_ep, var_path)
@@ -94,7 +94,9 @@ def get_filenames(
         "model": model,
         "scenario": scenario,
         "variant": variant,
-        "frequency": frequency,
+        # table ID is essentially frequency, but there are different codes for different variables,
+        #  e.g. Eday and day, both for the "day" frequency
+        "table_id": table_id,
         "variable": varname,
         "grid_type": None,
         "version": None,
@@ -130,7 +132,7 @@ def get_filenames(
                 "model": model,
                 "scenario": scenario,
                 "variant": variant,
-                "frequency": frequency,
+                "table_id": table_id,
                 "variable": varname,
                 "grid_type": grid_type,
                 "version": use_version,
@@ -148,9 +150,9 @@ def make_holdings_table(tc, node_ep, node_prefix, variant_lut, ncpus, variable_l
     for i, row in variant_lut.iterrows():
         activity = "CMIP" if row["scenario"] == "historical" else "ScenarioMIP"
         for var_id in variable_lut:
-            for freq in variable_lut[var_id]["freqs"]:
+            for t_id in variable_lut[var_id]["table_ids"]:
                 args.extend(
-                    # make these into lists so we can iterate over variables/freqs and add
+                    # make these into lists so we can iterate over variables/table IDs and add
                     product(
                         [tc],
                         [node_ep],
@@ -159,7 +161,7 @@ def make_holdings_table(tc, node_ep, node_prefix, variant_lut, ncpus, variable_l
                         [row["model"]],
                         [row["scenario"]],
                         row["variants"],
-                        [freq],
+                        [t_id],
                         [var_id],
                     )
                 )
@@ -210,10 +212,10 @@ if __name__ == "__main__":
     if wrf_vars:
         variable_lut = wrf_variables
         # to keep consistent with process for auditing standard variables,
-        #  we need to add a "freqs" key to each child dict in the WRF variable dict.
+        #  we need to add a "table_id" key to each child dict in the WRF variable dict.
         #  We will do so using the main list of all possible subdaily table IDs.
         for var_id in variable_lut:
-            variable_lut[var_id]["freqs"] = subdaily_table_ids
+            variable_lut[var_id]["table_id"] = subdaily_table_ids
         outfn_suffix = "_wrf"
     else:
         variable_lut = variables
