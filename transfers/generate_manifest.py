@@ -114,7 +114,7 @@ if __name__ == "__main__":
             transfer_paths = []
             # holdings table is created from production scenarios only, so all scenarios in here should be included
             # iterate over model so that we can subset by the correct variant to be mirrored:
-            for model in prod_variant_lu:
+            for model in models:
                 # subset to the variant we will be mirroring
                 variant = prod_variant_lu[model]
                 query_str = f"model == '{model}' & variant == '{variant}' & frequency == '{freq}' & variable == '{var_id}'"
