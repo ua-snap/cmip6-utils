@@ -117,9 +117,15 @@ def get_filenames(
             row_di["grid_type"] = grid_type
         else:
             use_version = sorted(versions)[-1]
-            fns = utils.operation_ls(
-                tc, node_ep, var_path.joinpath(grid_type, use_version)
-            )
+            ls_path = var_path.joinpath(grid_type, use_version)
+            fns = utils.operation_ls(tc, node_ep, ls_path)
+
+            # handle possible missing files, even though version exists? new observation as of 2/14/24
+            if isinstance(fns, int):
+                n_files = None
+            else:
+                n_files = len(fns)
+
             row_di = {
                 "model": model,
                 "scenario": scenario,
@@ -128,7 +134,7 @@ def get_filenames(
                 "variable": varname,
                 "grid_type": grid_type,
                 "version": use_version,
-                "n_files": len(fns),
+                "n_files": n_files,
                 "filenames": fns,
             }
 
