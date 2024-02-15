@@ -317,4 +317,9 @@ dependencies:
   - zipp=3.8.0=pyhd8ed1ab_0
   - zlib=1.2.12=h166bdaf_4
   - zstd=1.5.2=h6239696_4
-prefix: /home/jdpaul3/miniconda3/envs/cmip6-utils2
+  - pip:
+      - click-plugins==1.1.1
+      - cligj==0.7.2
+      - fiona==1.9.5
+      - geopandas==0.14.3
+prefix: /home/jdpaul3/miniconda3/envs/cmip6-utils
