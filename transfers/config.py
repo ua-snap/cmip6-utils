@@ -106,7 +106,7 @@ variables = {
     "hus": {"name": "specific_humidity", "freqs": ["Amon", "day"]},
     "evspsbl": {
         "name": "evaporation_including_sublimation_and_transpiration",
-        "freqs": ["Amon", "day"],
+        "freqs": ["Amon", "Eday"],
     },
     "mrro": {"name": "total_runoff", "freqs": ["Amon", "day"]},
     "mrsos": {
