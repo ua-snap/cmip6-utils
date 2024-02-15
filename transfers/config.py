@@ -73,12 +73,16 @@ model_inst_lu = {
     "HadGEM3-GC31-MM": "MOHC",
     "KACE-1-0-G": "NIMS-KMA",
     "MIROC6": "MIROC",
-    "MPI-ESM1-2-LR": "MPI-M",
     "MRI-ESM2-0": "MPI-M",
     "NorESM2-MM": "NCC",
-    "MPI-ESM1-2-HR": "MPI-M",
     "TaiESM1": "AS-RCEC",
     "CESM2-WACCM": "NCAR",
+    # Another oddity - MPI-ESM1-2-* models have different representation among the institutions, or "Institution ID".
+    # the -HR version is apparently mostly available under "DKRZ". The -LR version is mostly available under "MPI-M".
+    # There is apparently mixing, too, as the -HR version has historical data under "MPI-M", and the -LR version has
+    #  data available under "DKRZ". We will just go with the institution which has the majority for each, for now.
+    "MPI-ESM1-2-HR": "DKRZ",
+    "MPI-ESM1-2-LR": "MPI-M",
 }
 
 # we will just use this dict as the reference for production variables.
