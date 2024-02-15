@@ -113,7 +113,7 @@ variables = {
         "name": "evaporation_including_sublimation_and_transpiration",
         "freqs": ["Amon", "Eday"],
     },
-    "mrro": {"name": "total_runoff", "freqs": ["Amon", "day"]},
+    "mrro": {"name": "total_runoff", "freqs": ["Lmon", "day"]},
     "mrsos": {
         "name": "moisture_in_upper_portion_of_soil_column",
         "freqs": ["Lmon", "day"],
@@ -122,9 +122,12 @@ variables = {
         "name": "moisture_in_upper_portion_of_soil_column",
         "freqs": ["Emon", "Eday"],
     },
-    "prsn": {"name": "snowfall_flux", "freqs": ["Amon", "day"]},
-    "snd": {"name": "surface_snow_thickness", "freqs": ["Llmon", "Eday"]},
-    "snw": {"name": "surface_snow_amount", "freqs": ["Amon", "day"]},
+    "prsn": {
+        "name": "snowfall_flux",
+        "freqs": ["Amon", "Omon", "day"],
+    },  # some models use Omon for table ID
+    "snd": {"name": "surface_snow_thickness", "freqs": ["LImon", "Eday"]},
+    "snw": {"name": "surface_snow_amount", "freqs": ["LImon", "day"]},
     "rlds": {
         "name": "surface_downwelling_longwave_flux_in_air",
         "freqs": ["Amon", "day"],
@@ -147,14 +150,20 @@ variables = {
         "freqs": ["fx"],
     },
     "sftof": {"name": "sea_area_percentage", "freqs": ["Ofx"]},
-    "clt": {"name": "cloud_area_fraction", "freqs": ["Amon", "day"]},
+    "clt": {"name": "cloud_area_fraction", "freqs": ["Amon", "day", "Eday"]},
     "tos": {"name": "sea_surface_temperature", "freqs": ["Omon", "Oday"]},
     "siconc": {"name": "sea_ice_area_fraction", "freqs": ["SImon", "SIday"]},
     # there is also "siconca", which has the same name, but the files are generally much smaller,
     #  so they are likely a subset os summary in some way of the siconc data
     "sithick": {"name": "sea_ice_thickness", "freqs": ["SImon", "SIday"]},
-    "hfls": {"name": "surface_upward_latent_heat_flux", "freqs": ["Amon", "day"]},
-    "hfss": {"name": "surface_upward_sensible_heat_flux", "freqs": ["Amon", "day"]},
+    "hfls": {
+        "name": "surface_upward_latent_heat_flux",
+        "freqs": ["Amon", "day", "Eday"],
+    },
+    "hfss": {
+        "name": "surface_upward_sensible_heat_flux",
+        "freqs": ["Amon", "day", "Eday"],
+    },
 }
 
 # This dict is for auditing WRF variables!
