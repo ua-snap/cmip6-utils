@@ -62,7 +62,8 @@ prod_variant_lu = {
     "CESM2-WACCM": "r1i1p1f1",
 }
 
-# this lookup includes all models of interest, including some that may not be transferred, left in here for compatability with any exploratory efforts
+# this lookup includes all models of interest, including some that will NOT be transferred,
+#  left in here for compatability with any exploratory efforts
 model_inst_lu = {
     "ACCESS-CM2": "CSIRO-ARCCSS",
     "CESM2": "NCAR",
