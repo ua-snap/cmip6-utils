@@ -22,7 +22,7 @@ import datetime
 # from xclim.indices.generic import threshold_count
 from xclim.indicators import atmos  # , icclim
 from config import *
-from luts import idx_varid_lu, varid_freqs
+from luts import *
 
 
 def rx1day(pr):
@@ -196,6 +196,75 @@ def run_compute_indicators(fp_di, indicators, coord_labels, kwargs={}):
 
     return out
 
+
+def build_attrs(indicator, model, scenario, start_year='2015', end_year='2100'):
+    """Build standardized attribute dictionarys for computed indicator datasets. This function uses lookup tables imported from indicators/luts.py.
+
+    Args:
+        indicator (str): indicator id
+        model (str): model id
+        scenario (str): scenario id
+        start_year (str): first year of dataset
+        end_year (str): last year of dataset
+
+    Returns:
+        global_attrs, var_coord_attrs (tuple): tuple of global and variable/coordinate attribute dictionarys
+    """
+    #test units to determine NA value
+    if units_lu[indicator] != "d":
+        fill_value = "NaN"
+    else:
+        fill_value = "-9999"
+
+    #build global attribute dict for the whole dataset:
+    global_attrs = {
+        "title": f"{indicator_lu[indicator]['title']}, {start_year}-{end_year}: {model}-{scenario}",
+        "author": "Scenarios Network for Alaska and Arctic Planning (SNAP), International Arctic Research Center, University of Alaska Fairbanks",
+        "creation_date": datetime.datetime.now().strftime("%m/%d/%Y, %H:%M:%S"),
+        "email": "uaf-snap-data-tools@alaska.edu",
+        "website": "https://uaf-snap.org/",
+        "references": f"{indicator_lu[indicator]['references']}", #TODO: add reference information
+    }
+
+    #but attribute dict for individual coordinates and variables:
+    var_coord_attrs = {
+        "lat": {
+            "name": "latitude",
+            "units": "degrees north",
+            "fill_value": "NaN",
+            "valid_max": 90.0,
+            "valid_min": -90.0,
+            },
+        "lon": {
+            "name": "longitude",
+            "units": "degrees east",
+            "fill_value": "NaN",
+            "valid_max": 0.0,
+            "valid_min": 360.0,
+            },
+        "year": {
+            "start_year": start_year,
+            "end_year": end_year,
+            },
+        "scenario": {
+            "id": f"{scenario}",
+            "ssp": f"{scenario_lu[scenario]['ssp']}",
+            "forcing_level": f"{scenario_lu[scenario]['forcing_level']}",
+            },
+        "model": {
+            "model": f"{model}",
+            "institution": f"{model_lu[model]['institution']}",
+            "institution_name": f"{model_lu[model]['institution_name']}",
+            },
+        indicator: {
+            "long_name": indicator_lu[indicator]['long_name'],
+            "units": f"{units_lu[indicator]}",
+            "fill_value": fill_value,
+            "description": indicator_lu[indicator]['description'],
+            },
+        }
+    
+    return global_attrs, var_coord_attrs
 
 def check_varid_indicator_compatibility(indicators, var_ids):
     """Check that all of the indicators to be processed use the same variables"""
