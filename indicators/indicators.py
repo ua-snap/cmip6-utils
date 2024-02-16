@@ -56,7 +56,7 @@ def dw(tasmin):
     """'Deep winter days' - the number of days with tasmin below -30 C
 
     Args:
-        tasmin (xarray.DataArray): daily maximum temperature values for a year
+        tasmin (xarray.DataArray): daily minimum temperature values for a year
 
     Returns:
         Number of deep winter days for each year
@@ -72,7 +72,7 @@ def ftc(tasmax, tasmin):
 
     Args:
         tasmax (xarray.DataArray): daily maximum temperature values for a year
-        tasmin (xarray.DataArray): daily maximum temperature values for a year
+        tasmin (xarray.DataArray): daily minimum temperature values for a year
 
     Returns:
         Number of freeze-thaw days for each year
