@@ -55,7 +55,7 @@ prod_variant_lu = {
     "HadGEM3-GC31-MM": "r1i1p1f3",
     "KACE-1-0-G": "r1i1p1f1",
     "MIROC6": "r1i1p1f1",
-    "MPI-ESM1-2-LR": "r1i1p1f1",
+    "MPI-ESM1-2-HR": "r1i1p1f1",
     "MRI-ESM2-0": "r1i1p1f1",
     "NorESM2-MM": "r1i1p1f1",
     "TaiESM1": "r1i1p1f1",
