@@ -197,13 +197,11 @@ def run_compute_indicators(fp_di, indicators, coord_labels, kwargs={}):
     return out
 
 
-def build_attrs(indicator, model, scenario, start_year='2015', end_year='2100'):
+def build_attrs(indicator, scenario, model, start_year='2015', end_year='2100'):
     """Build standardized attribute dictionarys for computed indicator datasets. This function uses lookup tables imported from indicators/luts.py.
 
     Args:
-        indicator (str): indicator id
-        model (str): model id
-        scenario (str): scenario id
+        kwargs (dict): basic arguments (contains indicator, model, scenario)
         start_year (str): first year of dataset
         end_year (str): last year of dataset
 
@@ -421,6 +419,11 @@ if __name__ == "__main__":
     )
 
     indicators_ds = xr.merge(run_compute_indicators(**kwargs))
+    global_attr, var_coord_attr = build_attrs(**kwargs)
+
+    #TODO: assign/overwrite the attr dicts to indicator_ds in a smart way!
+    #TODO: remove height variable if it exists!
+
     # write each indicator to its own file for now
     out_fps_to_validate = []
     for idx in indicators_ds.data_vars:
