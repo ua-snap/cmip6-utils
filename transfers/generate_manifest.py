@@ -93,7 +93,7 @@ if __name__ == "__main__":
             variable_lut[var_id]["table_ids"] = subdaily_table_ids
         suffix = "_wrf"
         # for WRF, we only are after two models, for now:
-        models = ["CNRM-CM6-1-HR", "MIROC6"]
+        models = ["MPI-ESM1-2-HR", "MIROC6"]
     else:
         variable_lut = variables
         suffix = ""
