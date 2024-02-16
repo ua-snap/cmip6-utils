@@ -69,6 +69,9 @@ varid_freqs = {
     "hfss": ["day"],
 }
 
+
+#### Lookup tables for writing metadata to .nc file attributes
+
 indicator_lu = {
     "rx1day": {
         "title": "Yearly Maxmimum 1-day Precipitation",
