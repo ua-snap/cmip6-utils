@@ -197,13 +197,17 @@ def run_compute_indicators(fp_di, indicators, coord_labels, kwargs={}):
     return out
 
 
-def build_attrs(indicator, scenario, model, start_year='2015', end_year='2100'):
+def build_attrs(indicator, scenario, model, start_year, end_year, lat_min, lat_max, lon_min, lon_max):
     """Build standardized attribute dictionarys for computed indicator datasets. This function uses lookup tables imported from indicators/luts.py.
 
     Args:
         kwargs (dict): basic arguments (contains indicator, model, scenario)
         start_year (str): first year of dataset
         end_year (str): last year of dataset
+        lat_min (str): minimum latitude of dataset
+        lat_max (str): maximum latitude of dataset
+        lon_min (str): minimum longitude of dataset
+        lon_max (str): maximum longitude of dataset
 
     Returns:
         global_attrs, var_coord_attrs (tuple): tuple of global and variable/coordinate attribute dictionarys
@@ -230,15 +234,15 @@ def build_attrs(indicator, scenario, model, start_year='2015', end_year='2100'):
             "name": "latitude",
             "units": "degrees north",
             "fill_value": "NaN",
-            "valid_max": 90.0,
-            "valid_min": -90.0,
+            "valid_max": f"{lat_max}",
+            "valid_min": f"{lat_min}",
             },
         "lon": {
             "name": "longitude",
             "units": "degrees east",
             "fill_value": "NaN",
-            "valid_max": 0.0,
-            "valid_min": 360.0,
+            "valid_max": f"{lon_max}",
+            "valid_min": f"{lon_min}",
             },
         "year": {
             "start_year": start_year,
@@ -261,29 +265,38 @@ def build_attrs(indicator, scenario, model, start_year='2015', end_year='2100'):
             "description": indicator_lu[indicator]['description'],
             },
         }
-    
     return global_attrs, var_coord_attrs
 
 
-def find_and_replace_attrs(indicators_ds, global_attrs, var_coord_attrs):
+def find_and_replace_attrs(indicators_ds, kwargs={}):
     """Replace original indicator dataset attributes with standardized attribute dictionarys. 
     This function does a simple check to make sure all original variables/coordinates are in the standardized attribute dict, 
     and drops the 'height' coordinate, if it exists.
 
     Args:
         indicators_ds (xarray.Dataset): computed indicators dataset with original attributes
-        global_attrs (dict): standardized global dataset attribute dictionary
-        var_coord_attrs (dict): standardized variable/coordinate attribute dictionary
 
     Returns:
         indicators_ds (xarray.Dataset): computed indicators dataset with standardized attributes
     """
-    new_vars = list(var_coord_attrs.keys())
+
     ds_vars = list(indicators_ds.variables)
     #remove height coord if it exists
     if 'height' in ds_vars: 
         ds_vars.remove('height')
         indicators_ds = indicators_ds.reset_coords(names="height", drop=True)
+
+    #get dataset values and build attrs    
+    start_year, end_year, lat_min, lat_max, lon_min, lon_max = indicators_ds.year.values.min().astype(str), indicators_ds.year.values.max().astype(str), indicators_ds.lat.values.min().astype(str), indicators_ds.lat.values.max().astype(str), indicators_ds.lon.values.min().astype(str), indicators_ds.lon.values.max().astype(str)
+    global_attrs, var_coord_attrs = build_attrs(start_year=start_year,
+                                                end_year=end_year,
+                                                lat_min=lat_min,
+                                                lat_max=lat_max,
+                                                lon_min=lon_min,
+                                                lon_max=lon_max,
+                                                **kwargs)
+    new_vars = list(var_coord_attrs.keys())
+    
     #test for presence of all original ds vars (excluding height) in the new attrs
     if False in [i in new_vars for i in ds_vars]:
         print("Not all original dataset variables (excluding height) are accounted for in new standardized variables! Process aborted.")
@@ -294,7 +307,6 @@ def find_and_replace_attrs(indicators_ds, global_attrs, var_coord_attrs):
         #replace variable and coordinate attributes
         for var in indicators_ds.variables:
             indicators_ds[var].attrs = var_coord_attrs[var]
-
     return indicators_ds
 
 
@@ -453,8 +465,7 @@ if __name__ == "__main__":
     )
 
     indicators_ds = xr.merge(run_compute_indicators(**kwargs))
-    global_attrs, var_coord_attrs = build_attrs(**kwargs)
-    indicators_ds_out = find_and_replace_attrs(indicators_ds, global_attrs, var_coord_attrs)
+    indicators_ds_out = find_and_replace_attrs(indicators_ds, kwargs=kwargs)
 
     # write each indicator to its own file for now
     out_fps_to_validate = []
