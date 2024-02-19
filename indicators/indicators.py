@@ -264,6 +264,40 @@ def build_attrs(indicator, scenario, model, start_year='2015', end_year='2100'):
     
     return global_attrs, var_coord_attrs
 
+
+def find_and_replace_attrs(indicators_ds, global_attrs, var_coord_attrs):
+    """Replace original indicator dataset attributes with standardized attribute dictionarys. 
+    This function does a simple check to make sure all original variables/coordinates are in the standardized attribute dict, 
+    and drops the 'height' coordinate, if it exists.
+
+    Args:
+        indicators_ds (xarray.Dataset): computed indicators dataset with original attributes
+        global_attrs (dict): standardized global dataset attribute dictionary
+        var_coord_attrs (dict): standardized variable/coordinate attribute dictionary
+
+    Returns:
+        indicators_ds (xarray.Dataset): computed indicators dataset with standardized attributes
+    """
+    new_vars = list(var_coord_attrs.keys())
+    ds_vars = list(indicators_ds.variables)
+    #remove height coord if it exists
+    if 'height' in ds_vars: 
+        ds_vars.remove('height')
+        indicators_ds = indicators_ds.reset_coords(names="height", drop=True)
+    #test for presence of all original ds vars (excluding height) in the new attrs
+    if False in [i in new_vars for i in ds_vars]:
+        print("Not all original dataset variables (excluding height) are accounted for in new standardized variables! Process aborted.")
+        raise Exception("Not all original dataset variables (excluding height) are accounted for in new standardized variables! Process aborted.")
+    else:
+        #replace global attrs
+        indicators_ds.attrs = global_attrs
+        #replace variable and coordinate attributes
+        for var in indicators_ds.variables:
+            indicators_ds[var].attrs = var_coord_attrs[var]
+
+    return indicators_ds
+
+
 def check_varid_indicator_compatibility(indicators, var_ids):
     """Check that all of the indicators to be processed use the same variables"""
     try:
@@ -419,14 +453,12 @@ if __name__ == "__main__":
     )
 
     indicators_ds = xr.merge(run_compute_indicators(**kwargs))
-    global_attr, var_coord_attr = build_attrs(**kwargs)
-
-    #TODO: assign/overwrite the attr dicts to indicator_ds in a smart way!
-    #TODO: remove height variable if it exists!
+    global_attrs, var_coord_attrs = build_attrs(**kwargs)
+    indicators_ds_out = find_and_replace_attrs(indicators_ds, global_attrs, var_coord_attrs)
 
     # write each indicator to its own file for now
     out_fps_to_validate = []
-    for idx in indicators_ds.data_vars:
+    for idx in indicators_ds_out.data_vars:
         out_fp = out_dir.joinpath(
             model,
             scenario,
@@ -436,6 +468,6 @@ if __name__ == "__main__":
         # ensure this nested path exists
         out_fp.parent.mkdir(exist_ok=True, parents=True)
         # write
-        indicators_ds[idx].to_dataset().to_netcdf(out_fp)
+        indicators_ds_out[idx].to_dataset().to_netcdf(out_fp)
         # add filepath to list for validation
         out_fps_to_validate.append(out_fp)
