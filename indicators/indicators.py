@@ -212,7 +212,7 @@ def build_attrs(indicator, scenario, model, start_year, end_year, lat_min, lat_m
     Returns:
         global_attrs, var_coord_attrs (tuple): tuple of global and variable/coordinate attribute dictionarys
     """
-    #test units to determine NA value
+    #test units to determine NA value TODO: revisit this if there are any other integer units besides "days"
     if units_lu[indicator] != "d":
         fill_value = "NaN"
     else:
@@ -225,7 +225,7 @@ def build_attrs(indicator, scenario, model, start_year, end_year, lat_min, lat_m
         "creation_date": datetime.datetime.now().strftime("%m/%d/%Y, %H:%M:%S"),
         "email": "uaf-snap-data-tools@alaska.edu",
         "website": "https://uaf-snap.org/",
-        "references": f"{indicator_lu[indicator]['references']}", #TODO: add reference information
+        "references": f"{indicator_lu[indicator]['references']}", #TODO: add reference information!
     }
 
     #but attribute dict for individual coordinates and variables:
