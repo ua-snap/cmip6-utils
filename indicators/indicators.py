@@ -269,7 +269,7 @@ def build_attrs(
     return global_attrs, var_coord_attrs
 
 
-def find_and_replace_attrs(idx_ds, scenario, model, **kwargs):
+def find_and_replace_attrs(idx_ds, model, scenario, **kwargs):
     """Replace original indicator dataset attributes with standardized attribute dictionarys.
     This function does a simple check to make sure all original variables/coordinates are in the standardized attribute dict,
     and drops the 'height' coordinate, if it exists.
