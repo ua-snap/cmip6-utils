@@ -103,10 +103,7 @@ def convert_times_to_years(time_da):
             cftime.num2date(t / 1e9, "seconds since 1970-01-01")
             for t in time_da.values.astype(int)
         ]
-    elif isinstance(
-        time_da.values[0],
-        cftime._cftime.Datetime360Day,
-    ) or isinstance(
+    elif isinstance(time_da.values[0], cftime._cftime.Datetime360Day,) or isinstance(
         time_da.values[0],
         cftime._cftime.DatetimeNoLeap,
     ):
@@ -197,11 +194,15 @@ def run_compute_indicators(fp_di, indicators, coord_labels, kwargs={}):
     return out
 
 
-def build_attrs(indicator, scenario, model, start_year, end_year, lat_min, lat_max, lon_min, lon_max):
+def build_attrs(
+    indicator, scenario, model, start_year, end_year, lat_min, lat_max, lon_min, lon_max
+):
     """Build standardized attribute dictionarys for computed indicator datasets. This function uses lookup tables imported from indicators/luts.py.
 
     Args:
-        kwargs (dict): basic arguments (contains indicator, model, scenario)
+        indicator (str): indicator id
+        model (str): model id
+        scenario (str): scenario id
         start_year (str): first year of dataset
         end_year (str): last year of dataset
         lat_min (str): minimum latitude of dataset
@@ -212,102 +213,119 @@ def build_attrs(indicator, scenario, model, start_year, end_year, lat_min, lat_m
     Returns:
         global_attrs, var_coord_attrs (tuple): tuple of global and variable/coordinate attribute dictionarys
     """
-    #test units to determine NA value TODO: revisit this if there are any other integer units besides "days"
+    # test units to determine NA value TODO: revisit this if there are any other integer units besides "days"
     if units_lu[indicator] != "d":
         fill_value = "NaN"
     else:
         fill_value = "-9999"
 
-    #build global attribute dict for the whole dataset:
+    # build global attribute dict for the whole dataset:
     global_attrs = {
         "title": f"{indicator_lu[indicator]['title']}, {start_year}-{end_year}: {model}-{scenario}",
         "author": "Scenarios Network for Alaska and Arctic Planning (SNAP), International Arctic Research Center, University of Alaska Fairbanks",
         "creation_date": datetime.datetime.now().strftime("%m/%d/%Y, %H:%M:%S"),
         "email": "uaf-snap-data-tools@alaska.edu",
         "website": "https://uaf-snap.org/",
-        "references": f"{indicator_lu[indicator]['references']}", #TODO: add reference information!
+        "references": f"{indicator_lu[indicator]['references']}",  # TODO: add reference information!
     }
 
-    #but attribute dict for individual coordinates and variables:
+    # but attribute dict for individual coordinates and variables:
     var_coord_attrs = {
         "lat": {
             "name": "latitude",
             "units": "degrees north",
             "fill_value": "NaN",
-            "valid_max": f"{lat_max}",
-            "valid_min": f"{lat_min}",
-            },
+            "lat_max": f"{lat_max}",
+            "lat_min": f"{lat_min}",
+        },
         "lon": {
             "name": "longitude",
             "units": "degrees east",
             "fill_value": "NaN",
-            "valid_max": f"{lon_max}",
-            "valid_min": f"{lon_min}",
-            },
+            "lon_max": f"{lon_max}",
+            "lon_min": f"{lon_min}",
+        },
         "year": {
             "start_year": start_year,
             "end_year": end_year,
-            },
+        },
         "scenario": {
             "id": f"{scenario}",
             "ssp": f"{scenario_lu[scenario]['ssp']}",
             "forcing_level": f"{scenario_lu[scenario]['forcing_level']}",
-            },
+        },
         "model": {
             "model": f"{model}",
             "institution": f"{model_lu[model]['institution']}",
             "institution_name": f"{model_lu[model]['institution_name']}",
-            },
+        },
         indicator: {
-            "long_name": indicator_lu[indicator]['long_name'],
+            "long_name": indicator_lu[indicator]["long_name"],
             "units": f"{units_lu[indicator]}",
             "fill_value": fill_value,
-            "description": indicator_lu[indicator]['description'],
-            },
-        }
+            "description": indicator_lu[indicator]["description"],
+        },
+    }
     return global_attrs, var_coord_attrs
 
 
-def find_and_replace_attrs(idx_ds, **kwargs):
-    """Replace original indicator dataset attributes with standardized attribute dictionarys. 
-    This function does a simple check to make sure all original variables/coordinates are in the standardized attribute dict, 
+def find_and_replace_attrs(idx_ds, scenario, model, **kwargs):
+    """Replace original indicator dataset attributes with standardized attribute dictionarys.
+    This function does a simple check to make sure all original variables/coordinates are in the standardized attribute dict,
     and drops the 'height' coordinate, if it exists.
 
     Args:
-        idx_ds (xarray.Dataset): computed indicators dataset with original attributes
+        idx_ds (xarray.Dataset): computed indicator dataset with original attributes
+        model (str): model id
+        scenario (str): scenario id
+        kwargs (dict): basic kwargs dictionary to supply model and scenario
 
     Returns:
-        idx_ds (xarray.Dataset): computed indicators dataset with standardized attributes
+        idx_ds (xarray.Dataset): computed indicator dataset with standardized attributes
     """
 
     ds_vars = list(idx_ds.variables)
-    indicator = idx_ds.data_vars
-    #remove height coord if it exists
-    if 'height' in ds_vars: 
-        ds_vars.remove('height')
+    idx = list(idx_ds.data_vars)[0]
+
+    # remove height coord if it exists
+    if "height" in ds_vars:
+        ds_vars.remove("height")
         idx_ds = idx_ds.reset_coords(names="height", drop=True)
 
-    #get dataset values and build attrs    
-    start_year, end_year, lat_min, lat_max, lon_min, lon_max = idx_ds.year.values.min().astype(str), idx_ds.year.values.max().astype(str), idx_ds.lat.values.min().astype(str), idx_ds.lat.values.max().astype(str), idx_ds.lon.values.min().astype(str), idx_ds.lon.values.max().astype(str)
-    global_attrs, var_coord_attrs = build_attrs(indicator,
-                                                scenario,
-                                                model,
-                                                start_year=start_year,
-                                                end_year=end_year,
-                                                lat_min=lat_min,
-                                                lat_max=lat_max,
-                                                lon_min=lon_min,
-                                                lon_max=lon_max)
+    # get dataset values and build attrs
+    start_year, end_year, lat_min, lat_max, lon_min, lon_max = (
+        idx_ds.year.values.min().astype(str),
+        idx_ds.year.values.max().astype(str),
+        idx_ds.lat.values.min().astype(str),
+        idx_ds.lat.values.max().astype(str),
+        idx_ds.lon.values.min().astype(str),
+        idx_ds.lon.values.max().astype(str),
+    )
+    global_attrs, var_coord_attrs = build_attrs(
+        idx,
+        scenario,
+        model,
+        start_year=start_year,
+        end_year=end_year,
+        lat_min=lat_min,
+        lat_max=lat_max,
+        lon_min=lon_min,
+        lon_max=lon_max,
+    )
     new_vars = list(var_coord_attrs.keys())
-    
-    #test for presence of all original ds vars (excluding height) in the new attrs
+
+    # test for presence of all original ds vars (excluding height) in the new attrs
     if False in [i in new_vars for i in ds_vars]:
-        print("Not all original dataset variables (excluding height) are accounted for in new standardized variables! Process aborted.")
-        raise Exception("Not all original dataset variables (excluding height) are accounted for in new standardized variables! Process aborted.")
+        print(
+            "Not all original dataset variables (excluding height) are accounted for in new standardized variables! Process aborted."
+        )
+        raise Exception(
+            "Not all original dataset variables (excluding height) are accounted for in new standardized variables! Process aborted."
+        )
     else:
-        #replace global attrs
+        # replace global attrs
         idx_ds.attrs = global_attrs
-        #replace variable and coordinate attributes
+        # replace variable and coordinate attributes
         for var in idx_ds.variables:
             idx_ds[var].attrs = var_coord_attrs[var]
     return idx_ds
