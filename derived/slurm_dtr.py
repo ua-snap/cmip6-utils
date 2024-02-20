@@ -2,6 +2,10 @@
 
 Example usage:
     python slurm_dtr.py --models "GFDL-ESM4 CESM2" --scenarios "ssp245 ssp585" --input_dir /import/beegfs/CMIP6/arctic-cmip6/regrid --working_dir /import/beegfs/CMIP6/kmredilla --partition debug --ncpus 24
+
+Returns:
+    Outputs are written in a dtr_processing directory created as a subdirectory in working_dir, following the model/scenario/variable/<files>*.nc convention.
+    e.g. files for GFDL-ESM4 ssp245 would be written to <working_dir>/dtr_processing/netcdf/GFDL-ESM4/ssp245/dtr/
 """
 
 import argparse
@@ -173,15 +177,13 @@ if __name__ == "__main__":
     sbatch_dir = output_dir.joinpath("slurm")
     sbatch_dir.mkdir(exist_ok=True)
     _ = [fp.unlink() for fp in sbatch_dir.glob("*.slurm")]
-    dtr_dir = output_dir.joinpath("dtr")
-    dtr_dir.mkdir(exist_ok=True)
 
     # sbatch head - replaces config.py params for now!
     sbatch_head_kwargs = {
         "partition": partition,
         "ncpus": ncpus,
         "conda_init_script": working_dir.joinpath(
-            "cmip6-utils/bias_adjust/conda_init.sh"
+            "cmip6-utils/regridding/conda_init.sh"
         ),
     }
 
@@ -210,6 +212,13 @@ if __name__ == "__main__":
             )
             # excluding node 138 until issue resolved
             sbatch_head = make_sbatch_head(**sbatch_head_kwargs)
+
+            # create the nested output directory matching our model/scenario/variable convention
+            # nesting this in a 'netcdf' subdir to keep the dir structure separate from slurm folder 
+            #  and other non-data outputs 
+            dtr_dir = output_dir.joinpath("netcdf", model, scenario, "dtr")
+            dtr_dir.mkdir(exist_ok=True, parents=True)
+
             sbatch_dtr_kwargs = {
                 "sbatch_fp": sbatch_fp,
                 "sbatch_out_fp": sbatch_out_fp,
