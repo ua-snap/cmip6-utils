@@ -30,12 +30,18 @@ Here is a description of the pipeline.
 * `config.py`: sets some constant variables such as the **main list of models, scenarios, variables, and frequencies to mirror for our production data**.
 * `esgf_holdings.py`: script to run an audit which will generate a table of CMIP6 holdings on a given ESGF node using models, scenarios, variables, and frequencies provided in `config.py`.
 * `generate_batch_files.py`: script to generate the batch files of \<source> \<destination> filepaths for transferring files.
+* `generate_manifest.py`: script for generating the manifest tables of files we wish to mirror on ARDANO.
+* `holdings_summary_wrf`: notebook exposing summary tables of data availability based on the audit results tables (for WRF variables)
+* `holdings_summary`: notebook exposing summary tables of data availability based on the audit results tables (for WRF variables)
+* `llnl_esgf_holdings_wrf.csv`: table of data audit results for LLNL ESGF node produced by `esgf_holdings.py`, for the WRF variables / frequencies.
 * `llnl_esgf_holdings.csv`: table of data audit results for LLNL ESGF node produced by `esgf_holdings.py`.
+* `llnl_manifest_wrf.csv`: table of WRF-related files to mirror on ARDANO.
 * `llnl_manifest.csv`: table of files to mirror on ARDANO.
 * `quick_ls.py`: script to run an `ls` operation on a particular Globus path.
 * `select_variants.ipynb`: notebook for exploring the data available for variants of each model to determine which one to mirror.
 * `tests.slurm`: slurm script to run tests on mirrored data.
 * `transfer.py`: original script for running transfers, not based on the Globus SDK like `batch_transfer.py` is, and allows user to supply variable name and frequency if running a subset is of interest. 
+* `utils.py`: contains functions to help with multiple scripts in this pipeline.
 * `batch_files/`: batch files with \<source> \<destination> filepaths for transferring files.
 * `tests/`: tests for verifying that the mirror is successful.
 
@@ -77,17 +83,42 @@ export SLURM_EMAIL=kmredilla@alaska.edu
 python esgf_holdings.py --node llnl
 ```
 
+To do the same for the variables we want at non-standard freqeuncies for future WRF runs, add the `--wrf` flag:
+
+```
+python esgf_holdings.py --node llnl --wrf
+```
+
+This will create `llnl_esgf_holdings_wrf.csv`.
+
 5. Use the `generate_manifest.py` script generate a complete manifest of all files to be mirrored on the ACDN. (The manifest has also been committed to version control for convenience.)
 
 ```
 python generate_manifest.py --node llnl
 ```
 
+To do the same for the variables we want at non-standard freqeuncies for future WRF runs, add the `--wrf` flag:
+
+```
+python generate_manifest.py --node llnl --wrf
+```
+
+This will create `llnl_manifest_wrf.csv`.
+
 6. Use the `generate_batch_files.py` script to generate batch files from the manifest to run the transfer in batches.
 
 ```
 python generate_batch_files.py --node llnl
 ```
+
+To do the same for the variables we want at non-standard freqeuncies for future WRF runs, add the `--wrf` flag:
+
+```
+python generate_batch_files.py --node llnl --wrf
+```
+
+This will create additional batch files in the `batch_files/` folder for subdaily frequencies (table ID's).
+
 
 7. Use the `batch_transfer.py` script to run the transfer from the ESGF endpoint to the ACDN endpoint using the batch files.
 
