@@ -4,26 +4,44 @@ It would make sense to supply the same arguments as given to the slurm job, righ
 2. Read in the data and do a range check (min / max) to ensure all values are within reasonable bounds
 
 Example usage:
-    python -m pytest tests/test_cmip6_dtr.py
+    python -m pytest tests/test_cmip6_dtr.py --tasmax_dir /import/beegfs/CMIP6/arctic-cmip6/regrid/CESM2/ssp585/day/tasmax --tasmin_dir /import/beegfs/CMIP6/arctic-cmip6/regrid/CESM2/ssp585/day/tasmin --output_dir /import/beegfs/CMIP6/kmredilla/dtr_processing/netcdf/GFDL-ESM4/historical/day/dtr
 """
 
+import pytest
+from pathlib import Path
 import xarray as xr
+from multiprocessing import cpu_count
 from dask.distributed import LocalCluster
-from cmip6_dtr import parse_args, dtr_tmp_fn
 from config import expected_value_ranges
 
-# get same inputs
-tasmax_dir, tasmin_dir, output_dir = parse_args()
+
+@pytest.fixture
+def dtr_cli_args(request) -> tuple:
+    """
+    Fixture to accept the tasmax, tasmin, and output directories from the command line.
+    :param request: pytest request object
+    Done using this guide https://pytest-with-eric.com/pytest-advanced/pytest-addoption/
+
+    :return: Tuple of length and number of alpha num characters
+    """
+    # Taking passed args for length and number of chars
+    tasmax_dir = Path(request.config.getoption("--tasmax_dir"))
+    tasmin_dir = Path(request.config.getoption("--tasmin_dir"))
+    output_dir = Path(request.config.getoption("--output_dir"))
+
+    yield tasmax_dir, tasmin_dir, output_dir
 
 
-def test_file_existence():
+def test_file_existence(dtr_cli_args):
     """Test that the expected files are present"""
+    tasmax_dir, tasmin_dir, output_dir = dtr_cli_args
+
     # I think a for look is a good bet because pytest might print variable values where asserts fail?
     # we aren't testing the three-way correspondence between directories but this is tested in the worker script
     tasmax_fps = list(tasmax_dir.glob("tasmax*.nc"))
     for tasmax_fp in tasmax_fps:
         tasmax_fn = tasmax_fp.name
-        tasmin_fp = tasmin_dir.joinpath(tasmax_fn.repalce("tasmax", "tasmin"))
+        tasmin_fp = tasmin_dir.joinpath(tasmax_fn.replace("tasmax", "tasmin"))
         assert tasmin_fp.exists()
         # this should give us the DTR analog file name
         dtr_fp = output_dir.joinpath(tasmax_fp.name.replace("tasmax", "dtr"))
@@ -35,16 +53,20 @@ def test_file_existence():
     assert n_tasmin_fps == n_tasmax_fps == n_dtr_fps
 
 
-def test_file_structure():
+def test_file_structure(dtr_cli_args):
     """Test that the files open and look as expected"""
+    tasmax_dir, tasmin_dir, output_dir = dtr_cli_args
+
     for fp in output_dir.glob("dtr*.nc"):
         with xr.open_dataset(fp) as ds:
             assert "dtr" in ds.data_vars
             assert all(ds.dims == ["time", "lat", "lon"])
 
 
-def test_value_range():
+def test_value_range(dtr_cli_args):
     """Ensure all data values fall within expected range"""
+    tasmax_dir, tasmin_dir, output_dir = dtr_cli_args
+
     # start up a dask client for the final range check
     with LocalCluster(
         n_workers=int(0.9 * cpu_count()),
