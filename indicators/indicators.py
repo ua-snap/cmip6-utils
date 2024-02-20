@@ -501,7 +501,7 @@ if __name__ == "__main__":
         # convert indicator array into its own dataset
         idx_ds = indicators_ds[idx].to_dataset()
         # standardize the attributes
-        idx_ds_out = find_and_replace_attrs(idx_ds, **kwargs)
+        idx_ds_out = find_and_replace_attrs(idx_ds, model, scenario, **kwargs)
         # write
         idx_ds_out.to_netcdf(out_fp)
         # add filepath to list for validation
