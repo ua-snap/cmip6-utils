@@ -64,12 +64,13 @@ if __name__ == "__main__":
             "units": units,
         }
 
-        dtr_ds = dtr.to_dataset()
+        # the list here at the end is just making sure we have the time - lat - lon dimensional order
+        dtr_ds = dtr.to_dataset()[["time", "lat", "lon", "dtr"]]
         dtr_ds.attrs = {
             k: v for k, v in tasmax_ds.attrs.items() & tasmin_ds.attrs.items()
         }
 
-        # getting infor for saving and some extra checks
+        # getting info for saving and some extra checks
         start_year = dtr_ds.time.data[0].year
         end_year = dtr_ds.time.data[-1].year
         years = list(range(start_year, end_year + 1))
