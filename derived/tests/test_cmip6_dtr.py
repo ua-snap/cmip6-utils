@@ -4,7 +4,7 @@ It would make sense to supply the same arguments as given to the slurm job, righ
 2. Read in the data and do a range check (min / max) to ensure all values are within reasonable bounds
 
 Example usage:
-    python -m pytest tests/test_cmip6_dtr.py --tasmax_dir /import/beegfs/CMIP6/arctic-cmip6/regrid/CESM2/ssp585/day/tasmax --tasmin_dir /import/beegfs/CMIP6/arctic-cmip6/regrid/CESM2/ssp585/day/tasmin --output_dir /import/beegfs/CMIP6/kmredilla/dtr_processing/netcdf/GFDL-ESM4/historical/day/dtr
+    python -m pytest tests/test_cmip6_dtr.py --tasmax_dir /import/beegfs/CMIP6/arctic-cmip6/regrid/CESM2/ssp585/day/tasmax --tasmin_dir /import/beegfs/CMIP6/arctic-cmip6/regrid/CESM2/ssp585/day/tasmin --output_dir /import/beegfs/CMIP6/kmredilla/dtr_processing/netcdf/CESM2/ssp585/dtr
 """
 
 import pytest
@@ -36,7 +36,7 @@ def test_file_existence(dtr_cli_args):
     """Test that the expected files are present"""
     tasmax_dir, tasmin_dir, output_dir = dtr_cli_args
 
-    # I think a for look is a good bet because pytest might print variable values where asserts fail?
+    # I think a for loop is a good bet because pytest might print variable values where asserts fail?
     # we aren't testing the three-way correspondence between directories but this is tested in the worker script
     tasmax_fps = list(tasmax_dir.glob("tasmax*.nc"))
     for tasmax_fp in tasmax_fps:
@@ -60,7 +60,7 @@ def test_file_structure(dtr_cli_args):
     for fp in output_dir.glob("dtr*.nc"):
         with xr.open_dataset(fp) as ds:
             assert "dtr" in ds.data_vars
-            assert all(ds.dims == ["time", "lat", "lon"])
+            assert ds.dims == ["time", "lat", "lon"]
 
 
 def test_value_range(dtr_cli_args):
