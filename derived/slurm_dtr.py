@@ -84,7 +84,7 @@ def write_sbatch_dtr(
     pycommands += (
         # need to cd so that relative imports work
         f"cd {dtr_test_script.parent.parent}\n"
-        f"python -m pytest {dtr_test_script.parent.name}/{dtr_test_script.name} "
+        f"python -m pytest -root_dir={dtr_test_script.parent} {dtr_test_script.parent.name}/{dtr_test_script.name} "
         f"--tasmax_dir {tasmax_dir} "
         f"--tasmin_dir {tasmin_dir} "
         f"--output_dir {output_dir}\n"
