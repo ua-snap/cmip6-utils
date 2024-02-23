@@ -60,7 +60,7 @@ def test_file_structure(dtr_cli_args):
     for fp in output_dir.glob("dtr*.nc"):
         with xr.open_dataset(fp) as ds:
             assert "dtr" in ds.data_vars
-            assert ds.dims == ["time", "lat", "lon"]
+            assert list(ds.dims) == ["time", "lat", "lon"]
 
 
 def test_value_range(dtr_cli_args):
