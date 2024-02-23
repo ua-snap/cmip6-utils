@@ -47,7 +47,6 @@ prod_scenarios = [
 # production models and variants to mirror
 # determined using select_variants.ipynb
 prod_variant_lu = {
-    "CESM2": "r11i1p1f1",
     "CNRM-CM6-1-HR": "r1i1p1f2",
     "EC-Earth3-Veg": "r1i1p1f1",
     "GFDL-ESM4": "r1i1p1f1",
