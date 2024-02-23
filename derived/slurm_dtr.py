@@ -82,7 +82,9 @@ def write_sbatch_dtr(
     pycommands += f"echo begin dtr testing && date\n\n"
 
     pycommands += (
-        f"python {dtr_test_script} "
+        # need to cd so that relative imports work
+        f"cd {dtr_test_script.parent.parent}"
+        f"pytest {dtr_test_script.parent.name}/{dtr_test_script.name} "
         f"--tasmax_dir {tasmax_dir} "
         f"--tasmin_dir {tasmin_dir} "
         f"--output_dir {output_dir}\n"
@@ -214,8 +216,8 @@ if __name__ == "__main__":
             sbatch_head = make_sbatch_head(**sbatch_head_kwargs)
 
             # create the nested output directory matching our model/scenario/variable convention
-            # nesting this in a 'netcdf' subdir to keep the dir structure separate from slurm folder 
-            #  and other non-data outputs 
+            # nesting this in a 'netcdf' subdir to keep the dir structure separate from slurm folder
+            #  and other non-data outputs
             dtr_dir = output_dir.joinpath("netcdf", model, scenario, "dtr")
             dtr_dir.mkdir(exist_ok=True, parents=True)
 
