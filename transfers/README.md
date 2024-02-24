@@ -4,7 +4,7 @@ This folder is the "pipeline" for transferring raw [CMIP6](https://www.wcrp-clim
 
 ## Target CMIP6 Dataset
 
-SNAP has worked with collaborators to identify a subset of CMIP6 data that we want to mirror on the ARDN. These "requested data" are all outputs contributed under the ScenarioMIP and CMIP activities that satisfy all possible combinations of a particular set of models, scenarios, variables, and sampling frequencies identified as most valuable by our collaborators. Requested combinations are stored in `config.py`.
+SNAP has worked with collaborators to identify a subset of CMIP6 data that we want to mirror on the ACDN. These "requested data" are all outputs contributed under the ScenarioMIP and CMIP activities that satisfy all possible combinations of a particular set of models, scenarios, variables, and sampling frequencies identified as most valuable by our collaborators. Requested combinations are stored in `config.py`.
 
 These requested data cover an historical to end-of-century time period, with the historical data coming from the CMIP activity and the projected data coming from the ScenarioMIP activity. We are currently only concerned with accessing a single variant for each model, so a portion of this pipeline is dedicated to determining the variant that provides maximum coverage amongst the aformentioned combinations. The target data (i.e. the files that are actually available in current ESGF holdings) will be a subset of the requested data, as there are gaps in representation at each level (e.g. if certain model x scenario x variable x frequency combinations are missing from the holdings). The requested data combinations are subject to change as we continue to communicate with collaborators about what is available and what is important to their work.
 
@@ -12,7 +12,7 @@ These requested data cover an historical to end-of-century time period, with the
 
 The goals of this pipeline are to:
 1. Identify the target data by comparing our requested data with the current holdings in ESGF using an audit.
-2. Transfer that target data to the ARDN.
+2. Transfer that target data to the ACDN.
 3. Testing that we have successfully identified and transferred the target data.
 
 This pipeline will transfer all target data using the native ESGF directory structure:
@@ -32,16 +32,16 @@ Below is a list of the components in the pipeline and a short description of eac
 * `batch_files/`: batch files with \<source> \<destination> filepaths for transferring files.
 * `batch_transfer.py`: script to submit transfer jobs for all existing batch files, based on the Globus SDK.
 * `conda_init.sh`: a shell script for initializing conda in a blank shell that does not read the typical `.bashrc`, as is the case with new slurm jobs.
-* `config.py`: sets some constant variables such as the main list of models, scenarios, variables, and frequencies to transfer to ARDN.
+* `config.py`: sets some constant variables such as the main list of models, scenarios, variables, and frequencies to transfer to ACDN.
 * `esgf_holdings.py`: script to run an audit which will generate a table of CMIP6 holdings on a given ESGF node using models, scenarios, variables, and frequencies provided in `config.py`.
 * `generate_batch_files.py`: script to generate the batch files of \<source> \<destination> filepaths for transferring files.
-* `generate_manifest.py`: script for generating the manifest tables of files we wish to transfer to ARDN.
+* `generate_manifest.py`: script for generating the manifest tables of files we wish to transfer to ACDN.
 * `holdings_summary_wrf`: notebook exposing summary tables of data availability based on the audit results tables (for subdaily variables used in WRF only)
 * `holdings_summary`: notebook exposing summary tables of data availability based on the audit results tables
 * `llnl_esgf_holdings_wrf.csv`: table of data audit results for LLNL's ESGF node produced by `esgf_holdings.py`, (for subdaily variables / frequencies used in WRF only)
 * `llnl_esgf_holdings.csv`: table of data audit results for LLNL's ESGF node produced by `esgf_holdings.py`.
-* `llnl_manifest_wrf.csv`: table of WRF-related files to transfer to ARDN.
-* `llnl_manifest.csv`: table of files to transfer to ARDN.
+* `llnl_manifest_wrf.csv`: table of WRF-related files to transfer to ACDN.
+* `llnl_manifest.csv`: table of files to transfer to ACDN.
 * `quick_ls.py`: script to run an `ls` operation on a particular Globus path.
 * `select_variants.ipynb`: notebook for exploring the data available for variants of each model to determine which variant to transfer.
 * `tests.slurm`: slurm script to run tests on transferred data.
@@ -186,5 +186,5 @@ You will also need to set the `CLIENT_ID` variable to the ID for the Globus clie
 export CLIENT_ID=a316babe-5447-43b0-a82e-4fc86c91b71a
 ```
 
-This _should_ be the same between users. But if you experience any Globus client errors, follow the steps [in this tutorial](https://globus-sdk-python.readthedocs.io/en/stable/tutorial.html) to create a project in your Globus account (e.g. "UAF SNAP CMIP6 ARDN"), and create an app under that (e.g. "UAF SNAP CMIP6 ESGF Transfers"), which will provide you with a client ID for that app.
+This _should_ be the same between users. But if you experience any Globus client errors, follow the steps [in this tutorial](https://globus-sdk-python.readthedocs.io/en/stable/tutorial.html) to create a project in your Globus account (e.g. "UAF SNAP CMIP6 ACDN"), and create an app under that (e.g. "UAF SNAP CMIP6 ESGF Transfers"), which will provide you with a client ID for that app.
 
