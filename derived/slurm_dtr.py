@@ -206,6 +206,13 @@ if __name__ == "__main__":
             tasmax_dir = input_dir.joinpath(model, scenario, "day", "tasmax")
             tasmin_dir = input_dir.joinpath(model, scenario, "day", "tasmin")
 
+            # if these don't exist, skip them
+            if (not tasmax_dir.exists()) or (not tasmin_dir.exists()):
+                print(
+                    "One or both of tasmax or tasmin directories for {model}, {scenario} not available"
+                )
+                continue
+
             # filepath for slurm script
             sbatch_fp = sbatch_dir.joinpath(f"{model}_{scenario}_process_dtr.slurm")
             # filepath for slurm stdout
