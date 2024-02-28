@@ -1,4 +1,4 @@
-"""Script to run the globus batch transfer from LLNL ESGF node to ACDN. Accepts arguement for temporal frequency and variable name, and looks in batch_files/ for the corresponding file.
+"""Script to run the globus batch transfer from LLNL ESGF node to ACDN. Accepts arguement for table ID and variable name, and looks in batch_files/ for the corresponding file.
 
 Example usage: `python transfer.py -v tas`
 """
@@ -22,10 +22,10 @@ def arguments(argv):
     )
     parser.add_argument(
         "-f",
-        "--freq",
+        "--table_id",
         type=str,
-        help="Temporal frequency. Either 'day' (default) or 'mon'.",
-        default="day",
+        help="Temporal frequency. Should be a valid table ID such as 'day', 'Eday', 'Amon', 'Lmon', etc. If no frequency is supplied, all are used.",
+        default="*",
     )
     parser.add_argument(
         "-d",
@@ -35,23 +35,23 @@ def arguments(argv):
     )
     args = parser.parse_args()
 
-    return args.varname, args.freq, args.dry_run
+    return args.varname, args.table_id, args.dry_run
 
 
 if __name__ == "__main__":
-    varname, freq, dry_run = arguments(sys.argv)
+    varname, table_id, dry_run = arguments(sys.argv)
 
     if varname == "all_variables":
         # wildcard in front of frequency to handle different ones like day, Oday, SIday etc
-        batch_fps = Path("batch_files").glob(f"batch_llnl_*{freq}_*.txt")
-        all_fp = Path(f"/tmp/batch_llnl_{freq}_all_variables.txt")
+        batch_fps = Path("batch_files").glob(f"batch_llnl_{table_id}_*.txt")
+        all_fp = Path(f"/tmp/batch_llnl_{table_id}_all_variables.txt")
         batch_fp = str(all_fp)
         with open(batch_fp, "w") as batch_file:
             for fp in batch_fps:
                 with open(fp) as infile:
                     batch_file.write(infile.read())
     else:
-        batch_fp = f"batch_files/batch_llnl_{freq}_{varname}.txt"
+        batch_fp = f"batch_files/batch_llnl_{table_id}_{varname}.txt"
 
     command = [
         "globus",
@@ -59,7 +59,7 @@ if __name__ == "__main__":
         llnl_ep,
         acdn_ep,
         "--label",
-        f"Batch {freq} {varname}",
+        f"Batch {table_id} {varname}",
         "--batch",
         batch_fp,
         "--sync-level",

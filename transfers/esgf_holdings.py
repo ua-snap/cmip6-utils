@@ -1,9 +1,13 @@
 """Generate a reference table of CMIP6 holdings on a given ESGF node.
 
-The table resulting from this should have the following columns: model, scenario, variant, frequency, variable, grid_type, version, n_files, filenames
+The table resulting from this should have the following columns: model, scenario, variant, table_id, variable, grid_type, version, n_files, filenames
 
 Usage:
     python esgf_holdings.py --node llnl --ncpus 24
+    
+    or
+
+    python esgf_holdings.py --node llnl --ncpus 24 --wrf
 """
 
 import argparse
@@ -24,10 +28,15 @@ def arguments(argv):
     parser.add_argument(
         "--ncpus", type=int, help="Number of cores to use", required=False, default=8
     )
+    parser.add_argument(
+        "--wrf",
+        action="store_true",
+        help="Whether or not to audit holdings for WRF variables, at sub-daily resolutions.",
+    )
     args = parser.parse_args()
-    esgf_node, ncpus = args.node, args.ncpus
+    esgf_node, ncpus, do_wrf = args.node, args.ncpus, args.wrf
 
-    return esgf_node, ncpus
+    return esgf_node, ncpus, do_wrf
 
 
 def list_variants(tc, node_ep, node_prefix, activity, model, scenario):
@@ -65,7 +74,7 @@ def make_model_variants_lut(tc, node_ep, node_prefix, models, scenarios, ncpus):
 
 
 def get_filenames(
-    tc, node_ep, node_prefix, activity, model, scenario, variant, frequency, varname
+    tc, node_ep, node_prefix, activity, model, scenario, variant, table_id, varname
 ):
     """Get the file names for a some combination of model, scenario, and variable."""
     # the subdirectory under the variable name is the grid type.
@@ -77,65 +86,82 @@ def get_filenames(
         model,
         scenario,
         variant,
-        frequency,
+        table_id,
         varname,
     )
-    grid_type = utils.operation_ls(tc, node_ep, var_path)
+    var_id_ls = utils.operation_ls(tc, node_ep, var_path)
     empty_row = {
         "model": model,
         "scenario": scenario,
         "variant": variant,
-        "frequency": frequency,
+        # table ID is essentially frequency, but there are different codes for different variables,
+        #  e.g. Eday and day, both for the "day" frequency
+        "table_id": table_id,
         "variable": varname,
         "grid_type": None,
         "version": None,
         "n_files": None,
         "filenames": None,
     }
-    if isinstance(grid_type, int):
+    if isinstance(var_id_ls, int) or (len(var_id_ls) == 0):
         # error if int
         # there is no data for this particular combination.
+        # or if variable folder exists but is empty, also should give empty row
         row_di = empty_row
-    else:
-        # combo does exist, return all filenames
-        grid_type = grid_type[0]
-        versions = utils.operation_ls(tc, node_ep, var_path.joinpath(grid_type))
+    elif len(var_id_ls) > 1:
+        # if this ever happens, we will need to think about how to handle it, so just exit for now :)
+        exit(
+            f"Unexpected result, multiple grid types found for ls operation on {var_path}"
+        )
+    elif len(var_id_ls) == 1:
+        grid_type = var_id_ls[0]
+        grid_path = var_path.joinpath(grid_type)
+        grid_type_ls = utils.operation_ls(tc, node_ep, grid_path)
 
-        if len(versions) == 0:
-            # in rare cases, the grid_type folder exists but with no data.
-            row_di = empty_row
-            # setting grid_type value will allow us to know where this occurs.
-            row_di["grid_type"] = grid_type
-        else:
-            use_version = sorted(versions)[-1]
-            fns = utils.operation_ls(
-                tc, node_ep, var_path.joinpath(grid_type, use_version)
-            )
-            row_di = {
-                "model": model,
-                "scenario": scenario,
-                "variant": variant,
-                "frequency": frequency,
-                "variable": varname,
-                "grid_type": grid_type,
-                "version": use_version,
-                "n_files": len(fns),
-                "filenames": fns,
-            }
+        if isinstance(grid_type_ls, int):
+            print(f"Unexpected result, ls error on supposed valid path: {grid_path}")
+            row_di = empty_row.update({"grid_type": grid_type})
+        elif len(grid_type_ls) > 0:
+            use_version = sorted(grid_type_ls)[-1]
+            version_path = var_path.joinpath(grid_type, use_version)
+            fns_ls = utils.operation_ls(tc, node_ep, version_path)
+
+            # handle possible missing files, even though version exists? new observation as of 2/14/24
+            if isinstance(fns_ls, int):
+                print(
+                    f"Unexpected result, ls error on supposed valid path: {version_path}"
+                )
+                row_di = empty_row.update(
+                    {"grid_type": grid_type, "version": use_version}
+                )
+            else:
+                n_files = len(fns_ls)
+
+                row_di = {
+                    "model": model,
+                    "scenario": scenario,
+                    "variant": variant,
+                    "table_id": table_id,
+                    "variable": varname,
+                    "grid_type": grid_type,
+                    "version": use_version,
+                    "n_files": n_files,
+                    "filenames": fns_ls,
+                }
 
     return row_di
 
 
-def make_holdings_table(tc, node_ep, node_prefix, variant_lut, ncpus):
+def make_holdings_table(tc, node_ep, node_prefix, variant_lut, ncpus, variable_lut):
     """Create a table of filename availability for all models, scenarios, variants, and variable names"""
     # generate lists of arguments from all combinations of variables, models, and scenarios
     args = []
     for i, row in variant_lut.iterrows():
         activity = "CMIP" if row["scenario"] == "historical" else "ScenarioMIP"
-        for var_id in variables:
-            for freq in variables[var_id]["freqs"]:
+        for var_id in variable_lut:
+            for t_id in variable_lut[var_id]["table_ids"]:
                 args.extend(
-                    # make these into lists so we can iterate over variables/freqs and add
+                    # make these into lists so we can iterate over variables/table IDs and add
                     product(
                         [tc],
                         [node_ep],
@@ -144,7 +170,7 @@ def make_holdings_table(tc, node_ep, node_prefix, variant_lut, ncpus):
                         [row["model"]],
                         [row["scenario"]],
                         row["variants"],
-                        [freq],
+                        [t_id],
                         [var_id],
                     )
                 )
@@ -158,7 +184,7 @@ def make_holdings_table(tc, node_ep, node_prefix, variant_lut, ncpus):
 
 
 if __name__ == "__main__":
-    esgf_node, ncpus = arguments(sys.argv)
+    esgf_node, ncpus, do_wrf = arguments(sys.argv)
 
     # create an authorization client for Globus
     auth_client = globus_sdk.NativeAppAuthClient(CLIENT_ID)
@@ -191,7 +217,26 @@ if __name__ == "__main__":
             "Key error. Check that you have logged into the endpoint via the Globus app."
         )
 
-    # amke the holdings table
-    holdings_df = make_holdings_table(tc, node_ep, node_prefix, variant_lut, ncpus)
+    # make the holdings table
+    if do_wrf:
+        variable_lut = wrf_variables
+        # to keep consistent with process for auditing standard variables,
+        #  we need to add a "table_id" key to each child dict in the WRF variable dict.
+        #  We will do so using the main list of all possible subdaily table IDs.
+        for var_id in variable_lut:
+            variable_lut[var_id]["table_ids"] = subdaily_table_ids
+        outfn_suffix = "_wrf"
+    else:
+        variable_lut = variables
+        outfn_suffix = ""
 
-    holdings_df.to_csv(f"{esgf_node}_esgf_holdings.csv", index=False)
+    holdings_df = make_holdings_table(
+        tc=tc,
+        node_ep=node_ep,
+        node_prefix=node_prefix,
+        variant_lut=variant_lut,
+        ncpus=ncpus,
+        variable_lut=variable_lut,
+    )
+
+    holdings_df.to_csv(f"{esgf_node}_esgf_holdings{outfn_suffix}.csv", index=False)
