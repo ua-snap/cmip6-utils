@@ -89,7 +89,7 @@ def get_filenames(
         table_id,
         varname,
     )
-    grid_type = utils.operation_ls(tc, node_ep, var_path)
+    var_id_ls = utils.operation_ls(tc, node_ep, var_path)
     empty_row = {
         "model": model,
         "scenario": scenario,
@@ -103,42 +103,51 @@ def get_filenames(
         "n_files": None,
         "filenames": None,
     }
-    if isinstance(grid_type, int):
+    if isinstance(var_id_ls, int) or (len(var_id_ls) == 0):
         # error if int
         # there is no data for this particular combination.
+        # or if variable folder exists but is empty, also should give empty row
         row_di = empty_row
-    else:
-        # combo does exist, return all filenames
-        grid_type = grid_type[0]
-        versions = utils.operation_ls(tc, node_ep, var_path.joinpath(grid_type))
+    elif len(var_id_ls) > 1:
+        # if this ever happens, we will need to think about how to handle it, so just exit for now :)
+        exit(
+            f"Unexpected result, multiple grid types found for ls operation on {var_path}"
+        )
+    elif len(var_id_ls) == 1:
+        grid_type = var_id_ls[0]
+        grid_path = var_path.joinpath(grid_type)
+        grid_type_ls = utils.operation_ls(tc, node_ep, grid_path)
 
-        if len(versions) == 0:
-            # in rare cases, the grid_type folder exists but with no data.
-            row_di = empty_row
-            # setting grid_type value will allow us to know where this occurs.
-            row_di["grid_type"] = grid_type
-        else:
-            use_version = sorted(versions)[-1]
-            ls_path = var_path.joinpath(grid_type, use_version)
-            fns = utils.operation_ls(tc, node_ep, ls_path)
+        if isinstance(grid_type_ls, int):
+            print(f"Unexpected result, ls error on supposed valid path: {grid_path}")
+            row_di = empty_row.update({"grid_type": grid_type})
+        elif len(grid_type_ls) > 0:
+            use_version = sorted(grid_type_ls)[-1]
+            version_path = var_path.joinpath(grid_type, use_version)
+            fns_ls = utils.operation_ls(tc, node_ep, version_path)
 
             # handle possible missing files, even though version exists? new observation as of 2/14/24
-            if isinstance(fns, int):
-                n_files = None
+            if isinstance(fns_ls, int):
+                print(
+                    f"Unexpected result, ls error on supposed valid path: {version_path}"
+                )
+                row_di = empty_row.update(
+                    {"grid_type": grid_type, "version": use_version}
+                )
             else:
-                n_files = len(fns)
+                n_files = len(fns_ls)
 
-            row_di = {
-                "model": model,
-                "scenario": scenario,
-                "variant": variant,
-                "table_id": table_id,
-                "variable": varname,
-                "grid_type": grid_type,
-                "version": use_version,
-                "n_files": n_files,
-                "filenames": fns,
-            }
+                row_di = {
+                    "model": model,
+                    "scenario": scenario,
+                    "variant": variant,
+                    "table_id": table_id,
+                    "variable": varname,
+                    "grid_type": grid_type,
+                    "version": use_version,
+                    "n_files": n_files,
+                    "filenames": fns_ls,
+                }
 
     return row_di
 
