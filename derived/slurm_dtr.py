@@ -12,6 +12,7 @@ import argparse
 import subprocess
 from pathlib import Path
 from cmip6_dtr import get_tmax_tmin_fps
+from config import output_dir_name
 
 
 def make_sbatch_head(partition, conda_init_script, ncpus):
@@ -162,6 +163,16 @@ def parse_args():
     )
 
 
+def get_output_dir(working_dir, output_dir_name):
+    """Get the output directory path which will contain all subfolders of outputs (data, slurm etc). Function for sharing."""
+    return working_dir.joinpath(output_dir_name)
+
+
+def get_dtr_dir(output_dir, model, scenario):
+    """Get the DTR directory from output_dir, model, and scenario. Function for sharing."""
+    return output_dir.joinpath("netcdf", model, scenario, "dtr")
+
+
 if __name__ == "__main__":
     (
         models,
@@ -173,7 +184,7 @@ if __name__ == "__main__":
     ) = parse_args()
 
     working_dir.mkdir(exist_ok=True)
-    output_dir = working_dir.joinpath("dtr_processing")
+    output_dir = get_output_dir(working_dir, output_dir_name)
     output_dir.mkdir(exist_ok=True)
 
     # make batch files for each model / scenario / variable combination
@@ -237,7 +248,7 @@ if __name__ == "__main__":
             # create the nested output directory matching our model/scenario/variable convention
             # nesting this in a 'netcdf' subdir to keep the dir structure separate from slurm folder
             #  and other non-data outputs
-            dtr_dir = output_dir.joinpath("netcdf", model, scenario, "dtr")
+            dtr_dir = get_dtr_dir(output_dir, model, scenario)
             dtr_dir.mkdir(exist_ok=True, parents=True)
 
             sbatch_dtr_kwargs = {

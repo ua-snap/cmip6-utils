@@ -1,3 +1,10 @@
+output_dir_name = "dtr_processing"
+
+dtr_tmp_fn = "dtr_day_{model}_{scenario}_regrid_{year}0101-{year}1231.nc"
+tasmax_tmp_fn = "tasmax_day_{model}_{scenario}_regrid_{year}0101-{year}1231.nc"
+tasmin_tmp_fn = "tasmin_day_{model}_{scenario}_regrid_{year}0101-{year}1231.nc"
+
+
 # min / max possible ranges
 expected_value_ranges = {
     # this value was determined in exploration

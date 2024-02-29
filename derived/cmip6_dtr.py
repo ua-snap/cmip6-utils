@@ -10,6 +10,7 @@ from pathlib import Path
 from dask.distributed import LocalCluster
 from multiprocessing import cpu_count
 import xarray as xr
+from config import dtr_tmp_fn
 
 
 def parse_args():
@@ -49,7 +50,6 @@ def get_tmax_tmin_fps(tasmax_dir, tasmin_dir):
 if __name__ == "__main__":
     tasmax_dir, tasmin_dir, output_dir = parse_args()
 
-    dtr_tmp_fn = "dtr_day_{model}_{scenario}_regrid_{year}0101-{year}1231.nc"
     # assumes all files in one dir have corresponding file in the other
     tasmax_fps, tasmin_fps = get_tmax_tmin_fps(tasmax_dir, tasmin_dir)
 
