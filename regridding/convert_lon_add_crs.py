@@ -1,0 +1,141 @@
+"""Script to find all .nc files in the regrid directory and convert longitudes from 0 to 360 scale to standard -180 to 180 scale.
+CF-compliant CRS information is added to the dataset, which will allow most software to read the CRS as WGS84.
+Files are modified "in place", ie the original files are overwritten by a new dataset.
+
+Since some of the "fx" variables are on an Antarctic grid, we do not want to apply the standard longitude conversion to those.
+For now, this script will check file paths for fixed "fx" variables and ignore them. 
+"""
+
+from pathlib import Path
+import xarray as xr
+import glob
+from multiprocessing import Pool
+import tqdm
+import argparse
+from pyproj import Proj, CRS
+import numpy as np
+
+
+#set the global keep_attrs to True, to avoid losing longitude attributes during computation
+xr.set_options(keep_attrs=True)
+
+
+def parse_args():
+    """Parse some arguments"""
+    parser = argparse.ArgumentParser(description=__doc__)
+
+    parser.add_argument(
+        "--regrid_dir",
+        dest="regrid_dir",
+        type=str,
+        help="Directory of regridded files to be processed",
+        required=True,
+    )
+    args = parser.parse_args()
+
+    return args.regrid_dir
+
+
+def list_nonfixed_nc_files(regrid_dir):
+    fps = list(regrid_dir.glob('**/*.nc'))
+    removed_fps = []
+    for fp in fps:
+        if "fx" in fps[0].parts[-3]:
+            fps.remove(fp)
+            removed_fps.append(fp)
+    return fps, removed_fps
+
+
+def check_longitude(fp):
+    #load the dataset entirely into memory, so we can free up the original file for overwriting
+    try:
+        with xr.open_dataset(fp) as file_ds:
+            ds = file_ds.load()
+    except:
+        print(f"Could not open {fp}!")
+        return False, None
+
+    # affirm that there is a "lon" coordinate by trying to extract min/max
+    try:
+        max = ds.lon.values.max()
+        min = ds.lon.values.min()
+    except:
+        print(f"Could not find 'lon' coordinate in {fp}!")
+        return False, None
+
+    # check that longitude is scaled 0-360
+    # first, make sure the max is between 180 and 360, and the min is greater than 0
+    # also change the sign of the min to positive and measure the range;
+    # it should be over 350 for a 0-360 scale, and would be closer to 0 if a -180 to 180 scale
+
+    if 180 < max <= 360 and \
+        min >= 0 and \
+        len(range(int(abs(min)), int(max))):
+        return True, ds
+    else:
+        print(f"Standard 'lon' coordinates already exist in {fp}!")
+        return False, ds
+
+
+def convert_to_standard_longitude(ds):
+    #copy original encoding (not persisted thru computations)
+    lon_enc = ds['lon'].encoding
+    #subtract from 0-360 lon coords to get -180 to 180 lon coords, and reapply encoding
+    ds['lon'] = ds['lon'] - 180
+    ds['lon'].encoding = lon_enc
+    #sort and verify
+    ds = ds.sortby(ds.lon, ascending=True)
+
+    return ds
+
+
+def apply_wgs84(ds):    
+    #get CF-compliant crs attribute dict
+    cf_crs = CRS.from_epsg(4326).to_cf()
+
+    #create a spatial_ref coordinate, which is an empty array but has the CF-compliant crs attribute dict
+    ds = ds.assign_coords({
+        "spatial_ref": ([],np.array(0), cf_crs)
+        })
+    
+    #add a second attribute "spatial_ref" identical to "crs_wkt" (matches test rioxarray output)
+    ds["spatial_ref"].attrs["spatial_ref"] = cf_crs['crs_wkt']
+
+    #manually link spatial_ref attributes to the data variable via "grid_mapping" encoding
+    #assumes dataset will only have one data variable!
+    var = list(ds.data_vars)[0]
+    ds[var].encoding["grid_mapping"] = "spatial_ref"
+
+    return ds
+
+
+def convert_longitude_and_apply_wgs84(fp):
+    print(fp)
+    status, ds = check_longitude(fp)
+    if status==True:
+        ds = convert_to_standard_longitude(ds)
+        ds = apply_wgs84(ds)
+        ds.to_netcdf(fp, mode="w", format="NETCDF4")
+    elif status==False and ds is not None:
+        ds = apply_wgs84(ds)
+        ds.to_netcdf(fp, mode="w", format="NETCDF4")
+    else:
+        print(f"File not converted: {fp}")
+
+
+if __name__ == '__main__':
+
+    regrid_dir = parse_args()
+    fps, removed_fps = list_nonfixed_nc_files(Path(regrid_dir))
+    if len(removed_fps) > 0:
+        print(f"Ignoring {len(removed_fps)} files with fixed frequencies...")
+    print(f"Checking longitude of {len(fps)} regridded files in {regrid_dir}...")
+    print("Attempting to convert to standard longitude...")
+
+    # TODO: figure out how to use multiprocessing here!
+    # with Pool(24) as pool:
+    #     pool.imap_unordered(convert_longitude_and_apply_wgs84, fps)
+
+    for fp in tqdm.tqdm(fps):
+        print(fp)
+        convert_longitude_and_apply_wgs84(fp)
