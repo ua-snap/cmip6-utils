@@ -70,15 +70,14 @@ def convert_to_standard_longitude(ds):
 def check_longitude_and_convert(fp):
     status, ds = check_longitude(fp)
     if status==True:
-        #ds_out = convert_to_standard_longitude(ds).copy()
+        ds_out = convert_to_standard_longitude(ds).copy()
         ds.close()
-        #ds_out.to_netcdf(fp)
-        #return ds_out ### TODO: option to pass the dataset to new "add CRS" function before writing
+        ds_out.to_netcdf(fp)
+        #return ds_out ### TODO: option to pass the dataset to new "add CRS" function before writing??
         return None
     else:
-        #ds.close()
         print(f"File not converted: {fp}")
-        #return None
+        return None
 
 
 if __name__ == '__main__':
@@ -88,6 +87,7 @@ if __name__ == '__main__':
     if len(removed_fps) > 0:
         print(f"Ignoring {len(removed_fps)} files with fixed frequencies...")
     print(f"Checking longitude of {len(fps)} regridded files in {regrid_dir}...")
+    print("Attempting to convert to standard longitude...")
 
     # TODO: figure out how to use multiprocessing here!
     # with Pool(24) as pool:
