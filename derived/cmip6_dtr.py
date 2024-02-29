@@ -38,15 +38,22 @@ def parse_args():
     return (Path(args.tasmax_dir), Path(args.tasmin_dir), Path(args.output_dir))
 
 
+def get_tmax_tmin_fps(tasmax_dir, tasmin_dir):
+    """Helper function for getting tasmax and tasmin filepaths. Put in function for checking prior to slurming."""
+    tasmax_fps = list(tasmax_dir.glob("tasmax*.nc"))
+    tasmin_fps = list(tasmin_dir.glob("tasmin*.nc"))
+
+    return tasmax_fps, tasmin_fps
+
+
 if __name__ == "__main__":
     tasmax_dir, tasmin_dir, output_dir = parse_args()
 
-    output_dir.mkdir(exist_ok=True)
-
     dtr_tmp_fn = "dtr_day_{model}_{scenario}_regrid_{year}0101-{year}1231.nc"
     # assumes all files in one dir have corresponding file in the other
-    tasmax_fps = list(tasmax_dir.glob("*.nc"))
-    tasmin_fps = list(tasmin_dir.glob("*.nc"))
+    tasmax_fps, tasmin_fps = get_tmax_tmin_fps(tasmax_dir, tasmin_dir)
+
+    output_dir.mkdir(exist_ok=True)
 
     with LocalCluster(
         n_workers=int(0.9 * cpu_count()),

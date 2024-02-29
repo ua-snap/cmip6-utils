@@ -11,6 +11,7 @@ Returns:
 import argparse
 import subprocess
 from pathlib import Path
+from cmip6_dtr import get_tmax_tmin_fps
 
 
 def make_sbatch_head(partition, conda_init_script, ncpus):
@@ -207,11 +208,22 @@ if __name__ == "__main__":
             tasmin_dir = input_dir.joinpath(model, scenario, "day", "tasmin")
 
             # if these don't exist, skip them
-            if (not tasmax_dir.exists()) or (not tasmin_dir.exists()):
+            try:
+                assert tasmax_dir.exists()
+                assert tasmin_dir.exists()
+            except AssertionError:
                 print(
-                    "One or both of tasmax or tasmin directories for {model}, {scenario} not available"
+                    "One or both of tasmax or tasmin directories for {model}, {scenario} not available. Skipping slurm script creation."
                 )
                 continue
+
+            try:
+                tasmax_fps, tasmin_fps = get_tmax_tmin_fps(tasmax_dir, tasmin_dir)
+                assert len(tasmax_fps) == len(tasmin_fps)
+            except AssertionError:
+                exit(
+                    f"Number of tasmin files ({len(tasmin_fps)}) not equal to number of tasmax files ({len(tasmax_fps)}). Aborting."
+                )
 
             # filepath for slurm script
             sbatch_fp = sbatch_dir.joinpath(f"{model}_{scenario}_process_dtr.slurm")
