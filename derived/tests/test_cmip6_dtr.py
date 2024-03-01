@@ -92,5 +92,5 @@ def test_value_range(dtr_cli_args):
         with xr.open_mfdataset(dtr_fps) as ds:
             assert ds["dtr"].max() < expected_value_ranges["dtr"]["maximum"]
             assert ds["dtr"].min() >= expected_value_ranges["dtr"]["minimum"]
-            # chceks that files aren't all the same value
+            # checks that files aren't all the same value
             assert ~np.all(ds["dtr"].values[0, 0, 0] == ds["dtr"].values)
