@@ -224,7 +224,7 @@ if __name__ == "__main__":
                 assert tasmin_dir.exists()
             except AssertionError:
                 print(
-                    "One or both of tasmax or tasmin directories for {model}, {scenario} not available. Skipping slurm script creation."
+                    f"One or both of tasmax or tasmin directories for {model}, {scenario} not available. Skipping slurm script creation."
                 )
                 continue
 
@@ -268,3 +268,5 @@ if __name__ == "__main__":
                 sbatch_out_fp.name.replace("%j", str(job_id))
             )
             job_ids.append(job_id)
+
+    print(job_ids)
