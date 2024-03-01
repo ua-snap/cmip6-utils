@@ -1,9 +1,11 @@
-"""Script to find all .nc files in the regrid directory and convert longitudes from 0 to 360 scale to standard -180 to 180 scale.
-CF-compliant CRS information is added to the dataset, which will allow most software to read the CRS as WGS84.
-Files are modified "in place", ie the original files are overwritten by a new dataset.
+"""Script to find all .nc files in a regrid directory and convert longitudes from 0 to 360 scale to standard -180 to 180 scale.
 
-Since some of the "fx" variables are on an Antarctic grid, we do not want to apply the standard longitude conversion to those.
-For now, this script will check file paths for fixed "fx" variables and ignore them. 
+CF-compliant CRS information is added to the dataset, which will allow most software to read the CRS as WGS84.
+Files are modified "in place", ie the original files are overwritten by a new dataset;
+Therefore, this script should be run before the transfer of regridded data from the scratch directory to a production directory.
+Since some of the "fx" variables are on an Antarctic grid, we do not want to apply the standard longitude conversion to those;
+For now, this script will check file paths for fixed "fx" variables and ignore them.
+Results of the processing are simply printed, though in the future they could be logged in a file.
 """
 
 from pathlib import Path
@@ -21,7 +23,7 @@ xr.set_options(keep_attrs=True)
 
 
 def parse_args():
-    """Parse some arguments"""
+    """Parse some arguments."""
     parser = argparse.ArgumentParser(description=__doc__)
 
     parser.add_argument(
@@ -37,6 +39,14 @@ def parse_args():
 
 
 def list_nonfixed_nc_files(regrid_dir):
+    """Function to list all netCDF files in the input directory.
+    Args:
+    regrid_dir(Path) : path to directory with regridded data
+
+    Returns:
+    fps(list): list of file Paths that will be processed. 
+    removed_fps(list): list of Paths that will be ignored.
+    """
     fps = list(regrid_dir.glob('**/*.nc'))
     removed_fps = []
     for fp in fps:
@@ -47,6 +57,15 @@ def list_nonfixed_nc_files(regrid_dir):
 
 
 def check_longitude(fp):
+    """Function to check longitude properties of input datasets, and determine whether or not they need to be converted.
+    Args:
+    fp(Path) : path to directory with regridded data
+
+    Returns:
+    (boolean): True if the dataset has a 0 to 360 longitude scale, False if not
+    ds (xarray.Dataset) or None: the dataset with a 0 to 360 longitude scale, or None if scale is otherwise
+    msg (str) or None: pre-baked error message from global message variables, or no message if successful
+    """
     #load the dataset entirely into memory, so we can free up the original file for overwriting
     try:
         with xr.open_dataset(fp) as file_ds:
@@ -75,7 +94,14 @@ def check_longitude(fp):
 
 
 def convert_to_standard_longitude(ds):
-    
+    """Function to convert longitude from 0 to 360 scale to -180 to 180 scale with a basic subtraction operation.
+    Args:
+    ds(xarray.Dataset): the dataset with a 0 to 360 longitude scale
+
+    Returns:
+    ds (xarray.Dataset): the dataset with a 0 to 360 longitude scale, or the original dataset if attempted converstion was not successful
+    msg (str) or None: pre-baked error message from global message variables, or no message if successful
+    """
     try:
         #copy original encoding (not persisted thru computations)
         lon_enc = ds['lon'].encoding
@@ -89,7 +115,15 @@ def convert_to_standard_longitude(ds):
         return ds, msg_d
 
 
-def apply_wgs84(ds):    
+def apply_wgs84(ds):
+    """Function to add spatial_ref coordinate, CRS attributes, and CRS encodings to make CF-compliant metadata for the WGS84 CRS.
+    Args:
+    ds(xarray.Dataset): the dataset with a -180 to 180 longitude scale
+
+    Returns:
+    ds (xarray.Dataset): the dataset with WGS84 CRS info added, or the original dataset if additions were not successful
+    msg (str) or None: pre-baked results message from global message variables, or no message if successful
+    """    
     #get CF-compliant crs attribute dict
     cf_crs = CRS.from_epsg(4326).to_cf()
 
