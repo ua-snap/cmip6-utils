@@ -230,9 +230,8 @@ if __name__ == "__main__":
                 assert tasmax_dir.exists()
                 assert tasmin_dir.exists()
             except AssertionError:
-                print(
-                    f"One or both of tasmax or tasmin directories for {model}, {scenario} not available. Skipping slurm script creation."
-                )
+                # wanted to have a print statement here, about skipping directories that don't have valid input data,
+                #  but that would make it more messy to pass job IDs to next function in prefect
                 continue
 
             try:
@@ -275,5 +274,5 @@ if __name__ == "__main__":
                 sbatch_out_fp.name.replace("%j", str(job_id))
             )
             job_ids.append(job_id)
-
+    # currently printing Job IDs to give to next steps in prefect. Probably better ways to do this.
     print(job_ids)
