@@ -242,7 +242,7 @@ if __name__ == "__main__":
                 assert len(tasmax_fps) == len(tasmin_fps)
             except AssertionError:
                 exit(
-                    f"Number of tasmin files ({len(tasmin_fps)}) not equal to number of tasmax files ({len(tasmax_fps)}). Aborting."
+                    f"Number of tasmin files ({len(tasmin_fps)}) not equal to number of tasmax files ({len(tasmax_fps)}). Model={model}, scenario={scenario}. Aborting."
                 )
 
             # filepath for slurm script
