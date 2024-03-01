@@ -11,6 +11,7 @@ from dask.distributed import LocalCluster
 from multiprocessing import cpu_count
 import xarray as xr
 from config import dtr_tmp_fn
+from slurm_dtr import get_tmax_tmin_fps
 
 
 def parse_args():
@@ -37,14 +38,6 @@ def parse_args():
     args = parser.parse_args()
 
     return (Path(args.tasmax_dir), Path(args.tasmin_dir), Path(args.output_dir))
-
-
-def get_tmax_tmin_fps(tasmax_dir, tasmin_dir):
-    """Helper function for getting tasmax and tasmin filepaths. Put in function for checking prior to slurming."""
-    tasmax_fps = list(tasmax_dir.glob("tasmax*.nc"))
-    tasmin_fps = list(tasmin_dir.glob("tasmin*.nc"))
-
-    return tasmax_fps, tasmin_fps
 
 
 if __name__ == "__main__":

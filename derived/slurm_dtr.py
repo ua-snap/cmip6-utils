@@ -11,7 +11,6 @@ Returns:
 import argparse
 import subprocess
 from pathlib import Path
-from cmip6_dtr import get_tmax_tmin_fps
 from config import output_dir_name
 
 
@@ -171,6 +170,14 @@ def get_output_dir(working_dir, output_dir_name):
 def get_dtr_dir(output_dir, model, scenario):
     """Get the DTR directory from output_dir, model, and scenario. Function for sharing."""
     return output_dir.joinpath("netcdf", model, scenario, "dtr")
+
+
+def get_tmax_tmin_fps(tasmax_dir, tasmin_dir):
+    """Helper function for getting tasmax and tasmin filepaths. Put in function for checking prior to slurming."""
+    tasmax_fps = list(tasmax_dir.glob("tasmax*.nc"))
+    tasmin_fps = list(tasmin_dir.glob("tasmin*.nc"))
+
+    return tasmax_fps, tasmin_fps
 
 
 if __name__ == "__main__":
