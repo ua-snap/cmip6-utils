@@ -7,6 +7,7 @@ Example usage:
 
 import argparse
 from pathlib import Path
+import dask
 from dask.distributed import LocalCluster
 from multiprocessing import cpu_count
 import xarray as xr
@@ -42,6 +43,8 @@ def parse_args():
 
 if __name__ == "__main__":
     tasmax_dir, tasmin_dir, output_dir = parse_args()
+    # keep getting a bunch of errors about unable to remove lock files on Chinook
+    dask.config.set({"distributed.worker.use-file-locking": False})
 
     # assumes all files in one dir have corresponding file in the other
     tasmax_fps, tasmin_fps = get_tmax_tmin_fps(tasmax_dir, tasmin_dir)
