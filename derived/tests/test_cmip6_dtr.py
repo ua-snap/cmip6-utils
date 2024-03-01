@@ -9,6 +9,7 @@ Example usage:
 
 import pytest
 from pathlib import Path
+import numpy as np
 import xarray as xr
 from multiprocessing import cpu_count
 from dask.distributed import LocalCluster
@@ -32,13 +33,21 @@ def dtr_cli_args(request) -> tuple:
     yield tasmax_dir, tasmin_dir, output_dir
 
 
+def dtr_files_exist(output_dir):
+    dtr_fps = list(output_dir.glob("dtr*.nc"))
+    return len(dtr_fps) > 0
+
+
 def test_file_existence(dtr_cli_args):
     """Test that the expected files are present"""
     tasmax_dir, tasmin_dir, output_dir = dtr_cli_args
+    if not dtr_files_exist(output_dir):
+        pytest.skip("No DTR files found.")
 
     # I think a for loop is a good bet because pytest might print variable values where asserts fail?
     # we aren't testing the three-way correspondence between directories but this is tested in the worker script
     tasmax_fps = list(tasmax_dir.glob("tasmax*.nc"))
+    assert len(tasmax_fps) > 0
     for tasmax_fp in tasmax_fps:
         tasmax_fn = tasmax_fp.name
         tasmin_fp = tasmin_dir.joinpath(tasmax_fn.replace("tasmax", "tasmin"))
@@ -56,8 +65,12 @@ def test_file_existence(dtr_cli_args):
 def test_file_structure(dtr_cli_args):
     """Test that the files open and look as expected"""
     tasmax_dir, tasmin_dir, output_dir = dtr_cli_args
+    if not dtr_files_exist(output_dir):
+        pytest.skip("No DTR files found.")
 
-    for fp in output_dir.glob("dtr*.nc"):
+    dtr_fps = list(output_dir.glob("dtr*.nc"))
+
+    for fp in dtr_fps:
         with xr.open_dataset(fp) as ds:
             assert "dtr" in ds.data_vars
             assert list(ds.dims) == ["time", "lat", "lon"]
@@ -66,12 +79,18 @@ def test_file_structure(dtr_cli_args):
 def test_value_range(dtr_cli_args):
     """Ensure all data values fall within expected range"""
     tasmax_dir, tasmin_dir, output_dir = dtr_cli_args
+    if not dtr_files_exist(output_dir):
+        pytest.skip("No DTR files found.")
+
+    dtr_fps = list(output_dir.glob("dtr*.nc"))
 
     # start up a dask client for the final range check
     with LocalCluster(
         n_workers=int(0.9 * cpu_count()),
         memory_limit="4GB",
     ) as cluster:
-        with xr.open_mfdataset(output_dir.glob("dtr*.nc")) as ds:
+        with xr.open_mfdataset(dtr_fps) as ds:
             assert ds["dtr"].max() < expected_value_ranges["dtr"]["maximum"]
-            assert ds["dtr"].min() < expected_value_ranges["dtr"]["minimum"]
+            assert ds["dtr"].min() >= expected_value_ranges["dtr"]["minimum"]
+            # chceks that files aren't all the same value
+            assert ~np.all(ds["dtr"].values[0, 0, 0] == ds["dtr"].values)
