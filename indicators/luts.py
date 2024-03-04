@@ -77,25 +77,21 @@ indicator_lu = {
         "title": "Yearly Maxmimum 1-day Precipitation",
         "long_name": "yearly_maximum_1_day_precipitation",
         "description": "Maxmimum 1-day Precipitation, calculated over a yearly frequency using xclim.indices.max_n_day_precipitation_amount().",
-        "references": "A list of references TBD!", #TODO: list references for indicators / sources / etc
         },
     "dw": {
         "title": "Yearly Number of Deep Winter Days (-30C threshold)",
         "long_name": "yearly_deep_winter_days_-30C",
         "description": "Number of Deep Winter Days, calculated over a yearly frequency with a daily minimum temperature threshold of -30C using xclim.indices.tn_days_below().",
-        "references": "A list of references TBD!", #TODO: list references for indicators / sources / etc
         },
     "su": {
         "title": "Yearly Number of Summer Days (25C threshold)",
         "long_name": "yearly_summer_days_25C",
         "description": "Number of Summer Days, calculated over a yearly frequency with a daily maximum temperature threshold of 25C using xclim.indices.tx_days_above().",
-        "references": "A list of references TBD!", #TODO: list references for indicators / sources / etc
         },
     "ftc": {
         "title": "Yearly Number of Freeze-Thaw Cycles",
         "long_name": "yearly_freeze_thaw_cycles",
         "description": "Number of Freeze Thaw Cycles, calculated over a yearly frequency using xclim.indicators.atmos.daily_freezethaw_cycles().",
-        "references": "A list of references TBD!", #TODO: list references for indicators / sources / etc
         },
 }
 
