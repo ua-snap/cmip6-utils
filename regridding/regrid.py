@@ -389,6 +389,10 @@ def regrid_dataset(fp, regridder, out_fp, lat_slice):
     regrid_task = regridder(src_ds, keep_attrs=True)
     regrid_ds = regrid_task.compute()
 
+    # make sure longitude min and max attributes are set correctly
+    regrid_ds["lon"].attrs['valid_max'] = 180
+    regrid_ds["lon"].attrs['valid_min'] = -180
+
     out_fps = fix_time_and_write(regrid_ds, src_ds, out_fp)
 
     return out_fps
