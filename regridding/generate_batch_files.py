@@ -158,15 +158,7 @@ if __name__ == "__main__":
     # we are also going to exclude files which cannot form a panarctic result (very few so far).
     results_df = results_df.query("lat_max > 50")
     # only regrid files if their starting date is less than or equal to 2101-01-01
-    results_df = results_df.query("start_time < @max_time")
-    # the grid of the file chosen as the target template grid
-    cesm2_grid = results_df.query(f"fp == @target_grid_fp").grid.values[0]
-    # subset to all files that do have this grid first.
-    # save this as a table for use with crop_non_regrid.py.
-    # These are the files that have the right grid already but need to be cropped to a panarctic extent.
-    results_df.query("grid == @cesm2_grid").to_csv("files_to_crop.csv")
-    # now, subset to all qualifying files that do not have this grid
-    regrid_df = results_df.query("grid != @cesm2_grid")
+    regrid_df = results_df.query("start_time < @max_time")
 
     for name, group_df in regrid_df.groupby(["model", "scenario"]):
         # make sure that there are not multiple grids within one model/scenario at this point
