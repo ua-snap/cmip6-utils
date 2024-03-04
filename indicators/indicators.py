@@ -227,6 +227,10 @@ def build_attrs(
         "email": "uaf-snap-data-tools@alaska.edu",
         "website": "https://uaf-snap.org/",
         "references": f"{indicator_lu[indicator]['references']}",  # TODO: add reference information!
+        "scenario": f"{scenario}",
+        "model": f"{model}",
+        "institution": f"{model_lu[model]['institution']}",
+        "institution_name": f"{model_lu[model]['institution_name']}",
     }
 
     # but attribute dict for individual coordinates and variables:
