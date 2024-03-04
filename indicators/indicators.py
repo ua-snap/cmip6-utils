@@ -263,7 +263,7 @@ def build_attrs(
             "description": indicator_lu[indicator]["description"],
         },
     }
-    return global_attrs, var_coord_attrs
+    return global_attrs, var_coord_attrs, fill_value
 
 
 def find_and_replace_attrs(idx_ds, model, scenario, **kwargs):
