@@ -157,26 +157,3 @@ model_lu = {
         "institution_name": "Research Center for Environmental Changes, Academia Sinica",
     }, 
 }
-
-scenario_lu = {
-    "historical": {
-        "ssp": "NA",
-        "forcing_level":"NA",
-    },
-    "ssp126": {
-        "ssp": "ssp1",
-        "forcing_level": "2.6",
-    },
-    "ssp245": {
-        "ssp": "ssp2",
-        "forcing_level": "4.5",
-    },
-    "ssp370": {
-        "ssp": "ssp3",
-        "forcing_level": "7.0",
-    },
-    "ssp585": {
-        "ssp": "ssp5",
-        "forcing_level": "8.5",
-    },
-}
