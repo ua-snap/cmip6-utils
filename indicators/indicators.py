@@ -240,7 +240,6 @@ def build_attrs(
         "lon": {
             "name": "longitude",
             "units": "degrees east",
-            "fill_value": "NaN",
             "lon_max": f"{lon_max}",
             "lon_min": f"{lon_min}",
         },
