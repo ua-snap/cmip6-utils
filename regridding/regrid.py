@@ -424,17 +424,6 @@ if __name__ == "__main__":
         out_fp = generate_regrid_filepath(fp, out_dir)
         # make sure the parent dirs exist
         out_fp.parent.mkdir(exist_ok=True, parents=True)
-
-        # TO-DO: This no longer works because we are actually generating different output filepaths by year
-        # either get rid of this and drop no-clobber option, or fix
-        # if no_clobber:
-        #     if not out_fp.exists():
-        #         results.append(regrid_dataset(fp, regridder, out_fp, ext_lat_slice))
-        #     else:
-        #         continue
-        # else:
-        #     results.append(regrid_dataset(fp, regridder, out_fp, ext_lat_slice))
-
         results.append(regrid_dataset(fp, regridder, out_fp, ext_lat_slice))
 
     print(
