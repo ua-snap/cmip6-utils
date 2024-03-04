@@ -5,7 +5,7 @@ Files are modified "in place", ie the original files are overwritten by a new da
 Therefore, this script should be run before the transfer of regridded data from the scratch directory to a production directory.
 Since some of the "fx" variables are on an Antarctic grid, we do not want to apply the standard longitude conversion to those;
 For now, this script will check file paths for fixed "fx" variables and ignore them.
-Results of the processing are simply printed, though in the future they could be logged in a file.
+Results of the processing are simply printed.
 """
 
 from pathlib import Path
@@ -18,12 +18,13 @@ from pyproj import Proj, CRS
 import numpy as np
 
 
-#set the global keep_attrs to True, to avoid losing longitude attributes during computation
+# set the global keep_attrs to True, to avoid losing longitude attributes during computation
 xr.set_options(keep_attrs=True)
 
 
 def parse_args():
-    """Parse some arguments."""
+    """Parse some arguments.
+    TODO: This single input argument will change to accept a filepath once the script is incorporated into the Prefect regridding workflow!"""
     parser = argparse.ArgumentParser(description=__doc__)
 
     parser.add_argument(
@@ -40,14 +41,15 @@ def parse_args():
 
 def list_nonfixed_nc_files(regrid_dir):
     """Function to list all netCDF files in the input directory.
+    TODO: This function will be removed once the script is incorporated into the Prefect regridding workflow and operates on a single filepath!
     Args:
     regrid_dir(Path) : path to directory with regridded data
 
     Returns:
-    fps(list): list of file Paths that will be processed. 
+    fps(list): list of file Paths that will be processed.
     removed_fps(list): list of Paths that will be ignored.
     """
-    fps = list(regrid_dir.glob('**/*.nc'))
+    fps = list(regrid_dir.glob("**/*.nc"))
     removed_fps = []
     for fp in fps:
         if "fx" in fps[0].parts[-3]:
@@ -66,7 +68,7 @@ def check_longitude(fp):
     ds (xarray.Dataset) or None: the dataset with a 0 to 360 longitude scale, or None if scale is otherwise
     msg (str) or None: pre-baked error message from global message variables, or no message if successful
     """
-    #load the dataset entirely into memory, so we can free up the original file for overwriting
+    # load the dataset entirely into memory, so we can free up the original file for overwriting
     try:
         with xr.open_dataset(fp) as file_ds:
             ds = file_ds.load()
@@ -85,9 +87,7 @@ def check_longitude(fp):
     # also change the sign of the min to positive and measure the range;
     # it should be over 350 for a 0-360 scale, and would be closer to 0 if a -180 to 180 scale
 
-    if 180 < max <= 360 and \
-        min >= 0 and \
-        len(range(int(abs(min)), int(max))):
+    if 180 < max <= 360 and min >= 0 and len(range(int(abs(min)), int(max))):
         return True, ds, None
     else:
         return False, ds, msg_c
@@ -103,12 +103,12 @@ def convert_to_standard_longitude(ds):
     msg (str) or None: pre-baked error message from global message variables, or no message if successful
     """
     try:
-        #copy original encoding (not persisted thru computations)
-        lon_enc = ds['lon'].encoding
-        #subtract from 0-360 lon coords to get -180 to 180 lon coords, and reapply encoding
-        ds['lon'] = ds['lon'] - 180
-        ds['lon'].encoding = lon_enc
-        #sort and verify
+        # copy original encoding (not persisted thru computations)
+        lon_enc = ds["lon"].encoding
+        # subtract from 0-360 lon coords to get -180 to 180 lon coords, and reapply encoding
+        ds["lon"] = ds["lon"] - 180
+        ds["lon"].encoding = lon_enc
+        # sort and verify
         ds = ds.sortby(ds.lon, ascending=True)
         return ds, None
     except:
@@ -123,22 +123,20 @@ def apply_wgs84(ds):
     Returns:
     ds (xarray.Dataset): the dataset with WGS84 CRS info added, or the original dataset if additions were not successful
     msg (str) or None: pre-baked results message from global message variables, or no message if successful
-    """    
-    #get CF-compliant crs attribute dict
+    """
+    # get CF-compliant crs attribute dict
     cf_crs = CRS.from_epsg(4326).to_cf()
 
     try:
 
-        #create a spatial_ref coordinate, which is an empty array but has the CF-compliant crs attribute dict
-        ds = ds.assign_coords({
-            "spatial_ref": ([],np.array(0), cf_crs)
-            })
-        
-        #add a second attribute "spatial_ref" identical to "crs_wkt" (matches test rioxarray output)
-        ds["spatial_ref"].attrs["spatial_ref"] = cf_crs['crs_wkt']
+        # create a spatial_ref coordinate, which is an empty array but has the CF-compliant crs attribute dict
+        ds = ds.assign_coords({"spatial_ref": ([], np.array(0), cf_crs)})
 
-        #manually link spatial_ref attributes to the data variable via "grid_mapping" encoding
-        #assumes dataset will only have one data variable!
+        # add a second attribute "spatial_ref" identical to "crs_wkt" (matches test rioxarray output)
+        ds["spatial_ref"].attrs["spatial_ref"] = cf_crs["crs_wkt"]
+
+        # manually link spatial_ref attributes to the data variable via "grid_mapping" encoding
+        # assumes dataset will only have one data variable!
         var = list(ds.data_vars)[0]
         ds[var].encoding["grid_mapping"] = "spatial_ref"
         return ds, None
@@ -147,16 +145,14 @@ def apply_wgs84(ds):
         return ds, msg_h
 
 
-
-
 def convert_longitude_and_apply_wgs84(fp):
-    #collect messages in this list
+    # collect messages in this list
     msgs = []
 
     status, ds, msg = check_longitude(fp)
     if msg is not None:
         msgs.append(msg)
-    if status==True:
+    if status == True:
 
         ds, msg = convert_to_standard_longitude(ds)
         if msg is not None:
@@ -171,9 +167,8 @@ def convert_longitude_and_apply_wgs84(fp):
             msgs.append(msg_e)
         except:
             msgs.append(msg_f)
-            
 
-    elif status==False and ds is not None:
+    elif status == False and ds is not None:
         ds, msg = apply_wgs84(ds)
         if msg is not None:
             msgs.append(msg)
@@ -188,9 +183,9 @@ def convert_longitude_and_apply_wgs84(fp):
     return str(fp), msgs
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
 
-    #establish basic status messages as global variables
+    # establish basic status messages as global variables
     msg_a = "ERROR: Could not open file. Aborted."
     msg_b = "ERROR: Could not find 'lon' coordinate. Aborted."
     msg_c = "WARNING: Standard 'lon' coordinates already exists; attempting to add CRS."
@@ -205,14 +200,16 @@ if __name__ == '__main__':
     if len(removed_fps) > 0:
         print(f"Ignoring {len(removed_fps)} files with fixed frequencies...")
     print(f"Processing {len(fps)} regridded files in {regrid_dir}...")
-    print("Attempting to convert to standard longitude, apply CRS info, and overwrite all files...")
+    print(
+        "Attempting to convert to standard longitude, apply CRS info, and overwrite all files..."
+    )
 
     # TODO: figure out how to use multiprocessing here!
     # below does not work, provides no error messages??
     # with Pool(24) as pool:
     #     pool.imap_unordered(convert_longitude_and_apply_wgs84, fps)
 
-    results_dict={}
+    results_dict = {}
 
     for fp in tqdm.tqdm(fps):
         fp_str, msgs = convert_longitude_and_apply_wgs84(fp)
@@ -221,11 +218,13 @@ if __name__ == '__main__':
     errs = []
     wins = []
     for result in results_dict.keys():
-        if any(x in [msg_a, msg_b, msg_d, msg_f, msg_g, msg_h] for x in results_dict[result]):
+        if any(
+            x in [msg_a, msg_b, msg_d, msg_f, msg_g, msg_h]
+            for x in results_dict[result]
+        ):
             errs.append(result)
         elif msg_e in results_dict[result]:
             wins.append(result)
 
     print(f"Number of files successfully modified and overwritten: {len(wins)}")
     print(f"Number of files with errors: {len(wins)}")
-
