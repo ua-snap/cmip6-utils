@@ -167,22 +167,23 @@ def convert_longitude_and_apply_wgs84(fp):
         ds, msg = apply_wgs84(ds)
         if msg is not None:
             msgs.append(msg)
-
-        try:
-            ds.to_netcdf(fp, mode="w", format="NETCDF4")
-            msgs.append(msg_e)
-        except:
-            msgs.append(msg_f)
+        else:
+            try:
+                ds.to_netcdf(fp, mode="w", format="NETCDF4")
+                msgs.append(msg_e)
+            except:
+                msgs.append(msg_f)
 
     elif status == False and ds is not None:
         ds, msg = apply_wgs84(ds)
         if msg is not None:
             msgs.append(msg)
-        try:
-            ds.to_netcdf(fp, mode="w", format="NETCDF4")
-            msgs.append(msg_e)
-        except:
-            msgs.append(msg_f)
+        else:
+            try:
+                ds.to_netcdf(fp, mode="w", format="NETCDF4")
+                msgs.append(msg_e)
+            except:
+                msgs.append(msg_f)
     else:
         msgs.append(msg_g)
 
@@ -223,15 +224,28 @@ if __name__ == "__main__":
         results_dict[fp_str] = msgs
 
     errs = []
+    warns = []
     wins = []
+
     for result in results_dict.keys():
         if any(
             x in [msg_a, msg_b, msg_d, msg_f, msg_g, msg_h]
             for x in results_dict[result]
         ):
             errs.append(result)
+            print(f"{result}:")
+            print("\n".join(results_dict[result]))
+        elif (msg_c in results_dict[result]) and (msg_i in results_dict[result]):
+            warns.append(result)
+            print(f"{result}:")
+            print("\n".join(results_dict[result]))
+
         elif msg_e in results_dict[result]:
             wins.append(result)
-
+            print(f"{result}:")
+            print("\n".join(results_dict[result]))
+    
     print(f"Number of files successfully modified and overwritten: {len(wins)}")
+    print(f"Number of files with existing standard longitude coordinates and CRS info: {len(warns)}")
     print(f"Number of files with errors: {len(errs)}")
+
