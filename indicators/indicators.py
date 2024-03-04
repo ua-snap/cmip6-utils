@@ -251,9 +251,7 @@ def build_attrs(
             "description": "Forcing scenario used to drive model"
         },
         "model": {
-            "model": f"{model}",
-            "institution": f"{model_lu[model]['institution']}",
-            "institution_name": f"{model_lu[model]['institution_name']}",
+            "description": "Source model of input climate data"
         },
         indicator: {
             "long_name": indicator_lu[indicator]["long_name"],
