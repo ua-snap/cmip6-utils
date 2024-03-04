@@ -226,7 +226,6 @@ def build_attrs(
         "creation_date": datetime.datetime.now().strftime("%m/%d/%Y, %H:%M:%S"),
         "email": "uaf-snap-data-tools@alaska.edu",
         "website": "https://uaf-snap.org/",
-        "references": f"{indicator_lu[indicator]['references']}",  # TODO: add reference information!
         "scenario": f"{scenario}",
         "model": f"{model}",
         "institution": f"{model_lu[model]['institution']}",
