@@ -234,7 +234,6 @@ def build_attrs(
         "lat": {
             "name": "latitude",
             "units": "degrees north",
-            "fill_value": "NaN",
             "lat_max": f"{lat_max}",
             "lat_min": f"{lat_min}",
         },
