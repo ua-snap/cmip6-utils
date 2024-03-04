@@ -67,6 +67,16 @@ def init_regridder(src_ds, dst_ds):
     Returns:
         regridder (xesmf.Regridder): a regridder object
     """
+    # cache existing encoding / attrs
+    lon_enc = dst_ds["lon"].encoding
+    lon_attrs = dst_ds["lon"].attrs
+    # subtract from 0-360 lon coords to get -180 to 180 lon coords, and reapply encoding / attrs
+    dst_ds["lon"] = dst_ds["lon"] - 180
+    dst_ds["lon"].encoding = lon_enc
+    dst_ds["lon"].attrs = lon_attrs
+    # sort
+    dst_ds = dst_ds.sortby(dst_ds.lon, ascending=True)
+    #initialize the regridder which now contains standard -180 to 180 longitude values
     regridder = xe.Regridder(src_ds, dst_ds, "bilinear", unmapped_to_nan=True)
 
     return regridder
