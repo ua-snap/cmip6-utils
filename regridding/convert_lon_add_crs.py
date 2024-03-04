@@ -23,8 +23,7 @@ xr.set_options(keep_attrs=True)
 
 
 def parse_args():
-    """Parse some arguments.
-    TODO: This single input argument will change to accept a filepath once the script is incorporated into the Prefect regridding workflow!"""
+    """Parse some arguments."""
     parser = argparse.ArgumentParser(description=__doc__)
 
     parser.add_argument(
@@ -41,7 +40,6 @@ def parse_args():
 
 def list_nonfixed_nc_files(regrid_dir):
     """Function to list all netCDF files in the input directory.
-    TODO: This function will be removed once the script is incorporated into the Prefect regridding workflow and operates on a single filepath!
     Args:
     regrid_dir(Path) : path to directory with regridded data
 
