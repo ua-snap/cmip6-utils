@@ -260,7 +260,6 @@ def build_attrs(
         indicator: {
             "long_name": indicator_lu[indicator]["long_name"],
             "units": f"{units_lu[indicator]}",
-            "fill_value": fill_value,
             "description": indicator_lu[indicator]["description"],
         },
     }
