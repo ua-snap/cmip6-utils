@@ -124,25 +124,33 @@ def apply_wgs84(ds):
     ds (xarray.Dataset): the dataset with WGS84 CRS info added, or the original dataset if additions were not successful
     msg (str) or None: pre-baked results message from global message variables, or no message if successful
     """
-    # get CF-compliant crs attribute dict
-    cf_crs = CRS.from_epsg(4326).to_cf()
 
     try:
-
-        # create a spatial_ref coordinate, which is an empty array but has the CF-compliant crs attribute dict
-        ds = ds.assign_coords({"spatial_ref": ([], np.array(0), cf_crs)})
-
-        # add a second attribute "spatial_ref" identical to "crs_wkt" (matches test rioxarray output)
-        ds["spatial_ref"].attrs["spatial_ref"] = cf_crs["crs_wkt"]
-
-        # manually link spatial_ref attributes to the data variable via "grid_mapping" encoding
-        # assumes dataset will only have one data variable!
-        var = list(ds.data_vars)[0]
-        ds[var].encoding["grid_mapping"] = "spatial_ref"
-        return ds, None
+        #try to access an existing spatial_ref coordinate. This should fail if the .nc file has no CF-compliant CRS assigned
+        spatial_ref_coord_ = ds.spatial_ref
+        return ds, msg_i
 
     except:
-        return ds, msg_h
+
+        # get CF-compliant crs attribute dict
+        cf_crs = CRS.from_epsg(4326).to_cf()
+
+        try:
+
+            # create a spatial_ref coordinate, which is an empty array but has the CF-compliant crs attribute dict
+            ds = ds.assign_coords({"spatial_ref": ([], np.array(0), cf_crs)})
+
+            # add a second attribute "spatial_ref" identical to "crs_wkt" (matches test rioxarray output)
+            ds["spatial_ref"].attrs["spatial_ref"] = cf_crs["crs_wkt"]
+
+            # manually link spatial_ref attributes to the data variable via "grid_mapping" encoding
+            # assumes dataset will only have one data variable!
+            var = list(ds.data_vars)[0]
+            ds[var].encoding["grid_mapping"] = "spatial_ref"
+            return ds, None
+
+        except:
+            return ds, msg_h
 
 
 def convert_longitude_and_apply_wgs84(fp):
@@ -194,6 +202,7 @@ if __name__ == "__main__":
     msg_f = "ERROR: Dataset modified, but file could not be overwritten."
     msg_g = "ERROR: File not modified."
     msg_h = "ERROR: Could not assign CRS to file."
+    msg_i = "WARNING: A spatial_ref coordinate already exists; will not attempt to add CRS."
 
     regrid_dir = parse_args()
     fps, removed_fps = list_nonfixed_nc_files(Path(regrid_dir))
