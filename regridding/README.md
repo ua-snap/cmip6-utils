@@ -12,7 +12,7 @@ Here is a description of the pipeline.
 
 * `conda_init.sh`: a shell script for initializing conda in a blank shell that does not read the typical `.bashrc`, as is the case with new slurm jobs.
 * `config.py`: sets some constant variables.
-* `explore_grids.ipyn;b`: notebook for initial exploration of the grids found in the mirrored data, look here for rationale on chosen common grid. 
+* `explore_grids.ipynb`: notebook for initial exploration of the grids found in the mirrored data, look here for rationale on chosen common grid. 
 * `explore_regrid.py`: notebook for exploring the regridded data using interactive viz tools. 
 * `explore_regridding.ipynb`: notebook for exploring the process of regridding a file using `xesmf` package.
 * `generate_batch_files.py`: script to generate the batch files in a single slurm job.
