@@ -248,9 +248,7 @@ def build_attrs(
             "end_year": end_year,
         },
         "scenario": {
-            "id": f"{scenario}",
-            "ssp": f"{scenario_lu[scenario]['ssp']}",
-            "forcing_level": f"{scenario_lu[scenario]['forcing_level']}",
+            "description": "Forcing scenario used to drive model"
         },
         "model": {
             "model": f"{model}",
