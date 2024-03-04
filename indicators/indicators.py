@@ -298,7 +298,7 @@ def find_and_replace_attrs(idx_ds, model, scenario, **kwargs):
         idx_ds.lon.values.min().astype(str),
         idx_ds.lon.values.max().astype(str),
     )
-    global_attrs, var_coord_attrs = build_attrs(
+    global_attrs, var_coord_attrs, fill_value = build_attrs(
         idx,
         scenario,
         model,
