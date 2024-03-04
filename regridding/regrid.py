@@ -14,6 +14,7 @@ import pandas as pd
 import xesmf as xe
 import xarray as xr
 from config import variables
+from pyproj import CRS
 
 # ignore serializationWarnings from xarray for datasets with multiple FillValues
 import warnings
@@ -370,6 +371,44 @@ def fix_time_and_write(out_ds, src_ds, out_fp):
     return out_fps
 
 
+def apply_wgs84(ds):
+    """Function to add spatial_ref coordinate, CRS attributes, and CRS encodings to make CF-compliant metadata for the WGS84 CRS.
+    Args:
+    ds(xarray.Dataset): the regridded dataset with -180 to 180 longitude scale
+
+    Returns:
+    ds (xarray.Dataset): the dataset with WGS84 CRS info added, or the original dataset if additions were not successful
+    """
+
+    try:
+        # Try to access an existing spatial_ref coordinate. 
+        # If this doesn't raise an exception, the dataset probably has CRS info and should be returned as-is.
+        # If this fails, the dataset probably has no CF-compliant CRS info and we will add it.
+        spatial_ref_coord_ = ds.spatial_ref
+        return ds
+
+    except:
+
+        # get CF-compliant crs attribute dict
+        cf_crs = CRS.from_epsg(4326).to_cf()
+
+        try:
+            # create a spatial_ref coordinate, which is an empty array but has the CF-compliant crs attribute dict
+            ds = ds.assign_coords({"spatial_ref": ([], np.array(0), cf_crs)})
+
+            # add a second attribute "spatial_ref" identical to "crs_wkt" (this is redundant, but matches test rioxarray output)
+            ds["spatial_ref"].attrs["spatial_ref"] = cf_crs["crs_wkt"]
+
+            # manually link spatial_ref attributes to the data variable via "grid_mapping" encoding
+            # assumes dataset will only have one data variable!
+            var = list(ds.data_vars)[0]
+            ds[var].encoding["grid_mapping"] = "spatial_ref"
+            return ds
+        
+        except:
+            return ds
+
+
 def regrid_dataset(fp, regridder, out_fp, lat_slice):
     """Regrid a dataset using a regridder object initiated using the target grid with a latitude domain of 50N and up.
 
@@ -392,6 +431,9 @@ def regrid_dataset(fp, regridder, out_fp, lat_slice):
     # make sure longitude min and max attributes are set correctly
     regrid_ds["lon"].attrs['valid_max'] = 180
     regrid_ds["lon"].attrs['valid_min'] = -180
+
+    # add CRS info
+    regrid_ds = apply_wgs84(regrid_ds)
 
     out_fps = fix_time_and_write(regrid_ds, src_ds, out_fp)
 
