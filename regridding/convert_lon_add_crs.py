@@ -234,4 +234,4 @@ if __name__ == "__main__":
             wins.append(result)
 
     print(f"Number of files successfully modified and overwritten: {len(wins)}")
-    print(f"Number of files with errors: {len(wins)}")
+    print(f"Number of files with errors: {len(errs)}")
