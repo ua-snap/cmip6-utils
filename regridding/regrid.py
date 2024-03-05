@@ -328,7 +328,7 @@ def fix_time_and_write(out_ds, src_ds, out_fp):
     if check_is_dayfreq(out_ds):
         # make sure we assign correct daily frequency type
         out_ds.attrs["frequency"] = [
-            s for s in variables[out_ds.attrs["variable_id"]]["freqs"] if "day" in s
+            s for s in variables[out_ds.attrs["variable_id"]]["table_ids"] if "day" in s
         ][0]
         if isinstance(out_ds.time.values[0], cftime._cftime.Datetime360Day):
             out_ds = dayfreq_360day_to_noleap(out_ds)
@@ -344,7 +344,7 @@ def fix_time_and_write(out_ds, src_ds, out_fp):
     elif check_is_monfreq(out_ds):
         # make sure we assign correct monthly frequency type
         out_ds.attrs["frequency"] = [
-            s for s in variables[out_ds.attrs["variable_id"]]["freqs"] if "mon" in s
+            s for s in variables[out_ds.attrs["variable_id"]]["table_ids"] if "mon" in s
         ][0]
         out_ds = Amonfreq_fix_time(out_ds, src_ds)
 
