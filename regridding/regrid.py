@@ -71,8 +71,8 @@ def init_regridder(src_ds, dst_ds):
     # cache existing encoding / attrs
     lon_enc = dst_ds["lon"].encoding
     lon_attrs = dst_ds["lon"].attrs
-    # subtract from 0-360 lon coords to get -180 to 180 lon coords, and reapply encoding / attrs
-    dst_ds["lon"] = dst_ds["lon"] - 180
+    # convert to -180 to 180 lon coords, and reapply encoding / attrs
+    dst_ds["lon"] = (dst_ds["lon"] + 180) % 360 - 180
     dst_ds["lon"].encoding = lon_enc
     dst_ds["lon"].attrs = lon_attrs
     # sort
