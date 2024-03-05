@@ -77,7 +77,7 @@ def init_regridder(src_ds, dst_ds):
     dst_ds["lon"].attrs = lon_attrs
     # sort
     dst_ds = dst_ds.sortby(dst_ds.lon, ascending=True)
-    #initialize the regridder which now contains standard -180 to 180 longitude values
+    # initialize the regridder which now contains standard -180 to 180 longitude values
     regridder = xe.Regridder(src_ds, dst_ds, "bilinear", unmapped_to_nan=True)
 
     return regridder
@@ -255,12 +255,13 @@ def generate_single_year_filename(original_fp, year_ds):
     # want these as datetime object to use strftime
     if isinstance(time_bnds[0], np.datetime64):
         time_bnds = [pd.to_datetime(tb) for tb in time_bnds]
-
     if "day" in year_ds.attrs["frequency"]:
         year_fn_str = "-".join([tb.strftime("%Y%m%d") for tb in time_bnds])
     elif "mon" in year_ds.attrs["frequency"]:
         # drop date for monthly data
         year_fn_str = "-".join([tb.strftime("%Y%m") for tb in time_bnds])
+    else:
+        year_fn_str = "-9999"  # TODO: remove when dealing with subdaily freqs; will get a year_fn_str referenced before assignment error here where freq was not month or day
 
     out_fp = original_fp.parent.joinpath(f"{nodate_fn_str}_{year_fn_str}.nc")
 
@@ -381,7 +382,7 @@ def apply_wgs84(ds):
     """
 
     try:
-        # Try to access an existing spatial_ref coordinate. 
+        # Try to access an existing spatial_ref coordinate.
         # If this doesn't raise an exception, the dataset probably has CRS info and should be returned as-is.
         # If this fails, the dataset probably has no CF-compliant CRS info and we will add it.
         spatial_ref_coord_ = ds.spatial_ref
@@ -404,7 +405,7 @@ def apply_wgs84(ds):
             var = list(ds.data_vars)[0]
             ds[var].encoding["grid_mapping"] = "spatial_ref"
             return ds
-        
+
         except:
             return ds
 
@@ -429,8 +430,8 @@ def regrid_dataset(fp, regridder, out_fp, lat_slice):
     regrid_ds = regrid_task.compute()
 
     # make sure longitude min and max attributes are set correctly
-    regrid_ds["lon"].attrs['valid_max'] = 180
-    regrid_ds["lon"].attrs['valid_min'] = -180
+    regrid_ds["lon"].attrs["valid_max"] = 180
+    regrid_ds["lon"].attrs["valid_min"] = -180
 
     # add CRS info
     regrid_ds = apply_wgs84(regrid_ds)
