@@ -222,6 +222,7 @@ if __name__ == "__main__":
                 exit(
                     f"Number of tasmin files ({len(tasmin_fps)}) not equal to number of tasmax files ({len(tasmax_fps)}). Model={model}, scenario={scenario}. Aborting."
                 )
+                continue
 
             # filepath for slurm script
             sbatch_fp = sbatch_dir.joinpath(f"{model}_{scenario}_process_dtr.slurm")
