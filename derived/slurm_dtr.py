@@ -219,8 +219,11 @@ if __name__ == "__main__":
                 tasmax_fps, tasmin_fps = get_tmax_tmin_fps(tasmax_dir, tasmin_dir)
                 assert len(tasmax_fps) == len(tasmin_fps)
             except AssertionError:
+                # print(
+                #     f"Number of tasmin files ({len(tasmin_fps)}) not equal to number of tasmax files ({len(tasmax_fps)}). Model={model}, scenario={scenario}. Skipping."
+                # )
                 print(
-                    f"Number of tasmin files ({len(tasmin_fps)}) not equal to number of tasmax files ({len(tasmax_fps)}). Model={model}, scenario={scenario}. Skipping."
+                    f"Mismatched number of tasmin and tasmax files for {model}, {scenario}. Skipping."
                 )
                 continue
 
