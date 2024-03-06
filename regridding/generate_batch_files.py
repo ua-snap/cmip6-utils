@@ -157,8 +157,11 @@ if __name__ == "__main__":
     results_df = results_df.query("~lat_min.isnull()")
     # we are also going to exclude files which cannot form a panarctic result (very few so far).
     results_df = results_df.query("lat_max > 50")
-    # only regrid files if their starting date is less than or equal to 2101-01-01
+    # drop any subdaily frequencies.
+    results_df = results_df.query("frequency.str.contains('day') | frequency.str.contains('mon')")
+    # only regrid files if their starting date is less than or equal to 2101-01-01.
     regrid_df = results_df.query("start_time < @max_time")
+
 
     for name, group_df in regrid_df.groupby(["model", "scenario"]):
         # make sure that there are not multiple grids within one model/scenario at this point
