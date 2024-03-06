@@ -467,12 +467,23 @@ if __name__ == "__main__":
     tic = time.perf_counter()
 
     results = []
+    errs = []
     for fp in src_fps:
-        out_fp = generate_regrid_filepath(fp, out_dir)
-        # make sure the parent dirs exist
-        out_fp.parent.mkdir(exist_ok=True, parents=True)
-        results.append(regrid_dataset(fp, regridder, out_fp, ext_lat_slice))
+        try:
+            out_fp = generate_regrid_filepath(fp, out_dir)
+            # make sure the parent dirs exist
+            out_fp.parent.mkdir(exist_ok=True, parents=True)
+            results.append(regrid_dataset(fp, regridder, out_fp, ext_lat_slice))
+        except Exception as e:
+            errs.append(str(fp))
+            print(f"\nFILE NOT REGRIDDED: {fp}\n     Errors printed below:\n")
+            print(e)
+            print("\n")
 
     print(
         f"done, {len(results)} files regridded in {np.round((time.perf_counter() - tic) / 60, 1)}m"
     )
+
+    if len(results) < len(src_fps):
+        print("Errors encountered! The following files were NOT regridded:")
+        print("\n     ".join(errs))
