@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import xesmf as xe
 import xarray as xr
-from config import variables
+from config import variables, regrid_batch_dir
 from pyproj import CRS
 
 # ignore serializationWarnings from xarray for datasets with multiple FillValues
@@ -410,6 +410,17 @@ def apply_wgs84(ds):
             return ds
 
 
+def write_retry_batch_file(errs):
+    """Append each item in a list of filepaths to a text file. Lines are appended to the file if it already exists.
+    If a collection of batch files are being simultaneously processed by this regrid.py script via multiple slurm jobs, 
+    a single text file will be generated that lists all files that failed the regridding process and can be retried.
+    """
+    retry_fn = regrid_batch_dir.joinpath("batch_retry.txt")
+    with open(retry_fn, "a") as f:
+        for fp in errs:
+            f.write(f"{fp}\n")
+
+
 def regrid_dataset(fp, regridder, out_fp, lat_slice):
     """Regrid a dataset using a regridder object initiated using the target grid with a latitude domain of 50N and up.
 
@@ -481,9 +492,13 @@ if __name__ == "__main__":
             print("\n")
 
     print(
-        f"done, {len(results)} files regridded in {np.round((time.perf_counter() - tic) / 60, 1)}m"
+        f"Regridding done, {len(results)} files regridded in {np.round((time.perf_counter() - tic) / 60, 1)}m"
     )
 
     if len(results) < len(src_fps):
-        print("Errors encountered! The following files were NOT regridded:")
-        print("\n     ".join(errs))
+        print("\nErrors encountered! The following files were NOT regridded:\n")
+        print("\n".join(errs))
+
+    #if any filepaths failed to regrid, add them to a "batch_retry.txt" file to be optionally retried 
+    if len(errs) > 0:
+        write_retry_batch_file(errs)
