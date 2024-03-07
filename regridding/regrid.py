@@ -260,9 +260,7 @@ def generate_single_year_filename(original_fp, year_ds):
     elif "mon" in year_ds.attrs["frequency"]:
         # drop date for monthly data
         year_fn_str = "-".join([tb.strftime("%Y%m") for tb in time_bnds])
-    else:
-        year_fn_str = "-9999"  # TODO: remove when dealing with subdaily freqs; will get a year_fn_str referenced before assignment error here where freq was not month or day
-
+    
     out_fp = original_fp.parent.joinpath(f"{nodate_fn_str}_{year_fn_str}.nc")
 
     return out_fp
