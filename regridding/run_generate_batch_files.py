@@ -74,8 +74,8 @@ if __name__ == "__main__":
 
     Path(regrid_batch_dir).mkdir(exist_ok=True, parents=True)
 
-    generate_batch_files_sbatch_fp = generate_batch_files_script.replace(".py", ".slurm")
-    generate_batch_files_sbatch_out_fp = generate_batch_files_script.replace(".py", "_%j.out")
+    generate_batch_files_sbatch_fp = str(generate_batch_files_script).replace(".py", ".slurm")
+    generate_batch_files_sbatch_out_fp = str(generate_batch_files_script).replace(".py", "_%j.out")
 
     sbatch_text = (
         "#!/bin/sh\n"
