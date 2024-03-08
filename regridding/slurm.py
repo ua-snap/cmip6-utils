@@ -148,7 +148,7 @@ def parse_args():
         "--no-clobber",
         action="store_true",
         default=False,
-        help="Do not overwrite files if they exists in out_dir",
+        help="Do not overwrite regidded files if they exist",
     )
     args = parser.parse_args()
 
