@@ -8,6 +8,7 @@ import xarray as xr
 from math import radians
 from multiprocessing import Pool
 import tqdm
+import argparse
 
 from config import *
 
@@ -160,7 +161,7 @@ def parse_args():
     """Parse some arguments"""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--cmip6_dir",
+        "--cmip6_directory",
         type=str,
         help="Path to directory where CMIP6 files are stored",
         required=True,
@@ -175,7 +176,7 @@ def parse_args():
     args = parser.parse_args()
 
     return (
-        Path(args.cmip6_dir),
+        Path(args.cmip6_directory),
         Path(args.regrid_batch_dir),
         )
 
