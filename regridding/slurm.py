@@ -19,7 +19,7 @@ def make_sbatch_head(slurm_email, conda_init_script):
     sbatch_head = (
         "#!/bin/sh\n"
         "#SBATCH --nodes=1\n"
-        f"#SBATCH --exclude=138\n"
+        f"#SBATCH --exclude=n138\n"
         f"#SBATCH --cpus-per-task=24\n"
         "#SBATCH --mail-type=FAIL\n"
         f"#SBATCH --mail-user={slurm_email}\n"
