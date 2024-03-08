@@ -39,6 +39,7 @@ def write_sbatch_regrid(
     sbatch_fp,
     sbatch_out_fp,
     regrid_script,
+    regrid_batch_dir,
     regrid_dir,
     regrid_batch_fp,
     dst_fp,
@@ -66,6 +67,7 @@ def write_sbatch_regrid(
     pycommands = "\n"
     pycommands += (
         f"python {regrid_script} "
+        f"-r {regrid_batch_dir} "
         f"-b {regrid_batch_fp} "
         f"-d {dst_fp} "
         f"-o {regrid_dir} "
@@ -188,6 +190,7 @@ if __name__ == "__main__":
             "sbatch_fp": sbatch_fp,
             "sbatch_out_fp": sbatch_out_fp,
             "regrid_script": regrid_script,
+            "regrid_batch_dir" : regrid_batch_dir,
             "regrid_dir": regrid_dir,
             "regrid_batch_fp": fp,
             "dst_fp": target_grid_fp,
