@@ -156,8 +156,35 @@ def write_batch_files(group_df, model, scenario):
 
     return
 
+def parse_args():
+    """Parse some arguments"""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--cmip6_dir",
+        type=str,
+        help="Path to directory where CMIP6 files are stored",
+        required=True,
+    )
+    parser.add_argument(
+        "--regrid_batch_dir",
+        type=str,
+        help="Path to directory where batch files are written",
+        required=True,
+    )
+
+    args = parser.parse_args()
+
+    return (
+        Path(args.cmip6_dir),
+        Path(args.regrid_batch_dir),
+        )
+
 
 if __name__ == "__main__":
+
+    (cmip6_dir,
+     regrid_batch_dir) = parse_args()
+
     # read the grid info from all files
     results = []
     for inst_model in inst_models:
