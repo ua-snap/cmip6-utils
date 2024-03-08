@@ -174,6 +174,10 @@ if __name__ == "__main__":
      target_grid_fp,
      no_clobber) = parse_args()
 
+    # make these dirs if they don't exist
+    Path(regrid_dir).mkdir(exist_ok=True, parents=True)
+    Path(slurm_dir).mkdir(exist_ok=True, parents=True)
+
     # build and write sbatch files
     sbatch_fps = []
     sbatch_dir = slurm_dir.joinpath("regrid")
