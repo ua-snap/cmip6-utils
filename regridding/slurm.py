@@ -55,7 +55,7 @@ def write_sbatch_regrid(
         regrid_dir (pathlib.PosixPath): directory to write the regridded data to
         regrid_batch_fp (path_like): path to the batch file containing paths of CMIP6 files to regrid
         dst_fp (path_like): path to file being used as template / reference for destination grid
-        no_clobber (bool): do not overwrite regridded files if they exist in regrid_dir
+        no_clobber (str): if "true", do not overwrite regridded files if they already exist
         sbatch_head (dict): string for sbatch head script
 
     Returns:
@@ -71,11 +71,9 @@ def write_sbatch_regrid(
         f"-b {regrid_batch_fp} "
         f"-d {dst_fp} "
         f"-o {regrid_dir} "
-    )
-    if no_clobber:
-        pycommands += "--no_clobber \n\n"
-    else:
-        pycommands += "\n\n"
+        f"--no_clobber {no_clobber}\n\n"
+        )
+    
     commands = sbatch_head.format(sbatch_out_fp=sbatch_out_fp) + pycommands
 
     with open(sbatch_fp, "w") as f:
@@ -146,9 +144,9 @@ def parse_args():
     )
     parser.add_argument(
         "--no_clobber",
-        action="store_true",
-        default=False,
-        help="Do not overwrite regidded files if they exist",
+        type=str,
+        help="If true, do not overwrite existing regidded files",
+        required=True,
     )
     args = parser.parse_args()
 

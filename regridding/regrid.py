@@ -54,11 +54,10 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
-        "--no-clobber",
         dest="no_clobber",
-        action="store_true",
-        default=False,
+        type=str,
         help="Do not regrid a file if the regridded file already exists",
+        required=True,
     )
     args = parser.parse_args()
 
@@ -466,7 +465,8 @@ if __name__ == "__main__":
     # parse args
     regrid_batch_dir, regrid_batch_fp, dst_fp, out_dir, no_clobber = parse_args()
 
-    #TODO: use the no_clobber argument here to decide if we stop processing if file already exists
+    #TODO: use the no_clobber argument str here to decide if we stop processing if file already exists
+    #bool(eval(no_clobber))
 
     # get the paths of files to regrid from the batch file
     with open(regrid_batch_fp) as f:
