@@ -1,6 +1,12 @@
 """Functions to assist with constructing slurm jobs"""
 
 import subprocess
+import argparse
+from config import *
+
+# ignore serializationWarnings from xarray for datasets with multiple FillValues
+import warnings
+warnings.filterwarnings("ignore", category=xr.SerializationWarning)
 
 
 def make_sbatch_head(slurm_email, partition, conda_init_script, ncpus, exclude_nodes):
@@ -100,3 +106,54 @@ def submit_sbatch(sbatch_fp):
     job_id = out.decode().replace("\n", "").split(" ")[-1]
 
     return job_id
+
+
+def parse_args():
+    """Parse some arguments"""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--no-clobber",
+        action="store_true",
+        default=False,
+        help="Do not overwrite files if they exists in out_dir",
+    )
+    args = parser.parse_args()
+
+    return (
+        args.no_clobber,
+    )
+
+
+if __name__ == "__main__":
+    (no_clobber) = parse_args()
+
+    # build and write sbatch files
+    sbatch_fps = []
+    sbatch_dir = slurm_dir.joinpath("regrid")
+    _ = [fp.unlink() for fp in sbatch_dir.glob("*.slurm")]
+    sbatch_dir.mkdir(exist_ok=True)
+    for fp in regrid_batch_dir.glob("*.txt"):
+        sbatch_str = fp.name.split("batch_")[1].split(".txt")[0]
+        sbatch_fp = sbatch_dir.joinpath(f"regrid_{sbatch_str}.slurm")
+        # filepath for slurm stdout
+        sbatch_out_fp = sbatch_dir.joinpath(sbatch_fp.name.replace(".slurm", "_%j.out"))
+        # excluding node 138 until issue resolved
+        sbatch_head = make_sbatch_head(**sbatch_head_kwargs, exclude_nodes="n138")
+        sbatch_regrid_kwargs = {
+            "sbatch_fp": sbatch_fp,
+            "sbatch_out_fp": sbatch_out_fp,
+            "regrid_script": regrid_script,
+            "regrid_dir": regrid_dir,
+            "regrid_batch_fp": fp,
+            "dst_fp": target_grid_fp,
+            "no_clobber": False,
+            "sbatch_head": sbatch_head,
+        }
+        write_sbatch_regrid(**sbatch_regrid_kwargs)
+        sbatch_fps.append(sbatch_fp)
+
+        # remove existing slurm output files
+        _ = [fp.unlink() for fp in sbatch_dir.glob("*.out")]
+
+        # submit jobs
+        job_ids = [submit_sbatch(fp) for fp in sbatch_fps]
