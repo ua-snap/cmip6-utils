@@ -2,6 +2,9 @@
 Since we are providing our config via Prefect, these were copied from the transfers/config.py file
 to avoid using system environment variables."""
 
+#batch file naming template
+batch_tmp_fn = "batch_{model}_{scenario}_{grid_name}_{count}.txt"
+
 # names of the ScenarioMIP scenarios that we are interested in,
 #  matching directory names in ESGF archives
 prod_scenarios = [
