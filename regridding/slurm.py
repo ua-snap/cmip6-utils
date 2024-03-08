@@ -2,44 +2,33 @@
 
 import subprocess
 import argparse
+from pathlib import Path
 from config import *
 
-# ignore serializationWarnings from xarray for datasets with multiple FillValues
-import warnings
-warnings.filterwarnings("ignore", category=xr.SerializationWarning)
-
-
-def make_sbatch_head(slurm_email, partition, conda_init_script, ncpus, exclude_nodes):
+def make_sbatch_head(slurm_email, conda_init_script):
     """Make a string of SBATCH commands that can be written into a .slurm script
 
     Args:
         slurm_email (str): email address for slurm failures
-        partition (str): name of the partition to use
         conda_init_script (path_like): path to a script that contains commands for initializing the shells on the compute nodes to use conda activate
-        ncpus (int): number of cpus to request
-        exclude_nodes (str): comma-separated string of nodes to exclude
 
     Returns:
         sbatch_head (str): string of SBATCH commands ready to be used as parameter in sbatch-writing functions. The following gaps are left for filling with .format:
-            - ncpus
             - output slurm filename
     """
     sbatch_head = (
         "#!/bin/sh\n"
         "#SBATCH --nodes=1\n"
-        f"#SBATCH --exclude={exclude_nodes}\n"
-        f"#SBATCH --cpus-per-task={ncpus}\n"
+        f"#SBATCH --exclude=138\n"
+        f"#SBATCH --cpus-per-task=24\n"
         "#SBATCH --mail-type=FAIL\n"
         f"#SBATCH --mail-user={slurm_email}\n"
-        f"#SBATCH -p {partition}\n"
+        f"#SBATCH -p t1small\n"
         "#SBATCH --output {sbatch_out_fp}\n"
         # print start time
         "echo Start slurm && date\n"
-        # prepare shell for using activate - Chinook requirement
+        # prepare shell for using activate
         f"source {conda_init_script}\n"
-        # okay this is not the desired way to do this, but Chinook compute
-        # nodes are not working with anaconda-project, so we activate
-        # this manually then run the python command
         f"conda activate cmip6-utils\n"
     )
 
@@ -112,6 +101,48 @@ def parse_args():
     """Parse some arguments"""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        "--slurm_dir",
+        type=str,
+        help="Path to directory where slurm files are written",
+        required=True,
+    )
+    parser.add_argument(
+        "--regrid_dir",
+        type=str,
+        help="Path to directory where regridded files are written",
+        required=True,
+    )
+    parser.add_argument(
+        "--regrid_batch_dir",
+        type=str,
+        help="Path to directory where batch files are written",
+        required=True,
+    )
+    parser.add_argument(
+        "--slurm_email",
+        type=str,
+        help="Email to send slurm messages to",
+        required=True,
+    )
+    parser.add_argument(
+        "--conda_init_script",
+        type=str,
+        help="Path to conda init script",
+        required=True,
+    )
+    parser.add_argument(
+        "--regrid_script",
+        type=str,
+        help="Path to regrid.py script",
+        required=True,
+    )
+    parser.add_argument(
+        "--target_grid_fp",
+        type=str,
+        help="Path to file used as the regridding target",
+        required=True,
+    )
+    parser.add_argument(
         "--no-clobber",
         action="store_true",
         default=False,
@@ -120,12 +151,26 @@ def parse_args():
     args = parser.parse_args()
 
     return (
+        Path(args.slurm_dir),
+        Path(args.regrid_dir),
+        Path(args.regrid_batch_dir),
+        args.slurm_email,
+        Path(args.conda_init_script),
+        Path(args.regrid_script),
+        Path(args.target_grid_fp),
         args.no_clobber,
     )
 
 
 if __name__ == "__main__":
-    (no_clobber) = parse_args()
+    (slurm_dir,
+     regrid_dir,
+     regrid_batch_dir,
+     slurm_email,
+     conda_init_script,
+     regrid_script,
+     target_grid_fp,
+     no_clobber) = parse_args()
 
     # build and write sbatch files
     sbatch_fps = []
@@ -138,7 +183,7 @@ if __name__ == "__main__":
         # filepath for slurm stdout
         sbatch_out_fp = sbatch_dir.joinpath(sbatch_fp.name.replace(".slurm", "_%j.out"))
         # excluding node 138 until issue resolved
-        sbatch_head = make_sbatch_head(**sbatch_head_kwargs, exclude_nodes="n138")
+        sbatch_head = make_sbatch_head(slurm_email, conda_init_script)
         sbatch_regrid_kwargs = {
             "sbatch_fp": sbatch_fp,
             "sbatch_out_fp": sbatch_out_fp,
@@ -146,7 +191,7 @@ if __name__ == "__main__":
             "regrid_dir": regrid_dir,
             "regrid_batch_fp": fp,
             "dst_fp": target_grid_fp,
-            "no_clobber": False,
+            "no_clobber": no_clobber,
             "sbatch_head": sbatch_head,
         }
         write_sbatch_regrid(**sbatch_regrid_kwargs)
