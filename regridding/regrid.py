@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import xesmf as xe
 import xarray as xr
-from config import variables, regrid_batch_dir
+from config import variables
 from pyproj import CRS
 
 # ignore serializationWarnings from xarray for datasets with multiple FillValues
@@ -29,6 +29,13 @@ prod_lat_slice = slice(50, 90)
 def parse_args():
     """Parse some arguments"""
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "-r",
+        dest="regrid_batch_dir",
+        type=str,
+        help="Batch file containing filepaths to be regridded",
+        required=True,
+    )
     parser.add_argument(
         "-b",
         dest="regrid_batch_fp",
@@ -457,7 +464,7 @@ def regrid_dataset(fp, regridder, out_fp, lat_slice):
 
 if __name__ == "__main__":
     # parse args
-    regrid_batch_fp, dst_fp, out_dir, no_clobber = parse_args()
+    regrid_batch_dir, regrid_batch_fp, dst_fp, out_dir, no_clobber = parse_args()
 
     # get the paths of files to regrid from the batch file
     with open(regrid_batch_fp) as f:
