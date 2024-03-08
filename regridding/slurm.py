@@ -73,7 +73,7 @@ def write_sbatch_regrid(
         f"-o {regrid_dir} "
     )
     if no_clobber:
-        pycommands += "--no_clobber {no_clobber} \n\n"
+        pycommands += "--no_clobber \n\n"
     else:
         pycommands += "\n\n"
     commands = sbatch_head.format(sbatch_out_fp=sbatch_out_fp) + pycommands
