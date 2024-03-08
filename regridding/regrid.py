@@ -58,7 +58,7 @@ def parse_args():
         dest="no_clobber",
         action="store_true",
         default=False,
-        help="Do not regrid a file if the regridded file already exists in out_dir",
+        help="Do not regrid a file if the regridded file already exists",
     )
     args = parser.parse_args()
 
@@ -465,6 +465,8 @@ def regrid_dataset(fp, regridder, out_fp, lat_slice):
 if __name__ == "__main__":
     # parse args
     regrid_batch_dir, regrid_batch_fp, dst_fp, out_dir, no_clobber = parse_args()
+
+    #TODO: use the no_clobber argument here to decide if we stop processing if file already exists
 
     # get the paths of files to regrid from the batch file
     with open(regrid_batch_fp) as f:
