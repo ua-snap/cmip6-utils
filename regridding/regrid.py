@@ -75,10 +75,15 @@ def init_regridder(src_ds, dst_ds):
     dst_ds["lon"] = (dst_ds["lon"] + 180) % 360 - 180
     dst_ds["lon"].encoding = lon_enc
     dst_ds["lon"].attrs = lon_attrs
+    # probably doesn't matter but technically correct after adjustment
+    dst_ds["lon"].attrs["valid_max"] = 180
+    dst_ds["lon"].attrs["valid_min"] = -180
     # sort
     dst_ds = dst_ds.sortby(dst_ds.lon, ascending=True)
     # initialize the regridder which now contains standard -180 to 180 longitude values
-    regridder = xe.Regridder(src_ds, dst_ds, "bilinear", unmapped_to_nan=True)
+    regridder = xe.Regridder(
+        src_ds, dst_ds, "bilinear", unmapped_to_nan=True, periodic=True
+    )
 
     return regridder
 
@@ -260,7 +265,7 @@ def generate_single_year_filename(original_fp, year_ds):
     elif "mon" in year_ds.attrs["frequency"]:
         # drop date for monthly data
         year_fn_str = "-".join([tb.strftime("%Y%m") for tb in time_bnds])
-    
+
     out_fp = original_fp.parent.joinpath(f"{nodate_fn_str}_{year_fn_str}.nc")
 
     return out_fp
@@ -410,7 +415,7 @@ def apply_wgs84(ds):
 
 def write_retry_batch_file(errs):
     """Append each item in a list of filepaths to a text file. Lines are appended to the file if it already exists.
-    If a collection of batch files are being simultaneously processed by this regrid.py script via multiple slurm jobs, 
+    If a collection of batch files are being simultaneously processed by this regrid.py script via multiple slurm jobs,
     a single text file will be generated that lists all files that failed the regridding process and can be retried.
     """
     retry_fn = regrid_batch_dir.joinpath("batch_retry.txt")
@@ -497,6 +502,6 @@ if __name__ == "__main__":
         print("\nErrors encountered! The following files were NOT regridded:\n")
         print("\n".join(errs))
 
-    #if any filepaths failed to regrid, add them to a "batch_retry.txt" file to be optionally retried 
+    # if any filepaths failed to regrid, add them to a "batch_retry.txt" file to be optionally retried
     if len(errs) > 0:
         write_retry_batch_file(errs)
