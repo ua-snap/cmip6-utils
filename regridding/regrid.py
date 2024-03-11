@@ -54,7 +54,7 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
-        dest="no_clobber",
+        "--no_clobber",
         type=str,
         help="Do not regrid a file if the regridded file already exists",
         required=True,
