@@ -13,7 +13,8 @@ import numpy as np
 import pandas as pd
 import xesmf as xe
 import xarray as xr
-from config import variables
+from config import variables, regrid_batch_dir
+from pyproj import CRS
 
 # ignore serializationWarnings from xarray for datasets with multiple FillValues
 import warnings
@@ -67,7 +68,22 @@ def init_regridder(src_ds, dst_ds):
     Returns:
         regridder (xesmf.Regridder): a regridder object
     """
-    regridder = xe.Regridder(src_ds, dst_ds, "bilinear", unmapped_to_nan=True)
+    # cache existing encoding / attrs
+    lon_enc = dst_ds["lon"].encoding
+    lon_attrs = dst_ds["lon"].attrs
+    # convert to -180 to 180 lon coords, and reapply encoding / attrs
+    dst_ds["lon"] = (dst_ds["lon"] + 180) % 360 - 180
+    dst_ds["lon"].encoding = lon_enc
+    dst_ds["lon"].attrs = lon_attrs
+    # probably doesn't matter but technically correct after adjustment
+    dst_ds["lon"].attrs["valid_max"] = 180
+    dst_ds["lon"].attrs["valid_min"] = -180
+    # sort
+    dst_ds = dst_ds.sortby(dst_ds.lon, ascending=True)
+    # initialize the regridder which now contains standard -180 to 180 longitude values
+    regridder = xe.Regridder(
+        src_ds, dst_ds, "bilinear", unmapped_to_nan=True, periodic=True
+    )
 
     return regridder
 
@@ -244,7 +260,6 @@ def generate_single_year_filename(original_fp, year_ds):
     # want these as datetime object to use strftime
     if isinstance(time_bnds[0], np.datetime64):
         time_bnds = [pd.to_datetime(tb) for tb in time_bnds]
-
     if "day" in year_ds.attrs["frequency"]:
         year_fn_str = "-".join([tb.strftime("%Y%m%d") for tb in time_bnds])
     elif "mon" in year_ds.attrs["frequency"]:
@@ -317,7 +332,7 @@ def fix_time_and_write(out_ds, src_ds, out_fp):
     if check_is_dayfreq(out_ds):
         # make sure we assign correct daily frequency type
         out_ds.attrs["frequency"] = [
-            s for s in variables[out_ds.attrs["variable_id"]]["freqs"] if "day" in s
+            s for s in variables[out_ds.attrs["variable_id"]]["table_ids"] if "day" in s
         ][0]
         if isinstance(out_ds.time.values[0], cftime._cftime.Datetime360Day):
             out_ds = dayfreq_360day_to_noleap(out_ds)
@@ -333,7 +348,7 @@ def fix_time_and_write(out_ds, src_ds, out_fp):
     elif check_is_monfreq(out_ds):
         # make sure we assign correct monthly frequency type
         out_ds.attrs["frequency"] = [
-            s for s in variables[out_ds.attrs["variable_id"]]["freqs"] if "mon" in s
+            s for s in variables[out_ds.attrs["variable_id"]]["table_ids"] if "mon" in s
         ][0]
         out_ds = Amonfreq_fix_time(out_ds, src_ds)
 
@@ -360,6 +375,55 @@ def fix_time_and_write(out_ds, src_ds, out_fp):
     return out_fps
 
 
+def apply_wgs84(ds):
+    """Function to add spatial_ref coordinate, CRS attributes, and CRS encodings to make CF-compliant metadata for the WGS84 CRS.
+    Args:
+    ds(xarray.Dataset): the regridded dataset with -180 to 180 longitude scale
+
+    Returns:
+    ds (xarray.Dataset): the dataset with WGS84 CRS info added, or the original dataset if additions were not successful
+    """
+
+    try:
+        # Try to access an existing spatial_ref coordinate.
+        # If this doesn't raise an exception, the dataset probably has CRS info and should be returned as-is.
+        # If this fails, the dataset probably has no CF-compliant CRS info and we will add it.
+        spatial_ref_coord_ = ds.spatial_ref
+        return ds
+
+    except:
+
+        # get CF-compliant crs attribute dict
+        cf_crs = CRS.from_epsg(4326).to_cf()
+
+        try:
+            # create a spatial_ref coordinate, which is an empty array but has the CF-compliant crs attribute dict
+            ds = ds.assign_coords({"spatial_ref": ([], np.array(0), cf_crs)})
+
+            # add a second attribute "spatial_ref" identical to "crs_wkt" (this is redundant, but matches test rioxarray output)
+            ds["spatial_ref"].attrs["spatial_ref"] = cf_crs["crs_wkt"]
+
+            # manually link spatial_ref attributes to the data variable via "grid_mapping" encoding
+            # assumes dataset will only have one data variable!
+            var = list(ds.data_vars)[0]
+            ds[var].encoding["grid_mapping"] = "spatial_ref"
+            return ds
+
+        except:
+            return ds
+
+
+def write_retry_batch_file(errs):
+    """Append each item in a list of filepaths to a text file. Lines are appended to the file if it already exists.
+    If a collection of batch files are being simultaneously processed by this regrid.py script via multiple slurm jobs,
+    a single text file will be generated that lists all files that failed the regridding process and can be retried.
+    """
+    retry_fn = regrid_batch_dir.joinpath("batch_retry.txt")
+    with open(retry_fn, "a") as f:
+        for fp in errs:
+            f.write(f"{fp}\n")
+
+
 def regrid_dataset(fp, regridder, out_fp, lat_slice):
     """Regrid a dataset using a regridder object initiated using the target grid with a latitude domain of 50N and up.
 
@@ -378,6 +442,13 @@ def regrid_dataset(fp, regridder, out_fp, lat_slice):
 
     regrid_task = regridder(src_ds, keep_attrs=True)
     regrid_ds = regrid_task.compute()
+
+    # make sure longitude min and max attributes are set correctly
+    regrid_ds["lon"].attrs["valid_max"] = 180
+    regrid_ds["lon"].attrs["valid_min"] = -180
+
+    # add CRS info
+    regrid_ds = apply_wgs84(regrid_ds)
 
     out_fps = fix_time_and_write(regrid_ds, src_ds, out_fp)
 
@@ -410,23 +481,27 @@ if __name__ == "__main__":
     tic = time.perf_counter()
 
     results = []
+    errs = []
     for fp in src_fps:
-        out_fp = generate_regrid_filepath(fp, out_dir)
-        # make sure the parent dirs exist
-        out_fp.parent.mkdir(exist_ok=True, parents=True)
-
-        # TO-DO: This no longer works because we are actually generating different output filepaths by year
-        # either get rid of this and drop no-clobber option, or fix
-        # if no_clobber:
-        #     if not out_fp.exists():
-        #         results.append(regrid_dataset(fp, regridder, out_fp, ext_lat_slice))
-        #     else:
-        #         continue
-        # else:
-        #     results.append(regrid_dataset(fp, regridder, out_fp, ext_lat_slice))
-
-        results.append(regrid_dataset(fp, regridder, out_fp, ext_lat_slice))
+        try:
+            out_fp = generate_regrid_filepath(fp, out_dir)
+            # make sure the parent dirs exist
+            out_fp.parent.mkdir(exist_ok=True, parents=True)
+            results.append(regrid_dataset(fp, regridder, out_fp, ext_lat_slice))
+        except Exception as e:
+            errs.append(str(fp))
+            print(f"\nFILE NOT REGRIDDED: {fp}\n     Errors printed below:\n")
+            print(e)
+            print("\n")
 
     print(
-        f"done, {len(results)} files regridded in {np.round((time.perf_counter() - tic) / 60, 1)}m"
+        f"Regridding done, {len(results)} files regridded in {np.round((time.perf_counter() - tic) / 60, 1)}m"
     )
+
+    if len(results) < len(src_fps):
+        print("\nErrors encountered! The following files were NOT regridded:\n")
+        print("\n".join(errs))
+
+    # if any filepaths failed to regrid, add them to a "batch_retry.txt" file to be optionally retried
+    if len(errs) > 0:
+        write_retry_batch_file(errs)

@@ -18,7 +18,8 @@ warnings.filterwarnings("ignore", category=xr.SerializationWarning)
 
 
 GRID_VARS = ["lat", "lon"]
-max_time = np.datetime64("2101-01-01T12:00:00.0000")
+max_year = 2101
+min_year = 1950
 
 
 def fp_to_attrs(fp):
@@ -62,11 +63,28 @@ def get_grid(fp):
     grid_di.update(fp_to_attrs(fp))
     # also keep the filename for reference
     grid_di["fp"] = fp
+
+    # only want to process files that have data from 1950-2100
     # want to save the earliest time, because we will just ignore projections greater than 2100, for now at least.
     ts_min = ds.time.values.min()
-    if not isinstance(ts_min, np.datetime64):
-        ts_min = np.datetime64(ts_min.strftime("%Y-%m-%d"))
-    grid_di["start_time"] = ts_min
+    # using pd.Timestamp here because numpy datetime64 can hav OOB errors for large timestamps
+    if isinstance(ts_min, np.datetime64):
+        start_year = ts_min.astype("datetime64[Y]").astype(int) + 1970
+    else:
+        # assumes cf time object
+        start_year = ts_min.year
+    grid_di["start_year"] = start_year
+
+    # Same thing as above but for last time in dataset
+    ts_max = ds.time.values.max()
+    # using pd.Timestamp here because numpy datetime64 can hav OOB errors for large timestamps
+    if isinstance(ts_max, np.datetime64):
+        end_year = ts_max.astype("datetime64[Y]").astype(int) + 1970
+    else:
+        # assumes cf time object
+        end_year = ts_max.year
+    grid_di["end_year"] = end_year
+
     # save file size for better chunking into batches
     grid_di["filesize"] = fp.stat().st_size / (1e3**3)
 
@@ -76,7 +94,7 @@ def get_grid(fp):
 def read_grids(fps):
     """Read the grid info from all files in fps, using multiprocessing and with a progress bar"""
     grids = []
-    with Pool(8) as pool:
+    with Pool(20) as pool:
         for grid_di in tqdm.tqdm(pool.imap_unordered(get_grid, fps), total=len(fps)):
             grids.append(grid_di)
 
@@ -146,29 +164,31 @@ if __name__ == "__main__":
         inst, model = inst_model.split("_")
         fps = []
         for exp_id in ["ScenarioMIP", "CMIP"]:
-            fps.extend(list(cmip6_dir.joinpath(exp_id).glob(f"{inst}/{model}/**/*.nc")))
+            # add only daily and monthly files
+            fps.extend(
+                list(cmip6_dir.joinpath(exp_id).glob(f"{inst}/{model}/**/*day/**/*.nc"))
+            )
+            fps.extend(
+                list(cmip6_dir.joinpath(exp_id).glob(f"{inst}/{model}/**/*mon/**/*.nc"))
+            )
         results.append(read_grids(fps))
 
     results_df = pd.concat([pd.DataFrame(rows) for rows in results])
-    results_df.to_csv("test.csv")
 
     # here we will exclude some files.
     # we are only going to worry about regridding those which have a latitude variable for now.
     results_df = results_df.query("~lat_min.isnull()")
     # we are also going to exclude files which cannot form a panarctic result (very few so far).
     results_df = results_df.query("lat_max > 50")
-    # only regrid files if their starting date is less than or equal to 2101-01-01
-    results_df = results_df.query("start_time < @max_time")
-    # the grid of the file chosen as the target template grid
-    cesm2_grid = results_df.query(f"fp == @target_grid_fp").grid.values[0]
-    # subset to all files that do have this grid first.
-    # save this as a table for use with crop_non_regrid.py.
-    # These are the files that have the right grid already but need to be cropped to a panarctic extent.
-    results_df.query("grid == @cesm2_grid").to_csv("files_to_crop.csv")
-    # now, subset to all qualifying files that do not have this grid
-    regrid_df = results_df.query("grid != @cesm2_grid")
+    # drop any subdaily frequencies.
+    results_df = results_df.query(
+        "frequency.str.contains('day') | frequency.str.contains('mon')"
+    )
+    # only regrid files if their starting date is less than or equal to 2101-01-01.
+    results_df = results_df.query("start_year < @max_year")
+    results_df = results_df.query("end_year > @min_year")
 
-    for name, group_df in regrid_df.groupby(["model", "scenario"]):
+    for name, group_df in results_df.groupby(["model", "scenario"]):
         # make sure that there are not multiple grids within one model/scenario at this point
         model, scenario = name
         write_batch_files(group_df, model, scenario)

@@ -144,32 +144,19 @@ def validate_min_max_nan(args):
     assert within_range and percent_nan < nan_threshold
 
 
-def validate_variable(variable, ncpus):
-    regrid_fps = list(regrid_dir.glob(f"*/*/*/*/{variable}_*.nc"))
+def validate_variable(variable, ncpus=24):
+    regrid_fps = list(regrid_dir.glob(f"**/{variable}_*.nc"))
     # derive this dynamically from files in tmp/
     min_max_range = generate_min_max_range(Path("tmp").joinpath(f"{variable}.json"))
     args = [(fp, variable, min_max_range) for fp in regrid_fps]
-    results = []
     with Pool(ncpus) as pool:
         list(pool.imap_unordered(validate_min_max_nan, args))
 
 
-# def test_file_existence():
-#     for model in models:
-#         for scenario in scenarios:
-#             for variable in variables:
-#                 for interval in intervals:
-#                     regrid_fp = regrid_dir.joinpath(f"{model}/{scenario}/{interval}/{variable}/")
-#                     files = regrid_fp.glob(f"{variable}_{interval}_{model}_{scenario}_regrid_*.nc")
-#                     if len(list(files)) == 0:
-#                         print(f"Directory does not exist or has no files: {regrid_fp}")
-#                         assert False
-#     assert True
-
-
+# TO-DO: use a shared version of this shifting in config.py or regrid.py or something
 dst_ds = open_and_crop_dataset(target_grid_fp, prod_lat_slice)
 target_lat_arr = dst_ds["lat"].values
-target_lon_arr = dst_ds["lon"].values
+target_lon_arr = np.sort((dst_ds["lon"].values + 180) % 360 - 180)
 ncpus = 24
 var_ids = list(variables.keys())
 
@@ -177,12 +164,13 @@ var_ids = list(variables.keys())
 @pytest.mark.parametrize("var_id", var_ids)
 def test_grid_match(var_id):
     # dst_ds = xr.open_dataset(test_grid_fp).sel(lat=slice(50, 90))
-    regrid_fps = list(regrid_dir.glob(f"**/{var_id}*.nc"))
+    regrid_fps = list(regrid_dir.glob(f"**/{var_id}/{var_id}_*.nc"))
+
     args = [(fp, target_lat_arr, target_lon_arr) for fp in regrid_fps]
     with Pool(ncpus) as pool:
         list(pool.imap_unordered(validate_grid, args))
 
 
-# @pytest.mark.parametrize("var_id", var_ids)
-# def test_variable(var_id):
-#     validate_variable(var_id)
+@pytest.mark.parametrize("var_id", var_ids)
+def test_variable(var_id):
+    validate_variable(var_id)
