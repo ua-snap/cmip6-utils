@@ -174,7 +174,6 @@ if __name__ == "__main__":
         results.append(read_grids(fps))
 
     results_df = pd.concat([pd.DataFrame(rows) for rows in results])
-    results_df.to_csv("test.csv")
 
     # here we will exclude some files.
     # we are only going to worry about regridding those which have a latitude variable for now.
