@@ -33,7 +33,7 @@ def parse_args():
         "-r",
         dest="regrid_batch_dir",
         type=str,
-        help="Batch file containing filepaths to be regridded",
+        help="Directory containing batch files",
         required=True,
     )
     parser.add_argument(

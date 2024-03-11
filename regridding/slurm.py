@@ -116,7 +116,7 @@ def parse_args():
     parser.add_argument(
         "--regrid_batch_dir",
         type=str,
-        help="Path to directory where batch files are written",
+        help="Path to directory where batch files are stored",
         required=True,
     )
     parser.add_argument(
@@ -182,6 +182,7 @@ if __name__ == "__main__":
     # build and write sbatch files
     sbatch_fps = []
     sbatch_dir = slurm_dir.joinpath("regrid")
+    # remove any existing slurm jobs in this directory
     _ = [fp.unlink() for fp in sbatch_dir.glob("*.slurm")]
     sbatch_dir.mkdir(exist_ok=True)
     for fp in regrid_batch_dir.glob("*.txt"):
@@ -189,7 +190,7 @@ if __name__ == "__main__":
         sbatch_fp = sbatch_dir.joinpath(f"regrid_{sbatch_str}.slurm")
         # filepath for slurm stdout
         sbatch_out_fp = sbatch_dir.joinpath(sbatch_fp.name.replace(".slurm", "_%j.out"))
-        # excluding node 138 until issue resolved
+
         sbatch_head = make_sbatch_head(slurm_email, conda_init_script)
         sbatch_regrid_kwargs = {
             "sbatch_fp": sbatch_fp,
@@ -205,8 +206,8 @@ if __name__ == "__main__":
         write_sbatch_regrid(**sbatch_regrid_kwargs)
         sbatch_fps.append(sbatch_fp)
 
-        # remove existing slurm output files
-        _ = [fp.unlink() for fp in sbatch_dir.glob("*.out")]
+    # remove existing slurm output files
+    _ = [fp.unlink() for fp in sbatch_dir.glob("*.out")]
 
-        # submit jobs
-        job_ids = [submit_sbatch(fp) for fp in sbatch_fps]
+    # submit jobs
+    job_ids = [submit_sbatch(fp) for fp in sbatch_fps]
