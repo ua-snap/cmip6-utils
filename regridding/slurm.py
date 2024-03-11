@@ -23,7 +23,7 @@ def make_sbatch_head(slurm_email, conda_init_script):
         f"#SBATCH --cpus-per-task=24\n"
         "#SBATCH --mail-type=FAIL\n"
         f"#SBATCH --mail-user={slurm_email}\n"
-        f"#SBATCH -p t1small\n"
+        f"#SBATCH -p t2small\n"
         "#SBATCH --output {sbatch_out_fp}\n"
         # print start time
         "echo Start slurm && date\n"
