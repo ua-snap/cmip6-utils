@@ -207,7 +207,7 @@ if __name__ == "__main__":
             "sbatch_fp": sbatch_fp,
             "sbatch_out_fp": sbatch_out_fp,
             "regrid_script": regrid_script,
-            "regrid_batch_dir" : regrid_batch_dir,
+            "regrid_batch_dir": regrid_batch_dir,
             "regrid_dir": regrid_dir,
             "regrid_batch_fp": fp,
             "dst_fp": target_grid_fp,
