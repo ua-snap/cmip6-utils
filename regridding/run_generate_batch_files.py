@@ -46,7 +46,7 @@ def parse_args():
         Path(args.cmip6_directory),
         Path(args.regrid_batch_dir),
         args.slurm_email,
-        )
+    )
 
 
 def submit_sbatch(sbatch_fp):
@@ -66,16 +66,22 @@ def submit_sbatch(sbatch_fp):
 
 if __name__ == "__main__":
 
-    (conda_init_script, 
-     generate_batch_files_script,
-     cmip6_directory,
-     regrid_batch_dir,
-     slurm_email) = parse_args()
+    (
+        conda_init_script,
+        generate_batch_files_script,
+        cmip6_directory,
+        regrid_batch_dir,
+        slurm_email,
+    ) = parse_args()
 
     Path(regrid_batch_dir).mkdir(exist_ok=True, parents=True)
 
-    generate_batch_files_sbatch_fp = str(generate_batch_files_script).replace(".py", ".slurm")
-    generate_batch_files_sbatch_out_fp = str(generate_batch_files_script).replace(".py", "_%j.out")
+    generate_batch_files_sbatch_fp = str(generate_batch_files_script).replace(
+        ".py", ".slurm"
+    )
+    generate_batch_files_sbatch_out_fp = str(generate_batch_files_script).replace(
+        ".py", "_%j.out"
+    )
 
     sbatch_text = (
         "#!/bin/sh\n"
@@ -84,19 +90,19 @@ if __name__ == "__main__":
         f"#SBATCH --cpus-per-task=24\n"
         "#SBATCH --mail-type=FAIL\n"
         f"#SBATCH --mail-user={slurm_email}\n"
-        f"#SBATCH -p t1small\n"
+        f"#SBATCH -p t2small\n"
         f"#SBATCH --output {generate_batch_files_sbatch_out_fp}\n"
         # print start time
         "echo Start slurm && date\n"
         # prepare shell for using activate
         f"source {conda_init_script}\n"
         f"conda activate cmip6-utils\n"
-        #run the generate batch files script
+        # run the generate batch files script
         f"python {generate_batch_files_script} --cmip6_directory '{cmip6_directory}' --regrid_batch_dir '{regrid_batch_dir}'\n"
     )
 
     # save the sbatch text as a new slurm file in the repo directory
     with open(generate_batch_files_sbatch_fp, "w") as f:
         f.write(sbatch_text)
-    
+
     submit_sbatch(generate_batch_files_sbatch_fp)
