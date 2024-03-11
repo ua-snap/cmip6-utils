@@ -5,6 +5,7 @@ import argparse
 from pathlib import Path
 from config import *
 
+
 def make_sbatch_head(slurm_email, conda_init_script):
     """Make a string of SBATCH commands that can be written into a .slurm script
 
@@ -72,8 +73,8 @@ def write_sbatch_regrid(
         f"-d {dst_fp} "
         f"-o {regrid_dir} "
         f"--no_clobber {no_clobber}\n\n"
-        )
-    
+    )
+
     commands = sbatch_head.format(sbatch_out_fp=sbatch_out_fp) + pycommands
 
     with open(sbatch_fp, "w") as f:
@@ -163,14 +164,16 @@ def parse_args():
 
 
 if __name__ == "__main__":
-    (slurm_dir,
-     regrid_dir,
-     regrid_batch_dir,
-     slurm_email,
-     conda_init_script,
-     regrid_script,
-     target_grid_fp,
-     no_clobber) = parse_args()
+    (
+        slurm_dir,
+        regrid_dir,
+        regrid_batch_dir,
+        slurm_email,
+        conda_init_script,
+        regrid_script,
+        target_grid_fp,
+        no_clobber,
+    ) = parse_args()
 
     # make these dirs if they don't exist
     Path(regrid_dir).mkdir(exist_ok=True, parents=True)
@@ -192,7 +195,7 @@ if __name__ == "__main__":
             "sbatch_fp": sbatch_fp,
             "sbatch_out_fp": sbatch_out_fp,
             "regrid_script": regrid_script,
-            "regrid_batch_dir" : regrid_batch_dir,
+            "regrid_batch_dir": regrid_batch_dir,
             "regrid_dir": regrid_dir,
             "regrid_batch_fp": fp,
             "dst_fp": target_grid_fp,
