@@ -494,6 +494,7 @@ if __name__ == "__main__":
 
     results = []
     errs = []
+    no_clobbers = []
     for fp in src_fps:
         try:
             out_fp = generate_regrid_filepath(fp, out_dir)
@@ -502,7 +503,7 @@ if __name__ == "__main__":
 
             # optionally, skip regridding if there if out_fp already exists
             if no_clobber.lower()=='true' and out_fp.is_file():
-                errs.append(str(fp))
+                no_clobbers.append(str(fp))
                 print(f"\nFILE NOT REGRIDDED: {fp}\n     Errors printed below:\n")
                 print("Regridded file already exists and was not overwritten. Specify no_clobber='false' to overwrite regridded files.")
                 print("\n")
@@ -520,9 +521,12 @@ if __name__ == "__main__":
     )
 
     if len(results) < len(src_fps):
-        print("\nErrors encountered! The following files were NOT regridded:\n")
+        print("\nThe following files were NOT regridded due to errors in processing:\n")
         print("\n".join(errs))
+        if no_clobber.lower()=='true':
+            print("\nThe following files were NOT regridded because regridded versions already exist:\n")
+            print("\n".join(no_clobbers))
 
-    # if any filepaths failed to regrid, add them to a "batch_retry.txt" file to be optionally retried
+    # if any filepaths failed to regrid due to errors, add them to a "batch_retry.txt" file to be optionally retried
     if len(errs) > 0:
         write_retry_batch_file(errs)
