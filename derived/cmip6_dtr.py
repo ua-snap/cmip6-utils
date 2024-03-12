@@ -70,7 +70,8 @@ if __name__ == "__main__":
         }
         # replace any negative values (tasmax - tasmin < 0) with 0.0000999
         # using this number instead of zero gives us a way of estimating what spots were tweaked
-        dtr = dtr.where(dtr >= 0, 0.0000999)
+        # include the isnull() check so we don't replace nan's
+        dtr = dtr.where((dtr.isnull() | (dtr >= 0)), 0.0000999)
 
         # the list here at the end is just making sure we have the time - lat - lon dimensional order
         dtr_ds = dtr.to_dataset()[["time", "lat", "lon", "dtr"]]
