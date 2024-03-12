@@ -133,7 +133,7 @@ def generate_regrid_filepath(fp, out_dir):
         out_dir (pathlib.Path): path to the root of the output directory for regridded files
 
     Returns:
-        new_fn (str): new filename string
+        new_fn (pathlib.Path): new filename string
     """
     fp_attrs = parse_cmip6_fp(fp)
 
@@ -471,9 +471,6 @@ if __name__ == "__main__":
     # parse args
     regrid_batch_dir, regrid_batch_fp, dst_fp, out_dir, no_clobber = parse_args()
 
-    # TODO: use the no_clobber argument str here to decide if we stop processing if file already exists
-    # bool(eval(no_clobber))
-
     # get the paths of files to regrid from the batch file
     with open(regrid_batch_fp) as f:
         lines = f.readlines()
@@ -502,7 +499,16 @@ if __name__ == "__main__":
             out_fp = generate_regrid_filepath(fp, out_dir)
             # make sure the parent dirs exist
             out_fp.parent.mkdir(exist_ok=True, parents=True)
-            results.append(regrid_dataset(fp, regridder, out_fp, ext_lat_slice))
+
+            # optionally, skip regridding if there if out_fp already exists
+            if no_clobber.lower()=='true' and out_fp.is_file():
+                errs.append(str(fp))
+                print(f"\nFILE NOT REGRIDDED: {fp}\n     Errors printed below:\n")
+                print("Regridded file already exists and was not overwritten. Specify no_clobber='false' to overwrite regridded files.")
+                print("\n")
+            else:
+                results.append(regrid_dataset(fp, regridder, out_fp, ext_lat_slice))
+
         except Exception as e:
             errs.append(str(fp))
             print(f"\nFILE NOT REGRIDDED: {fp}\n     Errors printed below:\n")
