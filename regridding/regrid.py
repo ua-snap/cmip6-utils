@@ -507,9 +507,6 @@ if __name__ == "__main__":
     # parse args
     regrid_batch_dir, regrid_batch_fp, dst_fp, out_dir, no_clobber = parse_args()
 
-    # TODO: use the no_clobber argument str here to decide if we stop processing if file already exists
-    # bool(eval(no_clobber))
-
     # get the paths of files to regrid from the batch file
     with open(regrid_batch_fp) as f:
         lines = f.readlines()
