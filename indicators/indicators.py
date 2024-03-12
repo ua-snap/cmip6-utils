@@ -22,7 +22,7 @@ import datetime
 # from xclim.indices.generic import threshold_count
 from xclim.indicators import atmos  # , icclim
 from config import *
-from luts import idx_varid_lu, varid_freqs
+from luts import *
 
 
 def rx1day(pr):
@@ -56,7 +56,7 @@ def dw(tasmin):
     """'Deep winter days' - the number of days with tasmin below -30 C
 
     Args:
-        tasmin (xarray.DataArray): daily maximum temperature values for a year
+        tasmin (xarray.DataArray): daily minimum temperature values for a year
 
     Returns:
         Number of deep winter days for each year
@@ -72,7 +72,7 @@ def ftc(tasmax, tasmin):
 
     Args:
         tasmax (xarray.DataArray): daily maximum temperature values for a year
-        tasmin (xarray.DataArray): daily maximum temperature values for a year
+        tasmin (xarray.DataArray): daily minimum temperature values for a year
 
     Returns:
         Number of freeze-thaw days for each year
@@ -103,10 +103,7 @@ def convert_times_to_years(time_da):
             cftime.num2date(t / 1e9, "seconds since 1970-01-01")
             for t in time_da.values.astype(int)
         ]
-    elif isinstance(
-        time_da.values[0],
-        cftime._cftime.Datetime360Day,
-    ) or isinstance(
+    elif isinstance(time_da.values[0], cftime._cftime.Datetime360Day,) or isinstance(
         time_da.values[0],
         cftime._cftime.DatetimeNoLeap,
     ):
@@ -195,6 +192,142 @@ def run_compute_indicators(fp_di, indicators, coord_labels, kwargs={}):
                 )
 
     return out
+
+
+def build_attrs(
+    indicator, scenario, model, start_year, end_year, lat_min, lat_max, lon_min, lon_max
+):
+    """Build standardized attribute dictionarys for computed indicator datasets. This function uses lookup tables imported from indicators/luts.py.
+
+    Args:
+        indicator (str): indicator id
+        model (str): model id
+        scenario (str): scenario id
+        start_year (str): first year of dataset
+        end_year (str): last year of dataset
+        lat_min (str): minimum latitude of dataset
+        lat_max (str): maximum latitude of dataset
+        lon_min (str): minimum longitude of dataset
+        lon_max (str): maximum longitude of dataset
+
+    Returns:
+        global_attrs, var_coord_attrs (tuple): tuple of global and variable/coordinate attribute dictionarys
+    """
+    # test units to determine NA value TODO: revisit this if there are any other integer units besides "days"
+    if units_lu[indicator] != "d":
+        fill_value = "NaN"
+    else:
+        fill_value = "-9999"
+
+    # build global attribute dict for the whole dataset:
+    global_attrs = {
+        "title": f"{indicator_lu[indicator]['title']}, {start_year}-{end_year}: {model}-{scenario}",
+        "author": "Scenarios Network for Alaska and Arctic Planning (SNAP), International Arctic Research Center, University of Alaska Fairbanks",
+        "creation_date": datetime.datetime.now().strftime("%m/%d/%Y, %H:%M:%S"),
+        "email": "uaf-snap-data-tools@alaska.edu",
+        "website": "https://uaf-snap.org/",
+        "scenario": f"{scenario}",
+        "model": f"{model}",
+        "institution": f"{model_lu[model]['institution']}",
+        "institution_name": f"{model_lu[model]['institution_name']}",
+    }
+
+    # but attribute dict for individual coordinates and variables:
+    var_coord_attrs = {
+        "lat": {
+            "name": "latitude",
+            "units": "degrees north",
+            "lat_max": f"{lat_max}",
+            "lat_min": f"{lat_min}",
+        },
+        "lon": {
+            "name": "longitude",
+            "units": "degrees east",
+            "lon_max": f"{lon_max}",
+            "lon_min": f"{lon_min}",
+        },
+        "year": {
+            "start_year": start_year,
+            "end_year": end_year,
+        },
+        "scenario": {
+            "description": "Forcing scenario used to drive model"
+        },
+        "model": {
+            "description": "Source model of input climate data"
+        },
+        indicator: {
+            "long_name": indicator_lu[indicator]["long_name"],
+            "units": f"{units_lu[indicator]}",
+            "description": indicator_lu[indicator]["description"],
+        },
+    }
+    return global_attrs, var_coord_attrs, fill_value
+
+
+def find_and_replace_attrs(idx_ds, model, scenario, **kwargs):
+    """Replace original indicator dataset attributes with standardized attribute dictionarys.
+    This function does a simple check to make sure all original variables/coordinates are in the standardized attribute dict,
+    and drops the 'height' coordinate, if it exists.
+
+    Args:
+        idx_ds (xarray.Dataset): computed indicator dataset with original attributes
+        model (str): model id
+        scenario (str): scenario id
+        kwargs (dict): basic kwargs dictionary to supply model and scenario
+
+    Returns:
+        idx_ds (xarray.Dataset): computed indicator dataset with standardized attributes
+    """
+
+    ds_vars = list(idx_ds.variables)
+    idx = list(idx_ds.data_vars)[0]
+
+    # remove height coord if it exists
+    if "height" in ds_vars:
+        ds_vars.remove("height")
+        idx_ds = idx_ds.reset_coords(names="height", drop=True)
+
+    # get dataset values and build attrs
+    start_year, end_year, lat_min, lat_max, lon_min, lon_max = (
+        idx_ds.year.values.min().astype(str),
+        idx_ds.year.values.max().astype(str),
+        idx_ds.lat.values.min().astype(str),
+        idx_ds.lat.values.max().astype(str),
+        idx_ds.lon.values.min().astype(str),
+        idx_ds.lon.values.max().astype(str),
+    )
+    global_attrs, var_coord_attrs, fill_value = build_attrs(
+        idx,
+        scenario,
+        model,
+        start_year=start_year,
+        end_year=end_year,
+        lat_min=lat_min,
+        lat_max=lat_max,
+        lon_min=lon_min,
+        lon_max=lon_max,
+    )
+    new_vars = list(var_coord_attrs.keys())
+
+    # test for presence of all original ds vars (excluding height) in the new attrs
+    if False in [i in new_vars for i in ds_vars]:
+        print(
+            "Not all original dataset variables (excluding height) are accounted for in new standardized variables! Process aborted."
+        )
+        raise Exception(
+            "Not all original dataset variables (excluding height) are accounted for in new standardized variables! Process aborted."
+        )
+    else:
+        # replace global attrs
+        idx_ds.attrs = global_attrs
+        # replace variable and coordinate attributes
+        for var in idx_ds.variables:
+            idx_ds[var].attrs = var_coord_attrs[var]
+        
+        # make sure _FillValue is set in .encoding
+        idx_ds[idx].encoding["_FillValue"] = fill_value
+    return idx_ds
 
 
 def check_varid_indicator_compatibility(indicators, var_ids):
@@ -352,6 +485,7 @@ if __name__ == "__main__":
     )
 
     indicators_ds = xr.merge(run_compute_indicators(**kwargs))
+
     # write each indicator to its own file for now
     out_fps_to_validate = []
     for idx in indicators_ds.data_vars:
@@ -363,7 +497,11 @@ if __name__ == "__main__":
         )
         # ensure this nested path exists
         out_fp.parent.mkdir(exist_ok=True, parents=True)
+        # convert indicator array into its own dataset
+        idx_ds = indicators_ds[idx].to_dataset()
+        # standardize the attributes
+        idx_ds_out = find_and_replace_attrs(idx_ds, model, scenario, **kwargs)
         # write
-        indicators_ds[idx].to_dataset().to_netcdf(out_fp)
+        idx_ds_out.to_netcdf(out_fp)
         # add filepath to list for validation
         out_fps_to_validate.append(out_fp)
