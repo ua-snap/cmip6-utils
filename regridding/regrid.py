@@ -523,7 +523,7 @@ if __name__ == "__main__":
     if len(results) < len(src_fps):
         print("\nThe following files were NOT regridded due to errors in processing:\n")
         print("\n".join(errs))
-        if no_clobber.lower()=='true':
+        if no_clobber.lower()=='true' and len(no_clobbers) > 0:
             print("\nThe following files were NOT regridded because regridded versions already exist:\n")
             print("\n".join(no_clobbers))
 
