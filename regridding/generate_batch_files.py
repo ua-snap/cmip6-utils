@@ -202,22 +202,13 @@ if __name__ == "__main__":
         fps = []
         for exp_id in ["ScenarioMIP", "CMIP"]:
             # add only daily and monthly files
-            # evaluate vars argument before reading grids, ignore if "all"
-            if vars == "all":
+            for var in vars.split():
                 fps.extend(
-                    list(cmip6_dir.joinpath(exp_id).glob(f"{inst}/{model}/**/*day/**/*.nc"))
+                    list(cmip6_dir.joinpath(exp_id).glob(f"{inst}/{model}/**/*day/{var}/**/*.nc"))
                 )
                 fps.extend(
-                    list(cmip6_dir.joinpath(exp_id).glob(f"{inst}/{model}/**/*mon/**/*.nc"))
+                    list(cmip6_dir.joinpath(exp_id).glob(f"{inst}/{model}/**/*mon/{var}/**/*.nc"))
                 )
-            else:
-                for var in vars.split():
-                    fps.extend(
-                        list(cmip6_dir.joinpath(exp_id).glob(f"{inst}/{model}/**/*day/{var}/**/*.nc"))
-                    )
-                    fps.extend(
-                        list(cmip6_dir.joinpath(exp_id).glob(f"{inst}/{model}/**/*mon/{var}/**/*.nc"))
-                    )
         results.append(read_grids(fps))
 
     results_df = pd.concat([pd.DataFrame(rows) for rows in results])
