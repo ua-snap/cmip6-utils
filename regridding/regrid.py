@@ -495,8 +495,9 @@ if __name__ == "__main__":
     results = []
     errs = []
     no_clobbers = []
+
     for fp in src_fps:
-            
+
         out_fp = generate_regrid_filepath(fp, out_dir)
         # make sure the parent dirs exist
         out_fp.parent.mkdir(exist_ok=True, parents=True)
@@ -508,10 +509,15 @@ if __name__ == "__main__":
 
         # search existing filenames for any beginning with the dateless string
         # if any are found, and no_clobber=True, assume that all yearly files also exist and skip regridding
-        if any(str(fp.name).startswith(nodate_out_fp) for fp in existing_fps) and no_clobber.lower()=='true':
+        if (
+            any(str(fp.name).startswith(nodate_out_fp) for fp in existing_fps)
+            and no_clobber.lower() == "true"
+        ):
             no_clobbers.append(str(fp))
             print(f"\nFILE NOT REGRIDDED: {fp}\n     Errors printed below:\n")
-            print("Regridded output files already exist and were not overwritten. Specify no_clobber='false' to overwrite regridded output files.")
+            print(
+                "Regridded output files already exist and were not overwritten. Specify no_clobber='false' to overwrite regridded output files."
+            )
             print("\n")
         else:
             try:
@@ -529,9 +535,9 @@ if __name__ == "__main__":
     if len(results) < len(src_fps):
         print("\nThe following files were NOT regridded because:\n")
         print("PROCESSING ERROR:", "\nPROCESSING ERROR: ".join(errs))
-        if no_clobber.lower()=='true' and len(no_clobbers) > 0:
+        if no_clobber.lower() == "true" and len(no_clobbers) > 0:
             print("\nThe following files were NOT regridded because:\n")
-            print("OVERWRITE ERROR:","\nOVERWRITE ERROR: ".join(no_clobbers))
+            print("OVERWRITE ERROR:", "\nOVERWRITE ERROR: ".join(no_clobbers))
 
     # if any filepaths failed to regrid due to errors, add them to a "batch_retry.txt" file to be optionally retried
     if len(errs) > 0:
