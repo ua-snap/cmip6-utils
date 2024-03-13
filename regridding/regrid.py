@@ -498,22 +498,24 @@ if __name__ == "__main__":
     for fp in src_fps:
             
         out_fp = generate_regrid_filepath(fp, out_dir)
-        print(out_fp)
         # make sure the parent dirs exist
         out_fp.parent.mkdir(exist_ok=True, parents=True)
 
-        #TODO:
-        #compare out_fp to existing files (ie, is base of filename [without years] present in any files)
-        # optionally, skip regridding if there if out_fp already exists
-        if no_clobber.lower()=='true' and out_fp.is_file():
+        # list all existing files in the out_dir
+        existing_fps = list(out_dir.glob("**/*.nc"))
+        # remove date from filename about to be regridded
+        nodate_out_fp = "_".join(out_fp.name.split(".nc")[0].split("_")[:-1])
+
+        # search existing filenames for any beginning with the dateless string
+        # if any are found, and no_clobber=True, assume that all yearly files also exist and skip regridding
+        if any(str(fp.name).startswith(nodate_out_fp) for fp in existing_fps) and no_clobber.lower()=='true':
             no_clobbers.append(str(fp))
             print(f"\nFILE NOT REGRIDDED: {fp}\n     Errors printed below:\n")
-            print("Regridded file already exists and was not overwritten. Specify no_clobber='false' to overwrite regridded files.")
+            print("Regridded output files already exist and were not overwritten. Specify no_clobber='false' to overwrite regridded output files.")
             print("\n")
         else:
             try:
                 results.append(regrid_dataset(fp, regridder, out_fp, ext_lat_slice))
-
             except Exception as e:
                 errs.append(str(fp))
                 print(f"\nFILE NOT REGRIDDED: {fp}\n     Errors printed below:\n")
