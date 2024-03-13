@@ -496,25 +496,29 @@ if __name__ == "__main__":
     errs = []
     no_clobbers = []
     for fp in src_fps:
-        try:
-            out_fp = generate_regrid_filepath(fp, out_dir)
-            # make sure the parent dirs exist
-            out_fp.parent.mkdir(exist_ok=True, parents=True)
+            
+        out_fp = generate_regrid_filepath(fp, out_dir)
+        print(out_fp)
+        # make sure the parent dirs exist
+        out_fp.parent.mkdir(exist_ok=True, parents=True)
 
-            # optionally, skip regridding if there if out_fp already exists
-            if no_clobber.lower()=='true' and out_fp.is_file():
-                no_clobbers.append(str(fp))
-                print(f"\nFILE NOT REGRIDDED: {fp}\n     Errors printed below:\n")
-                print("Regridded file already exists and was not overwritten. Specify no_clobber='false' to overwrite regridded files.")
-                print("\n")
-            else:
+        #TODO:
+        #compare out_fp to existing files (ie, is base of filename [without years] present in any files)
+        # optionally, skip regridding if there if out_fp already exists
+        if no_clobber.lower()=='true' and out_fp.is_file():
+            no_clobbers.append(str(fp))
+            print(f"\nFILE NOT REGRIDDED: {fp}\n     Errors printed below:\n")
+            print("Regridded file already exists and was not overwritten. Specify no_clobber='false' to overwrite regridded files.")
+            print("\n")
+        else:
+            try:
                 results.append(regrid_dataset(fp, regridder, out_fp, ext_lat_slice))
 
-        except Exception as e:
-            errs.append(str(fp))
-            print(f"\nFILE NOT REGRIDDED: {fp}\n     Errors printed below:\n")
-            print(e)
-            print("\n")
+            except Exception as e:
+                errs.append(str(fp))
+                print(f"\nFILE NOT REGRIDDED: {fp}\n     Errors printed below:\n")
+                print(e)
+                print("\n")
 
     print(
         f"Regridding done, {len(results)} files regridded in {np.round((time.perf_counter() - tic) / 60, 1)}m"
