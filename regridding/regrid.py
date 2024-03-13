@@ -430,7 +430,7 @@ def write_retry_batch_file(errs):
     If a collection of batch files are being simultaneously processed by this regrid.py script via multiple slurm jobs,
     a single text file will be generated that lists all files that failed the regridding process and can be retried.
     """
-    retry_fn = regrid_batch_dir.joinpath("batch_retry.txt")
+    retry_fn = Path(regrid_batch_dir).joinpath("batch_retry.txt")
     with open(retry_fn, "a") as f:
         for fp in errs:
             f.write(f"{fp}\n")
