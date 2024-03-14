@@ -542,16 +542,16 @@ if __name__ == "__main__":
         nodate_out_fn = "_".join(out_fp.name.split(".nc")[0].split("_")[:-1])
         existing_fps = list(out_fp.parent.glob(f"{nodate_out_fn}*.nc"))
 
-        # search existing filenames for any beginning with the dateless string
-        # if any are found, and no_clobber=True, assume that all yearly files also exist and skip regridding
+        # get a list of yearly time ranges from the multi-year source filename
+        expected_filename_time_ranges = parse_output_filename_times_from_timeframe(parse_cmip6_fp(fp)["timeframe"])
+
+        # search existing filenames for the time range strings
+        # if all time range strings are found in existing filenames, and no_clobber=True, then skip regridding
         if (
-            expected_filename_time_ranges = parse_output_filename_times_from_timeframe(parse_cmip6_fp(src_fp)["timeframe"])
             all([any(time_str in fp.name for fp in existing_fps) for time_str in expected_filename_time_ranges])
             and no_clobber
         ):
             no_clobbers.append(str(fp))
-            print(f"\nFILE NOT REGRIDDED: {fp}\n     Errors printed below:\n")
-            print("\n")
         else:
             try:
                 results.append(regrid_dataset(fp, regridder, out_fp, ext_lat_slice))
