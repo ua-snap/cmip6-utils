@@ -37,6 +37,12 @@ def parse_args():
         help="Email address to send slurm messages to",
         required=True,
     )
+    parser.add_argument(
+        "--vars",
+        type=str,
+        help="list of variables used in generating batch files",
+        required=True,
+    )
 
     args = parser.parse_args()
 
@@ -46,6 +52,7 @@ def parse_args():
         Path(args.cmip6_directory),
         Path(args.regrid_batch_dir),
         args.slurm_email,
+        args.vars,
     )
 
 
@@ -72,6 +79,7 @@ if __name__ == "__main__":
         cmip6_directory,
         regrid_batch_dir,
         slurm_email,
+        vars,
     ) = parse_args()
 
     Path(regrid_batch_dir).mkdir(exist_ok=True, parents=True)
@@ -98,7 +106,7 @@ if __name__ == "__main__":
         f"source {conda_init_script}\n"
         f"conda activate cmip6-utils\n"
         # run the generate batch files script
-        f"python {generate_batch_files_script} --cmip6_directory '{cmip6_directory}' --regrid_batch_dir '{regrid_batch_dir}'\n"
+        f"python {generate_batch_files_script} --cmip6_directory '{cmip6_directory}' --regrid_batch_dir '{regrid_batch_dir}' --vars '{vars}'\n"
     )
 
     # save the sbatch text as a new slurm file in the repo directory
