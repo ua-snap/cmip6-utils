@@ -55,9 +55,8 @@ def parse_args():
     )
     parser.add_argument(
         "--no_clobber",
-        type=str,
-        help="Do not regrid a file if the regridded file already exists",
-        required=True,
+        action="store_true",
+        help="Do not overwrite existing regidded files",
     )
     args = parser.parse_args()
 
@@ -511,7 +510,7 @@ if __name__ == "__main__":
         # if any are found, and no_clobber=True, assume that all yearly files also exist and skip regridding
         if (
             any(str(fp.name).startswith(nodate_out_fp) for fp in existing_fps)
-            and no_clobber.lower() == "true"
+            and no_clobber
         ):
             no_clobbers.append(str(fp))
             print(f"\nFILE NOT REGRIDDED: {fp}\n     Errors printed below:\n")

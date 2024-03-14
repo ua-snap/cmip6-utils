@@ -72,8 +72,12 @@ def write_sbatch_regrid(
         f"-b {regrid_batch_fp} "
         f"-d {dst_fp} "
         f"-o {regrid_dir} "
-        f"--no_clobber {no_clobber}\n\n"
-    )
+        )
+    
+    if no_clobber:
+        pycommands += "--no-clobber \n\n"
+    else:
+        pycommands += "\n\n"
 
     commands = sbatch_head.format(sbatch_out_fp=sbatch_out_fp) + pycommands
 
@@ -145,9 +149,8 @@ def parse_args():
     )
     parser.add_argument(
         "--no_clobber",
-        type=str,
-        help="If true, do not overwrite existing regidded files",
-        required=True,
+        action="store_true",
+        help="Do not overwrite existing regidded files",
     )
     args = parser.parse_args()
 
