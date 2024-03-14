@@ -545,7 +545,8 @@ if __name__ == "__main__":
         # search existing filenames for any beginning with the dateless string
         # if any are found, and no_clobber=True, assume that all yearly files also exist and skip regridding
         if (
-            any(str(fp.name).startswith(nodate_out_fp) for fp in existing_fps)
+            expected_filename_time_ranges = parse_output_filename_times_from_timeframe(parse_cmip6_fp(src_fp)["timeframe"])
+            all([any(time_str in fp.name for fp in existing_fps) for time_str in expected_filename_time_ranges])
             and no_clobber
         ):
             no_clobbers.append(str(fp))
