@@ -539,8 +539,6 @@ if __name__ == "__main__":
 
         # list all existing files in the out_dir
         existing_fps = list(out_dir.glob("**/*.nc"))
-        # remove date from filename about to be regridded
-        nodate_out_fp = "_".join(out_fp.name.split(".nc")[0].split("_")[:-1])
 
         # search existing filenames for any beginning with the dateless string
         # if any are found, and no_clobber=True, assume that all yearly files also exist and skip regridding
