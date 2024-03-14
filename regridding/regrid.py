@@ -534,7 +534,7 @@ if __name__ == "__main__":
     if len(results) < len(src_fps):
         print("\nThe following files were NOT regridded because:\n")
         print("PROCESSING ERROR:", "\nPROCESSING ERROR: ".join(errs))
-        if no_clobber.lower() == "true" and len(no_clobbers) > 0:
+        if no_clobber and len(no_clobbers) > 0:
             print("\nThe following files were NOT regridded because:\n")
             print("OVERWRITE ERROR:", "\nOVERWRITE ERROR: ".join(no_clobbers))
 
