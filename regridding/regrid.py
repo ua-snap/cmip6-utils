@@ -441,7 +441,7 @@ def parse_output_filename_times_from_timeframe(timeframe):
     try:
         # just break it off if if anything doesn't conform
         start, end = timeframe.split("-")
-        assert len(start) == len(end)
+        assert len(start) == len(end), "Date range string in an unexpected format. Expected YYYYMM-YYYYMM or YYYYMMDD-YYYYMMDD."
 
         if len(start) == 6:
             start_year = start[:4]
