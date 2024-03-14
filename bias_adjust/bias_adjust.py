@@ -5,12 +5,13 @@ import datetime
 import multiprocessing as mp
 from itertools import product
 from pathlib import Path
+import numpy as np
 import xarray as xr
 import dask
 from dask.distributed import LocalCluster
 from xclim import sdba
 from xclim.sdba.detrending import LoessDetrend
-from luts import sim_ref_var_lu, varid_adj_kind_lu
+from luts import sim_ref_var_lu, varid_adj_kind_lu, varid_min_value_lu
 
 
 def generate_adjusted_filepaths(output_dir, var_ids, models, scenarios, years):
@@ -220,6 +221,16 @@ if __name__ == "__main__":
             hist = hist_ds[var_id]
             ref.data = ref.data.rechunk({0: -1, 1: 20, 2: 20})
             hist.data = hist.data.rechunk({0: -1, 1: 20, 2: 20})
+
+            # ensure data does not have zeros, depending on variable
+            high_limit = varid_min_value_lu[var_id]
+            # keep everything greater than zero, randomly sample from uniform(0, high_limit) for remaining values
+            ref = ref.where(
+                ref > 0, np.random.uniform(low=0, high=high_limit, size=ref.shape)
+            )
+            hist = hist.where(
+                hist > 0, np.random.uniform(low=0, high=high_limit, size=hist.shape)
+            )
 
             dqm = sdba.DetrendedQuantileMapping.train(
                 ref, hist, nquantiles=50, group="time.dayofyear", window=31, kind=kind
