@@ -434,6 +434,42 @@ def write_retry_batch_file(errs):
         for fp in errs:
             f.write(f"{fp}\n")
 
+def parse_output_filename_times_from_timeframe(timeframe):
+    """Parse a date range in format YYYYMM-YYYYMM or YYYYMMDD-YYYYMMDD. 
+    Returns a list of strings representing times that should be used in the output files of a given source file."""
+
+    try:
+        # just break it off if if anything doesn't conform
+        start, end = timeframe.split("-")
+        assert len(start) == len(end)
+
+        if len(start) == 6:
+            start_year = start[:4]
+            start_month = start[4:]
+            end_year = end[:4]
+            end_month = end[4:]
+            start_day = end_day = ""
+
+        elif len(start) == 8:
+            start_year = start[:4]
+            start_month = start[4:6]
+            start_day = start[6:]
+            end_year = end[:4]
+            end_month = end[4:6]
+            end_day = end[6:]
+
+            assert start_day == "01"
+            assert end_day == "31"
+
+        
+        assert start_month == "01"
+        assert end_month == "12"
+
+        years = np.arange(int(start_year), int(end_year) + 1)
+        return [f"{year}01{start_day}-{year}12{end_day}" for year in years]
+
+    except AssertionError:
+        return []
 
 def regrid_dataset(fp, regridder, out_fp, lat_slice):
     """Regrid a dataset using a regridder object initiated using the target grid with a latitude domain of 50N and up.
