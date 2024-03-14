@@ -514,9 +514,6 @@ if __name__ == "__main__":
         ):
             no_clobbers.append(str(fp))
             print(f"\nFILE NOT REGRIDDED: {fp}\n     Errors printed below:\n")
-            print(
-                "Regridded output files already exist and were not overwritten. Specify no_clobber='false' to overwrite regridded output files."
-            )
             print("\n")
         else:
             try:
