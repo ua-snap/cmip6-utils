@@ -54,7 +54,7 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
-        "--no_clobber",
+        "--no-clobber",
         action="store_true",
         help="Do not overwrite existing regidded files",
     )
