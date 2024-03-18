@@ -3,7 +3,7 @@ This script uses the regridding batch files as a "to-do list" of files to check.
 QC errors are written to {output_directory}/qc/qc_error.txt. 
 
 Usage:
-    python qc.py --output_directory /center1/CMIP6/jdpaul3/regrid/cmip6_regridding
+    python qc.py --output_directory /center1/CMIP6/jdpaul3/regrid/cmip6_regridding --input_directory /beegfs/CMIP6/arctic-cmip6/CMIP6 --vars 'pr ta'
 """
 
 import argparse
@@ -12,6 +12,8 @@ import os
 import xarray as xr
 import numpy as np
 from pathlib import Path
+
+from regrid import generate_regrid_filepath, parse_cmip6_fp
 #from luts import units_lu, ranges_lu, idx_varid_lu, varid_freqs
 
 
@@ -30,6 +32,21 @@ def get_source_fps_from_batch_files(regrid_batch_dir, var):
                 ]
             )
     return source_fps
+
+
+def parse_slurm_out_files(slurm_dir):
+    """Read all .out files in the slurm directory, and return lines that start with 'PROCESSING ERROR' or 'OVERWRITE ERROR'. """
+    overwrite_lines = []
+    error_lines = []
+    for out_file in slurm_dir.glob("*.out"):
+        with open(out_file, "r") as f:
+            for line in f:
+                if line.startswith("OVERWRITE ERROR") and line.endswith(".nc"):
+                    overwrite_lines.extend(line)
+            for line in f:
+                if line.startswith("PROCESSING ERROR") and line.endswith(".nc"):                    
+                    error_lines.extend(line)
+    return overwrite_lines, error_lines
 
 
 # def check_nodata_against_inputs(idx, output_fp, ds, in_dir):
@@ -206,29 +223,85 @@ def parse_args():
 if __name__ == "__main__":
     output_directory, input_directory, vars = parse_args()
 
-    regrid_dir = output_directory.join("regrid")
-    regrid_batch_dir = output_directory.join("regrid_batch")
-    slurm_dir = output_directory.join("slurm")
+    regrid_dir = output_directory.joinpath("regrid")
+    regrid_batch_dir = output_directory.joinpath("regrid_batch")
+    slurm_dir = output_directory.joinpath("slurm")
 
+    print("QC process started...")
+
+    # create a list to hold error and warning strings. 
+    # cverwrite errors will be considered warnings, processing errors will be considered errors.
+    warning_strings = []
+    error_strings = []
+
+    # make a qc_directory and qc.csv file to save results
+    qc_dir = output_directory.joinpath("qc")
+    qc_dir.mkdir(exist_ok=True, parents=True)
+    error_file = qc_dir.joinpath("qc_error.txt")
+    with open(error_file, "w") as e:
+        pass
+
+    # QC 1: for all variables, check slurm output files for processing errors / overwrite errors
+    # print a message summarizing warnings/errors
+
+    overwrite_lines, error_lines = parse_slurm_out_files(slurm_dir)
+    warning_strings.extend(overwrite_lines)
+    error_strings.extend(error_lines)
+    if len(warning_strings) > 0:
+        print(f"{len(warning_strings)} files were not regridded because they already exist. Specify no_clobber=False to overwrite these files.")
+    if len(error_strings) > 0:
+        print(f"{len(error_strings)} files were not regridded due to processing errors. Check qc/qc_error.txt.")
+        with open(error_file, "w") as e:
+            e.write(("\n".join(error_strings)))
+            e.write("\n")
+
+    # QC 2: by variable, compare expected file paths to existing file paths
+    # list all source file paths found in the batch files, and
+    # create a list of expected regridded file paths from the source file paths
     for var in vars.split():
-        src_fps = get_source_fps_from_batch_files(regrid_batch_dir, var)
+        var_src_fps = get_source_fps_from_batch_files(regrid_batch_dir, var)
+        for fp in var_src_fps:
+            # get existing files that include the variable
+            existing_fps = list(output_directory.joinpath("regrid").glob(f"**/{var}/**/*.nc"))
+            # build expected filename(s) from the source file path
+            expected_base_fp = generate_regrid_filepath(fp, output_directory)            
+            # get a list of yearly time range strings from the multi-year source filename
+            expected_filename_time_ranges = parse_output_filename_times_from_timeframe(parse_cmip6_fp(fp)["timeframe"])
+            
 
-#     # build qc file path from out_dir argument and load qc file;
-#     # first column is indicator name, second column is indicators .nc filepath, third column is slurm job output filepath
-#     qc_file = out_dir.joinpath("qc", "qc.csv")
-#     df = pd.read_csv(qc_file, header=None)
-#     # build error file path from out_dir and create error file
-#     error_file = out_dir.joinpath("qc", "qc_error.txt")
-#     with open(error_file, "w") as e:
-#         pass
+            # out_fp = generate_regrid_filepath(fp, output_directory)
+            # # remove date from source filename
+            # # #  and list all existing files created from the source file being examined
+            # # nodate_out_fn = "_".join(out_fp.name.split(".nc")[0].split("_")[:-1])
+            # # existing_fps = list(out_fp.parent.glob(f"{nodate_out_fn}*.nc"))
 
-#     print("QC process started...")
+            # # search existing filenames for the time range strings
+            # if (
+            #     all([any(time_str in fp.name for fp in existing_fps) for time_str in expected_filename_time_ranges])
+            #     and no_clobber
+            # ):
+            #     no_clobbers.append(str(fp))
+            # else:
+            #     try:
+            #         results.append(regrid_dataset(fp, regridder, out_fp, ext_lat_slice))
+            #     except Exception as e:
+            #         errs.append(str(fp))
+            #         print(f"\nFILE NOT REGRIDDED: {fp}\n     Errors printed below:\n")
+            #         print(e)
+            #         print("\n")
 
-#     error_count = 0
-#     for _index, row in df.iterrows():
-#         row_errs = qc_by_row(row, error_file, in_dir)
-#         error_count = error_count + row_errs
 
-#     print(
-#         f"QC process complete: {str(error_count)} errors found. See {str(error_file)} for error log."
-#     )
+
+
+
+        # QC 3: check if existing files contain reasonable values for the variable
+        # reasonable values are defined in the lookup tables. This also checks if regridded datasets open.
+
+
+
+        # write error strings to qc.csv
+
+
+
+    
+    #print(f"QC process complete: {str(error_count)} errors found. See {str(error_file)} for error log.")
