@@ -90,8 +90,10 @@ def compare_expected_to_existing_and_check_values(regrid_dir, regrid_batch_dir, 
             
             # search existing files for the expected files, and if not found add to error list
             if all([fp in existing_fps for fp in expected_fps]):
+                src_ds = src_ds = xr.open_dataset(src_fp)
+                src_min, src_max = float(src_ds[var].min()), float(src_ds[var].max())
                 for regrid_fp in expected_fps:
-                    ds_error, value_error = check_for_reasonable_values(src_fp, regrid_fp, var)
+                    ds_error, value_error = check_for_reasonable_values(src_fp, src_min, src_max, regrid_fp, var)
                     if ds_error != []: ds_errors.append(ds_error)
                     if value_error != []: value_errors.append(value_error)    
             else:
@@ -116,15 +118,13 @@ def compare_expected_to_existing_and_check_values(regrid_dir, regrid_batch_dir, 
     return output_errors, ds_errors, value_errors
 
 
-def check_for_reasonable_values(src_fp, regrid_fp, var):
+def check_for_reasonable_values(src_fp, src_min, src_max, regrid_fp, var):
     """Comparing source file min/max values to regridded file min/max values.
     All regridded values should fall between source min/max values. This also checks if regridded datasets open.
     Returns a tuple of error lists to add to the categorized error lists."""
     ds_error = []
     value_error = []
 
-    src_ds = xr.open_dataset(src_fp)
-    src_min, src_max = float(src_ds[var].min()), float(src_ds[var].max())
     try:
         regrid_ds = xr.open_dataset(regrid_fp)
         regrid_min, regrid_max = float(regrid_ds[var].min()), float(regrid_ds[var].max())
