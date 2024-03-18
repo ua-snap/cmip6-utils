@@ -13,7 +13,7 @@ import xarray as xr
 import numpy as np
 from pathlib import Path
 
-from regrid import generate_regrid_filepath, parse_cmip6_fp
+from regrid import generate_regrid_filepath, parse_cmip6_fp, parse_output_filename_times_from_timeframe
 #from luts import units_lu, ranges_lu, idx_varid_lu, varid_freqs
 
 
@@ -229,11 +229,6 @@ if __name__ == "__main__":
 
     print("QC process started...")
 
-    # create a list to hold error and warning strings. 
-    # cverwrite errors will be considered warnings, processing errors will be considered errors.
-    warning_strings = []
-    error_strings = []
-
     # make a qc_directory and qc.csv file to save results
     qc_dir = output_directory.joinpath("qc")
     qc_dir.mkdir(exist_ok=True, parents=True)
@@ -244,51 +239,50 @@ if __name__ == "__main__":
     # QC 1: for all variables, check slurm output files for processing errors / overwrite errors
     # print a message summarizing warnings/errors
 
+    # create a list to hold error and warning strings
+    # overwrite errors will be considered warnings, processing errors will be considered errors
+    slurm_warning_strings = []
+    slurm_error_strings = []
+
     overwrite_lines, error_lines = parse_slurm_out_files(slurm_dir)
-    warning_strings.extend(overwrite_lines)
-    error_strings.extend(error_lines)
-    if len(warning_strings) > 0:
-        print(f"{len(warning_strings)} files were not regridded because they already exist. Specify no_clobber=False to overwrite these files.")
-    if len(error_strings) > 0:
-        print(f"{len(error_strings)} files were not regridded due to processing errors. Check qc/qc_error.txt.")
+    slurm_warning_strings.extend(overwrite_lines)
+    slurm_error_strings.extend(error_lines)
+    if len(slurm_warning_strings) > 0:
+        print(f"{len(slurm_warning_strings)} files were not regridded because they already exist. Specify no_clobber=False to overwrite these files.")
+    if len(slurm_error_strings) > 0:
+        print(f"{len(slurm_error_strings)} files were not regridded due to processing errors. Check qc/qc_error.txt.")
         with open(error_file, "w") as e:
-            e.write(("\n".join(error_strings)))
+            e.write(("\n".join(slurm_error_strings)))
             e.write("\n")
 
     # QC 2: by variable, compare expected file paths to existing file paths
-    # list all source file paths found in the batch files, and
-    # create a list of expected regridded file paths from the source file paths
+
+    # create a list to hold error strings
+    qc2_error_strings = []
+
     for var in vars.split():
+        # get existing files for the variable
+        existing_fps = list(output_directory.joinpath("regrid").glob(f"**/{var}/**/*.nc"))
+        # list all source file paths found in the batch files
         var_src_fps = get_source_fps_from_batch_files(regrid_batch_dir, var)
+        # create a list of expected regridded file paths from the source file paths
         for fp in var_src_fps:
-            # get existing files that include the variable
-            existing_fps = list(output_directory.joinpath("regrid").glob(f"**/{var}/**/*.nc"))
-            # build expected filename(s) from the source file path
-            expected_base_fp = generate_regrid_filepath(fp, output_directory)            
+            # build expected base file path from the source file path
+            expected_base_fp = generate_regrid_filepath(fp, output_directory) 
+            base_timeframe = expected_base_fp.name.split("_")[-1].split(".nc")[0]
             # get a list of yearly time range strings from the multi-year source filename
             expected_filename_time_ranges = parse_output_filename_times_from_timeframe(parse_cmip6_fp(fp)["timeframe"])
+            # replace the timeframe in the base file path with the yearly time ranges, and add to expected_fps list
+            expected_fps = []
+            for yearly_timeframe in expected_filename_time_ranges:
+                expected_fp = str(expected_base_fp).replace(base_timeframe, yearly_timeframe)
+                expected_fps.append(Path(expected_fp))
             
-
-            # out_fp = generate_regrid_filepath(fp, output_directory)
-            # # remove date from source filename
-            # # #  and list all existing files created from the source file being examined
-            # # nodate_out_fn = "_".join(out_fp.name.split(".nc")[0].split("_")[:-1])
-            # # existing_fps = list(out_fp.parent.glob(f"{nodate_out_fn}*.nc"))
-
-            # # search existing filenames for the time range strings
-            # if (
-            #     all([any(time_str in fp.name for fp in existing_fps) for time_str in expected_filename_time_ranges])
-            #     and no_clobber
-            # ):
-            #     no_clobbers.append(str(fp))
-            # else:
-            #     try:
-            #         results.append(regrid_dataset(fp, regridder, out_fp, ext_lat_slice))
-            #     except Exception as e:
-            #         errs.append(str(fp))
-            #         print(f"\nFILE NOT REGRIDDED: {fp}\n     Errors printed below:\n")
-            #         print(e)
-            #         print("\n")
+            # search existing files for the expected files, and if not found add to error list
+            if all([fp in existing_fps for fp in expected_fps]):
+                pass
+            else:
+                print(f"Did not find all expected files for {fp}")
 
 
 
