@@ -61,7 +61,7 @@ def summarize_slurm_out_files(slurm_dir, error_file):
 def compare_expected_to_existing_and_check_values(regrid_dir, regrid_batch_dir, vars, fps_to_ignore, error_file):
     """Iterate through variables, comparing expected file paths to existing file paths.
     If all expected files exist, check their values against source files.
-    Writes error messages to qc error file, and returns a list of fps with errors for printing a message."""
+    Writes error messages to qc error file, and returns a list of fps with errors for printing a summary message."""
     output_errors = []
     ds_errors = []
     value_errors = []
@@ -119,7 +119,7 @@ def compare_expected_to_existing_and_check_values(regrid_dir, regrid_batch_dir, 
 def check_for_reasonable_values(src_fp, regrid_fp, var):
     """Comparing source file min/max values to regridded file min/max values.
     All regridded values should fall between source min/max values. This also checks if regridded datasets open.
-    Writes error messages to qc error file, and returns a tuple of lists of fps with errors for printing a message."""
+    Returns a tuple of error lists to add to the categorized error lists."""
     ds_error = []
     value_error = []
 
