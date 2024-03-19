@@ -98,14 +98,15 @@ if __name__ == "__main__":
         slurm_email,
     ) = parse_args()
 
+    # Create QC directory
+
+    qc_dir = output_directory.joinpath("qc")
+    qc_dir.mkdir(exist_ok=True)
+
     # Create and submit QC script
 
-    qc_sbatch_fp = str(qc_script).replace(
-        ".py", ".slurm"
-    )
-    qc_sbatch_out_fp = str(qc_script).replace(
-        ".py", "_%j.out"
-    )
+    qc_sbatch_fp = qc_dir.joinpath(str(qc_script.name).replace(".py", ".slurm"))
+    qc_sbatch_out_fp = qc_dir.joinpath(str(qc_script.name).replace(".py", "_%j.out"))
 
     sbatch_text = (
         "#!/bin/sh\n"
@@ -124,7 +125,7 @@ if __name__ == "__main__":
         f"python {qc_script} --output_directory {output_directory} --vars '{vars}'"
     )
 
-    # save the sbatch text as a new slurm file in the repo directory
+    # save the sbatch text as a new slurm file in the QC directory
     with open(qc_sbatch_fp, "w") as f:
         f.write(sbatch_text)
 
@@ -132,11 +133,9 @@ if __name__ == "__main__":
 
     # Create and submit notebook script
 
-    output_nb = f"{output_directory}/qc/visual_qc_out.ipynb"
+    output_nb = qc_dir.joinpath("visual_qc_out.ipynb")
 
-    visual_qc_notebook_sbatch_fp = str(visual_qc_notebook).replace(
-        ".ipynb", "_nb.slurm"
-    )
+    visual_qc_notebook_sbatch_fp = qc_dir.joinpath(str(visual_qc_notebook.name).replace(".ipynb", "_nb.slurm"))
 
     vqc_sbatch_text = (
         "#!/bin/sh\n"
@@ -156,7 +155,7 @@ if __name__ == "__main__":
         f"jupyter nbconvert --to html {output_nb}"
     )
 
-    # save the sbatch text as a new slurm file in the repo directory
+    # save the sbatch text as a new slurm file in the QC directory
     with open(visual_qc_notebook_sbatch_fp, "w") as f:
         f.write(vqc_sbatch_text)
 
