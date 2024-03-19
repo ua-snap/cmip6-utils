@@ -135,7 +135,7 @@ if __name__ == "__main__":
     output_nb = f"{output_directory}/qc/visual_qc_out.ipynb"
 
     visual_qc_notebook_sbatch_fp = str(visual_qc_notebook).replace(
-        ".ipynb", ".slurm"
+        ".ipynb", "_nb.slurm"
     )
 
     vqc_sbatch_text = (
