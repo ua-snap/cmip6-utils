@@ -89,6 +89,7 @@ def compare_expected_to_existing_and_check_values(regrid_dir, regrid_batch_dir, 
                 expected_fps.append(Path(expected_fp))
             
             # search existing files for the expected files, and if not found add to error list
+            # if all are found, run the final QC step to compare values
             if all([fp in existing_fps for fp in expected_fps]):
                 src_ds = src_ds = xr.open_dataset(src_fp)
                 src_min, src_max = float(src_ds[var].min()), float(src_ds[var].max())
