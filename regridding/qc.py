@@ -92,7 +92,7 @@ def compare_expected_to_existing_and_check_values(
         # create list of tuples as args for multiprocessing function
         src_var_tups = [(var_src_fp, var) for var_src_fp in var_src_fps]
         with multiprocessing.Pool(24) as p:
-            results = list(p.imap_unordered(file_min_max, src_var_tups))
+            results = list(p.map(file_min_max, src_var_tups))
         # populate min/max dict
         for result in results:
             src_min_max[result["file"]] = {
