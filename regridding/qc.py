@@ -53,15 +53,15 @@ def summarize_slurm_out_files(slurm_dir, error_file):
                     fps_to_ignore.append(Path(line.split(" ")[-1].split("\n")[0]))
     if len(overwrite_lines) > 0:
         print(
-            f"Warning: {len(overwrite_lines)} files were not regridded because they already exist, but will be QC'd here anyway."
+            f"Warning: {len(overwrite_lines)} source files were not regridded because their output files already exist. The existing output files will be QC'd here anyway."
         )
     if len(error_lines) > 0:
         print(
-            f"Error: {len(error_lines)} files were not regridded due to processing errors. These files will cannot be QC'd. Check qc/qc_error.txt for file paths."
+            f"Error: {len(error_lines)} source files were not regridded due to processing errors. There are no outputs to QC. Check qc/qc_error.txt for source file paths."
         )
         with open(error_file, "a") as e:
             e.write(
-                "The following files had errors during the regridding process and do not have output files to QC:\n\n"
+                "The following source files had errors during the regridding process and do not have output files to QC:\n\n"
             )
             e.write(("\n".join(error_lines)))
             e.write("\n")
