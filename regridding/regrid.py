@@ -54,10 +54,9 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
-        "--no_clobber",
-        type=str,
-        help="Do not regrid a file if the regridded file already exists",
-        required=True,
+        "--no-clobber",
+        action="store_true",
+        help="Do not overwrite existing regidded files",
     )
     args = parser.parse_args()
 
@@ -133,7 +132,7 @@ def generate_regrid_filepath(fp, out_dir):
         out_dir (pathlib.Path): path to the root of the output directory for regridded files
 
     Returns:
-        new_fn (str): new filename string
+        new_fn (pathlib.Path): new filename string
     """
     fp_attrs = parse_cmip6_fp(fp)
 
@@ -430,11 +429,47 @@ def write_retry_batch_file(errs):
     If a collection of batch files are being simultaneously processed by this regrid.py script via multiple slurm jobs,
     a single text file will be generated that lists all files that failed the regridding process and can be retried.
     """
-    retry_fn = regrid_batch_dir.joinpath("batch_retry.txt")
+    retry_fn = Path(regrid_batch_dir).joinpath("batch_retry.txt")
     with open(retry_fn, "a") as f:
         for fp in errs:
             f.write(f"{fp}\n")
 
+def parse_output_filename_times_from_timeframe(timeframe):
+    """Parse a date range in format YYYYMM-YYYYMM or YYYYMMDD-YYYYMMDD. 
+    Returns a list of strings representing times that should be used in the output files of a given source file."""
+
+    try:
+        # just break it off if if anything doesn't conform
+        start, end = timeframe.split("-")
+        assert len(start) == len(end), "Date range string in an unexpected format. Expected YYYYMM-YYYYMM or YYYYMMDD-YYYYMMDD."
+
+        if len(start) == 6:
+            start_year = start[:4]
+            start_month = start[4:]
+            end_year = end[:4]
+            end_month = end[4:]
+            start_day = end_day = ""
+
+        elif len(start) == 8:
+            start_year = start[:4]
+            start_month = start[4:6]
+            start_day = start[6:]
+            end_year = end[:4]
+            end_month = end[4:6]
+            end_day = end[6:]
+
+            assert start_day == "01"
+            assert end_day == "31"
+
+        
+        assert start_month == "01"
+        assert end_month == "12"
+
+        years = np.arange(int(start_year), int(end_year) + 1)
+        return [f"{year}01{start_day}-{year}12{end_day}" for year in years]
+
+    except AssertionError:
+        return []
 
 def regrid_dataset(fp, regridder, out_fp, lat_slice):
     """Regrid a dataset using a regridder object initiated using the target grid with a latitude domain of 50N and up.
@@ -471,9 +506,6 @@ if __name__ == "__main__":
     # parse args
     regrid_batch_dir, regrid_batch_fp, dst_fp, out_dir, no_clobber = parse_args()
 
-    # TODO: use the no_clobber argument str here to decide if we stop processing if file already exists
-    # bool(eval(no_clobber))
-
     # get the paths of files to regrid from the batch file
     with open(regrid_batch_fp) as f:
         lines = f.readlines()
@@ -497,26 +529,49 @@ if __name__ == "__main__":
 
     results = []
     errs = []
+    no_clobbers = []
+
     for fp in src_fps:
-        try:
-            out_fp = generate_regrid_filepath(fp, out_dir)
-            # make sure the parent dirs exist
-            out_fp.parent.mkdir(exist_ok=True, parents=True)
-            results.append(regrid_dataset(fp, regridder, out_fp, ext_lat_slice))
-        except Exception as e:
-            errs.append(str(fp))
-            print(f"\nFILE NOT REGRIDDED: {fp}\n     Errors printed below:\n")
-            print(e)
-            print("\n")
+
+        out_fp = generate_regrid_filepath(fp, out_dir)
+        # make sure the parent dirs exist
+        out_fp.parent.mkdir(exist_ok=True, parents=True)
+
+        # remove date from filename about to be regridded
+        #  and list all existing files created from the source file being examined
+        nodate_out_fn = "_".join(out_fp.name.split(".nc")[0].split("_")[:-1])
+        existing_fps = list(out_fp.parent.glob(f"{nodate_out_fn}*.nc"))
+
+        # get a list of yearly time ranges from the multi-year source filename
+        expected_filename_time_ranges = parse_output_filename_times_from_timeframe(parse_cmip6_fp(fp)["timeframe"])
+
+        # search existing filenames for the time range strings
+        # if all time range strings are found in existing filenames, and no_clobber=True, then skip regridding
+        if (
+            all([any(time_str in fp.name for fp in existing_fps) for time_str in expected_filename_time_ranges])
+            and no_clobber
+        ):
+            no_clobbers.append(str(fp))
+        else:
+            try:
+                results.append(regrid_dataset(fp, regridder, out_fp, ext_lat_slice))
+            except Exception as e:
+                errs.append(str(fp))
+                print(f"\nFILE NOT REGRIDDED: {fp}\n     Errors printed below:\n")
+                print(e)
+                print("\n")
 
     print(
         f"Regridding done, {len(results)} files regridded in {np.round((time.perf_counter() - tic) / 60, 1)}m"
     )
 
     if len(results) < len(src_fps):
-        print("\nErrors encountered! The following files were NOT regridded:\n")
-        print("\n".join(errs))
+        print("\nThe following files were NOT regridded because:\n")
+        print("PROCESSING ERROR:", "\nPROCESSING ERROR: ".join(errs))
+        if no_clobber and len(no_clobbers) > 0:
+            print("\nThe following files were NOT regridded because:\n")
+            print("OVERWRITE ERROR:", "\nOVERWRITE ERROR: ".join(no_clobbers))
 
-    # if any filepaths failed to regrid, add them to a "batch_retry.txt" file to be optionally retried
+    # if any filepaths failed to regrid due to errors, add them to a "batch_retry.txt" file to be optionally retried
     if len(errs) > 0:
         write_retry_batch_file(errs)
