@@ -125,19 +125,19 @@ def compare_expected_to_existing_and_check_values(
                 e.write(
                     "Could not find all expected regridded output files for the following source files:\n\n"
                 )
-                e.write(("\n".join(output_errors)))
+                e.write(("\n".join(map(str, output_errors))))
                 e.write("\n")
             if ds_errors != []:
                 e.write(
                     "Could not open datasets for the following regridded files:\n\n"
                 )
-                e.write(("\n".join(ds_errors)))
+                e.write(("\n".join(map(str, ds_errors))))
                 e.write("\n")
             if value_errors != []:
                 e.write(
                     "Values outside source range for the following regridded files:\n\n"
                 )
-                e.write(("\n".join(value_errors)))
+                e.write(("\n".join(map(str, value_errors))))
                 e.write("\n")
     return output_errors, ds_errors, value_errors
 
