@@ -8,6 +8,7 @@ import xarray as xr
 from math import radians
 from multiprocessing import Pool
 import tqdm
+import argparse
 
 from config import *
 
@@ -156,8 +157,44 @@ def write_batch_files(group_df, model, scenario):
 
     return
 
+def parse_args():
+    """Parse some arguments"""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--cmip6_directory",
+        type=str,
+        help="Path to directory where CMIP6 files are stored",
+        required=True,
+    )
+    parser.add_argument(
+        "--regrid_batch_dir",
+        type=str,
+        help="Path to directory where batch files are written",
+        required=True,
+    )
+    parser.add_argument(
+        "--vars",
+        type=str,
+        help="list of variables used in generating batch files",
+        required=True,
+    )    
+
+    args = parser.parse_args()
+
+    return (
+        Path(args.cmip6_directory),
+        Path(args.regrid_batch_dir),
+        args.vars,
+        )
+
 
 if __name__ == "__main__":
+
+    (cmip6_dir,
+     regrid_batch_dir,
+     vars,
+     ) = parse_args()
+
     # read the grid info from all files
     results = []
     for inst_model in inst_models:
@@ -165,12 +202,13 @@ if __name__ == "__main__":
         fps = []
         for exp_id in ["ScenarioMIP", "CMIP"]:
             # add only daily and monthly files
-            fps.extend(
-                list(cmip6_dir.joinpath(exp_id).glob(f"{inst}/{model}/**/*day/**/*.nc"))
-            )
-            fps.extend(
-                list(cmip6_dir.joinpath(exp_id).glob(f"{inst}/{model}/**/*mon/**/*.nc"))
-            )
+            for var in vars.split():
+                fps.extend(
+                    list(cmip6_dir.joinpath(exp_id).glob(f"{inst}/{model}/**/*day/{var}/**/*.nc"))
+                )
+                fps.extend(
+                    list(cmip6_dir.joinpath(exp_id).glob(f"{inst}/{model}/**/*mon/{var}/**/*.nc"))
+                )
         results.append(read_grids(fps))
 
     results_df = pd.concat([pd.DataFrame(rows) for rows in results])
