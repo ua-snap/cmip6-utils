@@ -148,10 +148,8 @@ def check_for_reasonable_values(src_fp, src_min, src_max, regrid_fp, var):
     ds_error = []
     value_error = []
     try:
-        regrid_ds = xr.open_dataset(regrid_fp)
-        regrid_min, regrid_max = float(regrid_ds[var].min()), float(
-            regrid_ds[var].max()
-        ) 
+        with xr.open_dataset(regrid_fp) as regrid_ds:
+            regrid_min, regrid_max = float(regrid_ds[var].min()), float(regrid_ds[var].max()) 
         if (src_max >= regrid_min >= src_min) and (src_max >= regrid_max >= src_min):
             pass
         else:
