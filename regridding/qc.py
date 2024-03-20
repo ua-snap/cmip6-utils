@@ -81,7 +81,21 @@ def compare_expected_to_existing_and_check_values(
     for var in vars.split():
         # get existing files for the variable
         existing_fps = list(regrid_dir.glob(f"**/{var}/**/*.nc"))
-        # list all source file paths found in the batch files, and ignore the ones that had processing errors identified in QC1
+
+        # create dict of min/max values for each existing file
+        regrid_min_max = {}
+        # create list of tuples as args for multiprocessing function
+        regrid_var_tups = [(existing_fp, var) for existing_fp in existing_fps]
+        with multiprocessing.Pool(24) as p:
+            results = list(p.map(file_min_max, regrid_var_tups))
+        # populate min/max dict / store dataset errors
+        for result in results:
+            if result["error"] == True:
+                ds_errors.append(result["file"])
+            else:
+                regrid_min_max[result["file"]] = {"min": result["min"], "max": result["max"]}
+
+        # list all source file paths found in the batch files, and ignore the ones that had processing errors previously identified
         var_src_fps = get_source_fps_from_batch_files(regrid_batch_dir, var)
         for fp in fps_to_ignore:
             if fp in var_src_fps:
@@ -120,21 +134,15 @@ def compare_expected_to_existing_and_check_values(
             # search existing files for the expected files, and if not found add to error list
             # if all are found, run the final QC step to compare values
             if all([fp in existing_fps for fp in expected_fps]):
-                # call min/max from dict
+                # call min/max from src dict
                 src_min, src_max = src_min_max[str(src_fp)]["min"], src_min_max[str(src_fp)]["max"]
-
-                #old way, slow!
-                # with xr.open_dataset(src_fp) as src_ds:
-                #     src_min, src_max = float(src_ds[var].min()), float(src_ds[var].max())
-
                 for regrid_fp in expected_fps:
-                    ds_error, value_error = check_for_reasonable_values(
-                        src_fp, src_min, src_max, regrid_fp, var
-                    )
-                    if ds_error != []:
-                        ds_errors.append(ds_error)
-                    if value_error != []:
-                        value_errors.append(value_error)
+                     # call min/max from regrid dict and compare
+                    regrid_min, regrid_max = regrid_min_max[str(regrid_fp)]["min"], regrid_min_max[str(regrid_fp)]["max"]
+                    if (src_max >= regrid_min >= src_min) and (src_max >= regrid_max >= src_min):
+                        pass
+                    else:
+                        value_errors.append(str(src_fp))
             else:
                 output_errors.append(str(src_fp))
 
@@ -161,25 +169,6 @@ def compare_expected_to_existing_and_check_values(
     return output_errors, ds_errors, value_errors
 
 
-def check_for_reasonable_values(src_fp, src_min, src_max, regrid_fp, var):
-    """Comparing source file min/max values to regridded file min/max values.
-    All regridded values should fall between source min/max values. This also checks if regridded datasets open.
-    Returns a tuple of error lists to add to the categorized error lists."""
-    ds_error = []
-    value_error = []
-    try:
-        with xr.open_dataset(regrid_fp) as regrid_ds:
-            regrid_min, regrid_max = float(regrid_ds[var].min()), float(regrid_ds[var].max()) 
-        if (src_max >= regrid_min >= src_min) and (src_max >= regrid_max >= src_min):
-            pass
-        else:
-            value_error.append(str(src_fp))
-    except:
-        ds_error.append(str(src_fp))
-  
-    return ds_error, value_error
-
-
 def make_qc_file(output_directory):
     """Make a qc_directory and qc_error.txt file to save results."""
     qc_dir = output_directory.joinpath("qc")
@@ -191,12 +180,15 @@ def make_qc_file(output_directory):
 
 
 def file_min_max(args):
-    """Get source data min and max values within the Arctic latitudes."""
+    """Get file min and max values within the Arctic latitudes."""
     file, var = args
-    with xr.open_dataset(file) as src_ds:
-        src_ds_slice = src_ds.sel(lat=slice(49, 90))
-        src_min, src_max = float(src_ds_slice[var].min()), float(src_ds_slice[var].max())
-    return {"file": str(file), "min": src_min, "max": src_max}
+    try:
+        with xr.open_dataset(file) as src_ds:
+            src_ds_slice = src_ds.sel(lat=slice(49, 90))
+            src_min, src_max = float(src_ds_slice[var].min()), float(src_ds_slice[var].max())
+        return {"file": str(file), "min": src_min, "max": src_max, "error":False}
+    except:
+        return {"file": str(file), "min": None, "max": None, "error":True}
 
 
 def parse_args():
