@@ -136,7 +136,7 @@ def compare_expected_to_existing_and_check_values(
                     if value_error != []:
                         value_errors.append(value_error)
             else:
-                output_errors.append(fp)
+                output_errors.append(str(src_fp))
 
     # write all errors to qc_error.txt
     with open(error_file, "a") as e:
