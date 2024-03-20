@@ -121,7 +121,7 @@ def compare_expected_to_existing_and_check_values(
             # if all are found, run the final QC step to compare values
             if all([fp in existing_fps for fp in expected_fps]):
                 # call min/max from dict
-                src_min, src_max = src_min_max[src_fp]["min"], src_min_max[src_fp]["max"]
+                src_min, src_max = src_min_max[str(src_fp)]["min"], src_min_max[src_fp]["max"]
 
                 #old way, slow!
                 # with xr.open_dataset(src_fp) as src_ds:
