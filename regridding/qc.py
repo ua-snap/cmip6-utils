@@ -86,7 +86,6 @@ def compare_expected_to_existing_and_check_values(
             if fp in var_src_fps:
                 var_src_fps.remove(fp)
         # create a list of expected regridded file paths from the source file paths
-        # remove the files that we know have errors from QC1
         for src_fp in var_src_fps:
             # build expected base file path from the source file path
             expected_base_fp = generate_regrid_filepath(src_fp, regrid_dir)
@@ -106,7 +105,7 @@ def compare_expected_to_existing_and_check_values(
             # search existing files for the expected files, and if not found add to error list
             # if all are found, run the final QC step to compare values
             if all([fp in existing_fps for fp in expected_fps]):
-                src_ds = src_ds = xr.open_dataset(src_fp)
+                src_ds = xr.open_dataset(src_fp)
                 src_min, src_max = float(src_ds[var].min()), float(src_ds[var].max())
                 for regrid_fp in expected_fps:
                     ds_error, value_error = check_for_reasonable_values(
@@ -119,26 +118,26 @@ def compare_expected_to_existing_and_check_values(
             else:
                 output_errors.append(fp)
 
-        # write all errors to qc_error.txt
-        with open(error_file, "a") as e:
-            if output_errors != []:
-                e.write(
-                    "Could not find all expected regridded output files for the following source files:\n\n"
-                )
-                e.write(("\n".join(map(str, output_errors))))
-                e.write("\n")
-            if ds_errors != []:
-                e.write(
-                    "Could not open datasets for the following regridded files:\n\n"
-                )
-                e.write(("\n".join(map(str, ds_errors))))
-                e.write("\n")
-            if value_errors != []:
-                e.write(
-                    "Values outside source range for the following regridded files:\n\n"
-                )
-                e.write(("\n".join(map(str, value_errors))))
-                e.write("\n")
+    # write all errors to qc_error.txt
+    with open(error_file, "a") as e:
+        if output_errors != []:
+            e.write(
+                "Could not find all expected regridded output files for the following source files:\n\n"
+            )
+            e.write(("\n".join(map(str, output_errors))))
+            e.write("\n\n")
+        if ds_errors != []:
+            e.write(
+                "Could not open datasets for the following regridded files:\n\n"
+            )
+            e.write(("\n".join(map(str, ds_errors))))
+            e.write("\n\n")
+        if value_errors != []:
+            e.write(
+                "Values outside source range for the following regridded files:\n\n"
+            )
+            e.write(("\n".join(map(str, value_errors))))
+            e.write("\n\n")
     return output_errors, ds_errors, value_errors
 
 
