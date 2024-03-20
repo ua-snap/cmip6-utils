@@ -105,8 +105,8 @@ def compare_expected_to_existing_and_check_values(
             # search existing files for the expected files, and if not found add to error list
             # if all are found, run the final QC step to compare values
             if all([fp in existing_fps for fp in expected_fps]):
-                src_ds = xr.open_dataset(src_fp)
-                src_min, src_max = float(src_ds[var].min()), float(src_ds[var].max())
+                with xr.open_dataset(src_fp) as src_ds:
+                    src_min, src_max = float(src_ds[var].min()), float(src_ds[var].max())
                 for regrid_fp in expected_fps:
                     ds_error, value_error = check_for_reasonable_values(
                         src_fp, src_min, src_max, regrid_fp, var
