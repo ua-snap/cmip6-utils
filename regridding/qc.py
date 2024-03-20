@@ -7,6 +7,7 @@ Usage:
 """
 
 import argparse
+import multiprocessing
 import xarray as xr
 from pathlib import Path
 from regrid import (
@@ -85,6 +86,20 @@ def compare_expected_to_existing_and_check_values(
         for fp in fps_to_ignore:
             if fp in var_src_fps:
                 var_src_fps.remove(fp)
+
+        # create dict of min/max values for each source file
+        src_min_max = {}
+        # create list of tuples as args for multiprocessing function
+        src_var_tups = [(var_src_fp, var) for var_src_fp in var_src_fps]
+        with multiprocessing.Pool(24) as p:
+            results = list(p.imap_unordered(file_min_max, src_var_tups))
+        # populate min/max dict
+        for result in results:
+            src_min_max[result["file"]] = {
+                "min": result["min"],
+                "max": result["max"],
+            }
+
         # create a list of expected regridded file paths from the source file paths
         for src_fp in var_src_fps:
             # build expected base file path from the source file path
@@ -105,8 +120,13 @@ def compare_expected_to_existing_and_check_values(
             # search existing files for the expected files, and if not found add to error list
             # if all are found, run the final QC step to compare values
             if all([fp in existing_fps for fp in expected_fps]):
-                with xr.open_dataset(src_fp) as src_ds:
-                    src_min, src_max = float(src_ds[var].min()), float(src_ds[var].max())
+                # call min/max from dict
+                src_min, src_max = src_min_max[src_fp]["min"], src_min_max[src_fp]["max"]
+
+                #old way, slow!
+                # with xr.open_dataset(src_fp) as src_ds:
+                #     src_min, src_max = float(src_ds[var].min()), float(src_ds[var].max())
+
                 for regrid_fp in expected_fps:
                     ds_error, value_error = check_for_reasonable_values(
                         src_fp, src_min, src_max, regrid_fp, var
@@ -168,6 +188,15 @@ def make_qc_file(output_directory):
     with open(error_file, "w") as e:
         pass
     return error_file
+
+
+def file_min_max(args):
+    """Get source data min and max values within the Arctic latitudes."""
+    file, var = args
+    with xr.open_dataset(file) as src_ds:
+        src_ds_slice = src_ds.sel(lat=slice(49, 90))
+        src_min, src_max = float(src_ds_slice[var].min()), float(src_ds_slice[var].max())
+    return {"file": str(file), "min": src_min, "max": src_max}
 
 
 def parse_args():
