@@ -136,6 +136,7 @@ if __name__ == "__main__":
     output_nb = qc_dir.joinpath("visual_qc_out.ipynb")
 
     visual_qc_notebook_sbatch_fp = qc_dir.joinpath(str(visual_qc_notebook.name).replace(".ipynb", "_nb.slurm"))
+    visual_qc_notebook_sbatch_out_fp = qc_dir.joinpath(str(visual_qc_notebook.name).replace(".ipynb", "_nb_%j.out"))
 
     vqc_sbatch_text = (
         "#!/bin/sh\n"
@@ -144,6 +145,7 @@ if __name__ == "__main__":
         "#SBATCH --mail-type=FAIL\n"
         f"#SBATCH --mail-user={slurm_email}\n"
         f"#SBATCH -p t2small\n"
+        f"#SBATCH --output {visual_qc_notebook_sbatch_out_fp}\n"
         # print start time
         "echo Start slurm && date\n"
         # prepare shell for using activate
