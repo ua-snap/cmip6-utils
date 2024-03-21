@@ -11,7 +11,7 @@ import dask
 from dask.distributed import LocalCluster
 from xclim import sdba
 from xclim.sdba.detrending import LoessDetrend
-from luts import sim_ref_var_lu, varid_adj_kind_lu, varid_min_value_lu
+from luts import sim_ref_var_lu, varid_adj_kind_lu, jitter_under_lu
 
 
 def generate_adjusted_filepaths(output_dir, var_ids, models, scenarios, years):
@@ -216,6 +216,11 @@ if __name__ == "__main__":
 
             # convert calendar to noleap to match CMIP6
             ref_ds = xr.open_mfdataset(ref_fps).convert_calendar("noleap")
+
+            # need to select ERA5 or ERA5T if present
+            if "expver" in ref_ds.variables:
+                ref_ds = ref_ds.sel(expver=1).drop_vars("expver")
+
             # need to re-chunk the data - cannot have multiple chunks along the adjustment dimension (time)
             ref = ref_ds[ref_var_id]
             hist = hist_ds[var_id]
@@ -223,18 +228,31 @@ if __name__ == "__main__":
             hist.data = hist.data.rechunk({0: -1, 1: 20, 2: 20})
 
             # ensure data does not have zeros, depending on variable
-            high_limit = varid_min_value_lu[var_id]
-            # keep everything greater than zero, randomly sample from uniform(0, high_limit) for remaining values
-            ref = ref.where(
-                ref > 0, np.random.uniform(low=0, high=high_limit, size=ref.shape)
-            )
-            hist = hist.where(
-                hist > 0, np.random.uniform(low=0, high=high_limit, size=hist.shape)
-            )
+            if var_id in jitter_under_lu.keys():
+                jitter_under_thresh = jitter_under_lu[var_id]
+                ref = sdba.processing.jitter_under_thresh(ref, thresh=jitter_under_thresh)
+                hist = sdba.processing.jitter_under_thresh(hist, thresh=jitter_under_thresh)
+
+            # do the adapt frequency thingy for precipitation data
+            if var_id == "pr":
+                adapt_freq = dict(thresh="1 mm d-1")
+                group = dict(group="time.dayofyear", window=31)
+                group = sdba.Grouper.from_kwargs(**group)["group"]
+                adapt_freq["group"] = group
+                adapt_freq
+                hist, pth, dP0 = sdba.processing.adapt_freq(ref, hist, **adapt_freq)
 
             dqm = sdba.DetrendedQuantileMapping.train(
                 ref, hist, nquantiles=50, group="time.dayofyear", window=31, kind=kind
             )
+
+            if var_id == "pr":
+                # not sure if all of this is strictly necessary or not 
+                dqm.ds = dqm.ds.assign(pth=pth, dP0=dP0)
+                dqm.ds.attrs["train_params"] = {
+                    "adapt_freq": adapt_freq,
+                }
+
             # Create the detrending object
             det = LoessDetrend(
                 group="time.dayofyear", d=0, niter=1, f=0.2, weights="tricube"
