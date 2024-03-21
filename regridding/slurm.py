@@ -6,6 +6,7 @@ from pathlib import Path
 from config import *
 
 
+
 def make_sbatch_head(slurm_email, conda_init_script):
     """Make a string of SBATCH commands that can be written into a .slurm script
 
