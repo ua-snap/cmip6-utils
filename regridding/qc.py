@@ -90,10 +90,7 @@ def compare_expected_to_existing_and_check_values(
             results = list(p.map(file_min_max, regrid_var_tups))
         # populate min/max dict / store dataset errors
         for result in results:
-            if result["error"] == True:
-                ds_errors.append(result["file"])
-            else:
-                regrid_min_max[result["file"]] = {"min": result["min"], "max": result["max"]}
+            regrid_min_max[result["file"]] = {"min": result["min"], "max": result["max"]}
 
         # list all source file paths found in the batch files, and ignore the ones that had processing errors previously identified
         var_src_fps = get_source_fps_from_batch_files(regrid_batch_dir, var)
@@ -136,15 +133,18 @@ def compare_expected_to_existing_and_check_values(
             if all([fp in existing_fps for fp in expected_fps]):
                 # call min/max from src dict
                 src_min, src_max = src_min_max[str(src_fp)]["min"], src_min_max[str(src_fp)]["max"]
+                # iterate thru expected filepaths
                 for regrid_fp in expected_fps:
-                     # call min/max from regrid dict and compare
-                    if regrid_min_max[str(regrid_fp)] != None:
+                    # check if in keys, if not then the file did not open in file_min_max() 
+                    if str(regrid_fp) in regrid_min_max.keys():
+                        # compare values
                         regrid_min, regrid_max = regrid_min_max[str(regrid_fp)]["min"], regrid_min_max[str(regrid_fp)]["max"]
                         if (src_max >= regrid_min >= src_min) and (src_max >= regrid_max >= src_min):
                             pass
                         else:
-                            value_errors.append(str(src_fp))
-                    else: pass
+                            value_errors.append(str(regrid_fp))
+                    else:
+                        ds_errors.append(str(regrid_fp))
             else:
                 output_errors.append(str(src_fp))
 
@@ -188,9 +188,9 @@ def file_min_max(args):
         with xr.open_dataset(file) as src_ds:
             src_ds_slice = src_ds.sel(lat=slice(49, 90))
             src_min, src_max = float(src_ds_slice[var].min()), float(src_ds_slice[var].max())
-        return {"file": str(file), "min": src_min, "max": src_max, "error":False}
+        return {"file": str(file), "min": src_min, "max": src_max}
     except:
-        return {"file": str(file), "min": None, "max": None, "error":True}
+        return {"file": None, "min": None, "max": None}
 
 
 def parse_args():
