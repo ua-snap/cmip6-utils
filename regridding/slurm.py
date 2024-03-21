@@ -4,9 +4,7 @@ import subprocess
 import argparse
 from pathlib import Path
 from config import *
-import argparse
-from pathlib import Path
-from config import *
+
 
 
 def make_sbatch_head(slurm_email, conda_init_script):
@@ -184,10 +182,6 @@ if __name__ == "__main__":
     Path(regrid_dir).mkdir(exist_ok=True, parents=True)
     Path(slurm_dir).mkdir(exist_ok=True, parents=True)
 
-    # make these dirs if they don't exist
-    Path(regrid_dir).mkdir(exist_ok=True, parents=True)
-    Path(slurm_dir).mkdir(exist_ok=True, parents=True)
-
     # build and write sbatch files
     sbatch_fps = []
     sbatch_dir = slurm_dir.joinpath("regrid")
@@ -220,4 +214,3 @@ if __name__ == "__main__":
 
     # submit jobs
     job_ids = [submit_sbatch(fp) for fp in sbatch_fps]
-
