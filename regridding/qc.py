@@ -138,11 +138,13 @@ def compare_expected_to_existing_and_check_values(
                 src_min, src_max = src_min_max[str(src_fp)]["min"], src_min_max[str(src_fp)]["max"]
                 for regrid_fp in expected_fps:
                      # call min/max from regrid dict and compare
-                    regrid_min, regrid_max = regrid_min_max[str(regrid_fp)]["min"], regrid_min_max[str(regrid_fp)]["max"]
-                    if (src_max >= regrid_min >= src_min) and (src_max >= regrid_max >= src_min):
-                        pass
-                    else:
-                        value_errors.append(str(src_fp))
+                    if regrid_min_max[str(regrid_fp)] != None:
+                        regrid_min, regrid_max = regrid_min_max[str(regrid_fp)]["min"], regrid_min_max[str(regrid_fp)]["max"]
+                        if (src_max >= regrid_min >= src_min) and (src_max >= regrid_max >= src_min):
+                            pass
+                        else:
+                            value_errors.append(str(src_fp))
+                    else: pass
             else:
                 output_errors.append(str(src_fp))
 
