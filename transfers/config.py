@@ -77,12 +77,21 @@ model_inst_lu = {
     "NorESM2-MM": "NCC",
     "TaiESM1": "AS-RCEC",
     "CESM2-WACCM": "NCAR",
-    # Another oddity - MPI-ESM1-2-* models have different representation among the institutions, or "Institution ID".
-    # the -HR version is apparently mostly available under "DKRZ". The -LR version is mostly available under "MPI-M".
-    # There is apparently mixing, too, as the -HR version has historical data under "MPI-M", and the -LR version has
-    #  data available under "DKRZ". We will just go with the institution which has the majority for each, for now.
-    "MPI-ESM1-2-HR": "DKRZ",
+    # Another oddity - MPI-ESM1-2-* models have different representation among the institutions, or "Institution ID":
+    # The -HR version is apparently mostly available under "DKRZ", except for the historical data which is all under "MPI-M".
+    # We will need to transfer data from both of these instiutions to have both historical and ScenarioMIP data.
+    "MPI-ESM1-2-HR": "DKRZ", # ScenarioMIP data for MPI-ESM1-2-HR
+    "MPI-ESM1-2-HR": "MPI-M", # historical data for MPI-ESM1-2-HR
+    # The -LR version is mostly available under "MPI-M", but has some ssp119 data available under "DKRZ". 
+    # We will only transfer from "MPI-M" in this case.
     "MPI-ESM1-2-LR": "MPI-M",
+    # The institution for MRI-ESM2-0 is labeled differently as well, just "MRI"
+    "MRI-ESM2-0": "MRI",
+    # We will also download all of the E3SM Project data for now
+    "E3SM-1-0": "E3SM-Project",
+    "E3SM-1-1-ECA": "E3SM-Project",
+    "E3SM-2-0": "E3SM-Project",
+    "E3SM-2-0-NARRM": "E3SM-Project",
 }
 
 # we will just use this dict as the reference for production variables.
