@@ -2,8 +2,7 @@
 
 Usage: Run from the command line like so:
 
-python run_explore_variable_extents.py --cmip6_directory /beegfs/CMIP6/arctic-cmip6/CMIP6 --repo_directory ~/cmip6-utils --conda_init_script ~/cmip6-utils/regridding/conda_init.sh --explore_variable_extents_notebook ~/cmip6-utils/regridding/explore_variable_extents/explore_variable_extents.ipynb --vars 'pr prsn ps' --slurm_email jdpaul3@alaska.edu
-
+python run_explore_variable_extents.py --cmip6_directory /beegfs/CMIP6/arctic-cmip6/CMIP6 --repo_directory ~/cmip6-utils --conda_init_script ~/cmip6-utils/regridding/conda_init.sh --explore_variable_extents_notebook ~/cmip6-utils/regridding/explore_variable_extents/explore_variable_extents.ipynb --vars 'clt evspsbl hfls hfss hus huss mrro mrsol mrsos orog pr prsn ps psl rlds rls rsds rss sfcWind sfcWindmax sftlf sftof siconc sithick snd snw ta tas tasmax tasmin tos ts tsl ua uas va vas zg' --slurm_email jdpaul3@alaska.edu
 """
 import argparse
 from pathlib import Path
@@ -118,7 +117,6 @@ if __name__ == "__main__":
             # run the notebook
             f"cd {out_dir}\n"
             f"papermill {explore_variable_extents_notebook} {output_nb} -r cmip6_directory '{cmip6_directory}' -r repo_directory '{repo_directory}' -r var '{var}'\n"
-            f"jupyter nbconvert --to html {output_nb}"
         )
 
         # save the sbatch text as a new slurm file in the output directory
