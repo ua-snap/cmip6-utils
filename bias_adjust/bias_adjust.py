@@ -1,4 +1,8 @@
-""""""
+"""
+
+Usage:
+    python bias_adjust.py --var_id pr --model GFDL-ESM4 --scenario ssp585 --input_dir /import/beegfs/CMIP6/kmredilla/cmip6_regridding/regrid --reference_dir /beegfs/CMIP6/arctic-cmip6/era5/daily_regrid --output_dir /import/beegfs/CMIP6/kmredilla/bias_adjust/netcdf
+"""
 
 import argparse
 import datetime
@@ -8,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import xarray as xr
 import dask
-from dask.distributed import LocalCluster
+from dask.distributed import Client
 from xclim import sdba
 from xclim.sdba.detrending import LoessDetrend
 from luts import sim_ref_var_lu, varid_adj_kind_lu, jitter_under_lu
@@ -195,6 +199,7 @@ if __name__ == "__main__":
 
     # get all remaining projected files
     sim_start_year = 2023
+    # sim_end_year = 2030
     sim_end_year = 2100
     sim_years = list(range(sim_start_year, sim_end_year + 1))
     sim_fps = [
@@ -206,14 +211,10 @@ if __name__ == "__main__":
 
     # suggestion from dask for ignoring large chunk warnings
     with dask.config.set(**{"array.slicing.split_large_chunks": False}):
-        with LocalCluster(
-            n_workers=int(0.9 * mp.cpu_count()),
-            memory_limit="4GB",
-        ) as cluster:
+        # messed around with the dask config a lot. This works but generates lots of GC warnings. Best I found though.
+        with Client(n_workers=20, threads_per_worker=1) as client:
             # open connection to data
             hist_ds = xr.open_mfdataset(hist_fps + sim_ref_fps)
-            proj_ds = xr.open_mfdataset(sim_fps)
-
             # convert calendar to noleap to match CMIP6
             ref_ds = xr.open_mfdataset(ref_fps).convert_calendar("noleap")
 
@@ -224,34 +225,37 @@ if __name__ == "__main__":
             # need to re-chunk the data - cannot have multiple chunks along the adjustment dimension (time)
             ref = ref_ds[ref_var_id]
             hist = hist_ds[var_id]
-            ref.data = ref.data.rechunk({0: -1, 1: 20, 2: 20})
-            hist.data = hist.data.rechunk({0: -1, 1: 20, 2: 20})
+            ref.data = ref.data.rechunk({0: -1, 1: 30, 2: 30})
+            hist.data = hist.data.rechunk({0: -1, 1: 30, 2: 30})
+
+            if var_id == "pr":
+                # need to set the correct compatible precipitation units for ERA5 if precip
+                ref.attrs["units"] = "m d-1"
 
             # ensure data does not have zeros, depending on variable
             if var_id in jitter_under_lu.keys():
                 jitter_under_thresh = jitter_under_lu[var_id]
-                ref = sdba.processing.jitter_under_thresh(ref, thresh=jitter_under_thresh)
-                hist = sdba.processing.jitter_under_thresh(hist, thresh=jitter_under_thresh)
+                ref = sdba.processing.jitter_under_thresh(
+                    ref, thresh=jitter_under_thresh
+                )
+                hist = sdba.processing.jitter_under_thresh(
+                    hist, thresh=jitter_under_thresh
+                )
+            print("jitter done")
 
-            # do the adapt frequency thingy for precipitation data
-            if var_id == "pr":
-                adapt_freq = dict(thresh="1 mm d-1")
-                group = dict(group="time.dayofyear", window=31)
-                group = sdba.Grouper.from_kwargs(**group)["group"]
-                adapt_freq["group"] = group
-                adapt_freq
-                hist, pth, dP0 = sdba.processing.adapt_freq(ref, hist, **adapt_freq)
-
-            dqm = sdba.DetrendedQuantileMapping.train(
-                ref, hist, nquantiles=50, group="time.dayofyear", window=31, kind=kind
+            train_kwargs = dict(
+                ref=ref,
+                hist=hist,
+                nquantiles=50,
+                group="time.dayofyear",
+                window=31,
+                kind=kind,
             )
-
             if var_id == "pr":
-                # not sure if all of this is strictly necessary or not 
-                dqm.ds = dqm.ds.assign(pth=pth, dP0=dP0)
-                dqm.ds.attrs["train_params"] = {
-                    "adapt_freq": adapt_freq,
-                }
+                # do the adapt frequency thingy for precipitation data
+                train_kwargs.update(adapt_freq_thresh="1 mm d-1")
+
+            dqm = sdba.DetrendedQuantileMapping.train(**train_kwargs)
 
             # Create the detrending object
             det = LoessDetrend(
@@ -260,15 +264,21 @@ if __name__ == "__main__":
 
             # create a dataset containing all modeled data to be adjusted
             # need to rechunk this one too, same reason as for training data
-            sim = xr.merge([hist, proj_ds[var_id]])[var_id]
-            sim.data = sim.data.rechunk({0: -1, 1: 20, 2: 20})
+            proj_ds = xr.open_mfdataset(hist_fps + sim_ref_fps + sim_fps)
+            sim = proj_ds[var_id]
+            sim.data = sim.data.rechunk({0: -1, 1: 30, 2: 30})
+
+            # free up memory? dunno if this helps
+            del ref
+            del hist
+
             scen = (
                 dqm.adjust(sim, extrapolation="constant", interp="nearest", detrend=det)
                 # in testing, adjusted outputs are oriented lat, lon, time for some reason
-                .transpose("time", "lat", "lon").compute()
+                .transpose("time", "lat", "lon")
             )
-
-    print("adjustment complete, writing data")
+            # doing the computation here seems to help with performance
+            scen.load()
 
     adj_years = ref_years + sim_years
     # now write the adjusted data to disk by year
