@@ -15,6 +15,7 @@ import dask
 from dask.distributed import Client
 from xclim import sdba
 from xclim.sdba.detrending import LoessDetrend
+from config import ref_tmp_fn
 from luts import sim_ref_var_lu, varid_adj_kind_lu, jitter_under_lu
 
 
@@ -171,7 +172,7 @@ if __name__ == "__main__":
     ref_years = list(range(ref_start_year, ref_end_year + 1))
     ref_fps = [
         reference_dir.joinpath(ref_var_id).joinpath(
-            f"era5_daily_regrid_{ref_var_id}_{year}.nc"
+            ref_tmp_fn.format(ref_var_id=ref_var_id, year=year)
         )
         for year in ref_years
     ]
