@@ -262,9 +262,10 @@ if __name__ == "__main__":
                 group="time.dayofyear", d=0, niter=1, f=0.2, weights="tricube"
             )
 
-            # create a dataset containing all modeled data to be adjusted
+            # create a dataset containing all projected data to be adjusted
+            # not adjusting historical, no need for now
             # need to rechunk this one too, same reason as for training data
-            proj_ds = xr.open_mfdataset(hist_fps + sim_ref_fps + sim_fps)
+            proj_ds = xr.open_mfdataset(sim_ref_fps + sim_fps)
             sim = proj_ds[var_id]
             sim.data = sim.data.rechunk({0: -1, 1: 30, 2: 30})
 
@@ -280,7 +281,7 @@ if __name__ == "__main__":
             # doing the computation here seems to help with performance
             scen.load()
 
-    adj_years = ref_years + sim_years
+    adj_years = sim_ref_years + sim_years
     # now write the adjusted data to disk by year
     for year in adj_years:
         adj_fp = generate_adjusted_filepaths(
@@ -294,8 +295,7 @@ if __name__ == "__main__":
             ["time", "lat", "lon", var_id]
         ]
         # get the source CMIP6 data file used for the attributes
-        src_scenario = "historical" if year < 2015 else scenario
-        src_fp = generate_cmip6_fp(input_dir, model, src_scenario, var_id, year)
+        src_fp = generate_cmip6_fp(input_dir, model, scenario, var_id, year)
         out_ds = add_global_attrs(out_ds, src_fp)
         out_ds.to_netcdf(adj_fp)
 
