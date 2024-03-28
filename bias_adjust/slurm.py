@@ -3,6 +3,7 @@
 import argparse
 import subprocess
 from pathlib import Path
+from config import output_dir_name
 
 
 def make_sbatch_head(partition, conda_init_script, ncpus):
@@ -47,7 +48,7 @@ def write_sbatch_biasadjust(
     input_dir,
     reference_dir,
     biasadjust_script,
-    output_dir,
+    adj_dir,
     no_clobber,
     sbatch_head,
 ):
@@ -61,7 +62,7 @@ def write_sbatch_biasadjust(
         scenario (str): scenario being adjusted
         input_dir (path-like): path to directory of files to be adjusted (likely the regridded files)
         biasadjust_script (path_like): path to the script to be called to run the bias adjustment
-        output_dir (path-like): directory to write the adjusted data
+        adj_dir (path-like): directory to write the adjusted data
         no_clobber (bool): do not overwrite regridded files if they exist in regrid_dir
         sbatch_head (dict): string for sbatch head script
 
@@ -79,7 +80,7 @@ def write_sbatch_biasadjust(
         f"--scenario {scenario} "
         f"--input_dir {input_dir} "
         f"--reference_dir {reference_dir} "
-        f"--output_dir {output_dir} "
+        f"--adj_dir {adj_dir} "
     )
     if no_clobber:
         pycommands += "--no-clobber \n\n"
@@ -108,6 +109,14 @@ def submit_sbatch(sbatch_fp):
     job_id = out.decode().replace("\n", "").split(" ")[-1]
 
     return job_id
+
+
+def get_directories(working_dir, output_dir_name):
+    """Get the output directory path which will contain all subfolders of outputs (data, slurm etc). Function for sharing."""
+    output_dir = working_dir.joinpath(output_dir_name)
+    adj_dir = output_dir.joinpath("netcdf")
+
+    return output_dir, adj_dir
 
 
 def parse_args():
@@ -191,8 +200,8 @@ if __name__ == "__main__":
     ) = parse_args()
 
     working_dir.mkdir(exist_ok=True)
-    output_dir = working_dir.joinpath("bias_adjust")
-    output_dir.mkdir(exist_ok=True)
+    output_dir, adj_dir = get_directories(working_dir, output_dir_name)
+    adj_dir.mkdir(parents=True, exist_ok=True)
 
     # make batch files for each model / scenario / variable combination
     sbatch_dir = output_dir.joinpath("slurm")
@@ -233,7 +242,7 @@ if __name__ == "__main__":
                     "input_dir": input_dir,
                     "biasadjust_script": biasadjust_script,
                     "reference_dir": reference_dir,
-                    "output_dir": output_dir,
+                    "adj_dir": adj_dir,
                     "no_clobber": no_clobber,
                     "sbatch_head": sbatch_head,
                 }

@@ -1,7 +1,7 @@
 """
 
 Usage:
-    python bias_adjust.py --var_id pr --model GFDL-ESM4 --scenario ssp585 --input_dir /import/beegfs/CMIP6/kmredilla/cmip6_regridding/regrid --reference_dir /beegfs/CMIP6/arctic-cmip6/era5/daily_regrid --output_dir /import/beegfs/CMIP6/kmredilla/bias_adjust/netcdf
+    python bias_adjust.py --var_id pr --model GFDL-ESM4 --scenario ssp585 --input_dir /import/beegfs/CMIP6/kmredilla/cmip6_regridding/regrid --reference_dir /beegfs/CMIP6/arctic-cmip6/era5/daily_regrid --adj_dir /import/beegfs/CMIP6/kmredilla/bias_adjust/netcdf
 """
 
 import argparse
@@ -18,11 +18,11 @@ from xclim.sdba.detrending import LoessDetrend
 from luts import sim_ref_var_lu, varid_adj_kind_lu, jitter_under_lu
 
 
-def generate_adjusted_filepaths(output_dir, var_ids, models, scenarios, years):
+def generate_adjusted_filepaths(adj_dir, var_ids, models, scenarios, years):
     """Generate the adjusted filepaths. Args are lists to allow multiple combinations
 
     Args:
-        output_dir (pathlib.Path): path to parent output directory
+        adj_dir (pathlib.Path): path to parent output directory
         var_ids (list): list of variable IDs (str)
         models (list): list of models (str)
         scenarios (list): list of scenarios (str)
@@ -33,7 +33,7 @@ def generate_adjusted_filepaths(output_dir, var_ids, models, scenarios, years):
     """
     tmp_fn = "{var_id}_day_{model}_{scenario}_adjusted_{year}0101-{year}1231.nc"
     adj_fps = [
-        output_dir.joinpath(
+        adj_dir.joinpath(
             model,
             scenario,
             "day",
@@ -130,9 +130,9 @@ def parse_args():
         help="Path to directory of reference data with filepath structure <variable ID>/<files>",
     )
     parser.add_argument(
-        "--output_dir",
+        "--adj_dir",
         type=str,
-        help="Path to working directory, where outputs and ancillary files will be written",
+        help="Path to adjusted data output directory, for data only",
     )
     parser.add_argument(
         "--no-clobber",
@@ -148,7 +148,7 @@ def parse_args():
         args.scenario,
         Path(args.input_dir),
         Path(args.reference_dir),
-        Path(args.output_dir),
+        Path(args.adj_dir),
         args.no_clobber,
     )
 
@@ -160,7 +160,7 @@ if __name__ == "__main__":
         scenario,
         input_dir,
         reference_dir,
-        output_dir,
+        adj_dir,
         no_clobber,
     ) = parse_args()
 
@@ -285,7 +285,7 @@ if __name__ == "__main__":
     # now write the adjusted data to disk by year
     for year in adj_years:
         adj_fp = generate_adjusted_filepaths(
-            output_dir, [var_id], [model], [scenario], [year]
+            adj_dir, [var_id], [model], [scenario], [year]
         )[0]
         # ensure dir exists before writing
         adj_fp.parent.mkdir(exist_ok=True, parents=True)
