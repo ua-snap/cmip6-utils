@@ -15,7 +15,7 @@ import dask
 from dask.distributed import Client
 from xclim import sdba
 from xclim.sdba.detrending import LoessDetrend
-from config import ref_tmp_fn
+from config import ref_tmp_fn, cmip6_tmp_fn
 from luts import sim_ref_var_lu, varid_adj_kind_lu, jitter_under_lu
 
 
@@ -176,8 +176,6 @@ if __name__ == "__main__":
         )
         for year in ref_years
     ]
-
-    cmip6_tmp_fn = "{var_id}_day_{model}_{scenario}_regrid_{year}0101-{year}1231.nc"
 
     # get modeled historical files
     hist_start_year = 1993
