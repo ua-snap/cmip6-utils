@@ -73,7 +73,7 @@ model_inst_lu = {
     "HadGEM3-GC31-MM": "MOHC",
     "KACE-1-0-G": "NIMS-KMA",
     "MIROC6": "MIROC",
-    "MRI-ESM2-0": "MPI-M",
+    "MRI-ESM2-0": "MRI",
     "NorESM2-MM": "NCC",
     "TaiESM1": "AS-RCEC",
     "CESM2-WACCM": "NCAR",
@@ -85,8 +85,6 @@ model_inst_lu = {
     # The -LR version is mostly available under "MPI-M", but has some ssp119 data available under "DKRZ". 
     # We will only transfer from "MPI-M" in this case.
     "MPI-ESM1-2-LR": "MPI-M",
-    # The institution for MRI-ESM2-0 is labeled differently as well, just "MRI"
-    "MRI-ESM2-0": "MRI",
     # We will also download all of the E3SM Project data for now
     "E3SM-1-0": "E3SM-Project",
     "E3SM-1-1-ECA": "E3SM-Project",
