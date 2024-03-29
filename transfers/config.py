@@ -77,19 +77,20 @@ model_inst_lu = {
     "NorESM2-MM": "NCC",
     "TaiESM1": "AS-RCEC",
     "CESM2-WACCM": "NCAR",
-    # Another oddity - MPI-ESM1-2-* models have different representation among the institutions, or "Institution ID":
-    # The -HR version is apparently mostly available under "DKRZ", except for the historical data which is all under "MPI-M".
-    # We will need to transfer data from both of these instiutions to have both historical and ScenarioMIP data.
+    # # Another oddity - MPI-ESM1-2-* models have different representation among the institutions, or "Institution ID":
+    # # The -HR version is apparently mostly available under "DKRZ", except for the historical data which is all under "MPI-M".
+    # # We will need to transfer data from both of these instiutions to have both historical and ScenarioMIP data.
     "MPI-ESM1-2-HR": "DKRZ", # ScenarioMIP data for MPI-ESM1-2-HR
     "MPI-ESM1-2-HR": "MPI-M", # historical data for MPI-ESM1-2-HR
-    # The -LR version is mostly available under "MPI-M", but has some ssp119 data available under "DKRZ". 
-    # We will only transfer from "MPI-M" in this case.
+    # # The -LR version is mostly available under "MPI-M", but has some ssp119 data available under "DKRZ". 
+    # # We will only transfer from "MPI-M" in this case.
     "MPI-ESM1-2-LR": "MPI-M",
-    # We will also download all of the E3SM Project data for now
+    # # We will also download all of the E3SM Project data for now
     "E3SM-1-0": "E3SM-Project",
     "E3SM-1-1-ECA": "E3SM-Project",
-    "E3SM-2-0": "E3SM-Project",
-    "E3SM-2-0-NARRM": "E3SM-Project",
+    # except for E3SM-2-0, which is not hosted under LLNL's "/css03_data/CMIP6" directory!
+    # "E3SM-2-0": "E3SM-Project", 
+    # "E3SM-2-0-NARRM": "E3SM-Project",
 }
 
 # we will just use this dict as the reference for production variables.
