@@ -79,7 +79,7 @@ def get_filenames(
     """Get the file names for a some combination of model, scenario, and variable."""
     # the subdirectory under the variable name is the grid type.
     #  This is almost always "gn", meaning the model's native grid, but it could be different.
-    #  So we have to check it instead of assuming. I have only seen one model where this is different (gr1, GFDL-ESM4)
+    #  So we have to check it instead of assuming. As of 3/29/24, we now know in multiple models some variables have multiple grids.
     var_path = node_prefix.joinpath(
         activity,
         model_inst_lu[model],
@@ -113,16 +113,17 @@ def get_filenames(
             grid_path = var_path.joinpath(grid_type)
             grid_type_ls = utils.operation_ls(tc, node_ep, grid_path)
 
-            if isinstance(grid_type_ls, int):
+            # handle possible missing version, even though grid exists? new observation as of 3/29/24
+            if isinstance(grid_type_ls, int) or (len(grid_type_ls) == 0):
                 print(f"Unexpected result, ls error on supposed valid path: {grid_path}")
                 row_di = empty_row.update({"grid_type": grid_type})
-            elif len(grid_type_ls) > 0:
+            else:
                 use_version = sorted(grid_type_ls)[-1]
                 version_path = var_path.joinpath(grid_type, use_version)
                 fns_ls = utils.operation_ls(tc, node_ep, version_path)
 
                 # handle possible missing files, even though version exists? new observation as of 2/14/24
-                if isinstance(fns_ls, int):
+                if isinstance(fns_ls, int) or (len(fns_ls) == 0):
                     print(
                         f"Unexpected result, ls error on supposed valid path: {version_path}"
                     )
@@ -143,7 +144,6 @@ def get_filenames(
                         "n_files": n_files,
                         "filenames": fns_ls,
                     }
-
     return row_di
 
 
