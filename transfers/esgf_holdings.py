@@ -12,7 +12,7 @@ Usage:
 
 import argparse
 import sys
-from itertools import product
+from itertools import product, chain
 from multiprocessing import Pool
 import globus_sdk
 import numpy as np
@@ -103,11 +103,15 @@ def get_filenames(
         "n_files": None,
         "filenames": None,
     }
+
+    # return row dicts as items in a list (allows for multiple row returns if >1 grid type)
+    list_of_row_dicts = []
+
     if isinstance(var_id_ls, int) or (len(var_id_ls) == 0):
-        # error if int
-        # there is no data for this particular combination.
+        # error if int (indicates a http status code, probably error)
+        # or if there is no data for this particular combination,
         # or if variable folder exists but is empty, also should give empty row
-        row_di = empty_row
+        list_of_row_dicts.append(empty_row)
     else:
         for grid_type in var_id_ls:
             grid_path = var_path.joinpath(grid_type)
@@ -116,7 +120,9 @@ def get_filenames(
             # handle possible missing version, even though grid exists? new observation as of 3/29/24
             if isinstance(grid_type_ls, int) or (len(grid_type_ls) == 0):
                 print(f"Unexpected result, ls error on supposed valid path: {grid_path}")
-                row_di = empty_row.update({"grid_type": grid_type})
+                print("ls operation in grid directory returned: ")
+                print(grid_type_ls)
+                list_of_row_dicts.append(empty_row.update({"grid_type": grid_type}))
             else:
                 use_version = sorted(grid_type_ls)[-1]
                 version_path = var_path.joinpath(grid_type, use_version)
@@ -127,9 +133,9 @@ def get_filenames(
                     print(
                         f"Unexpected result, ls error on supposed valid path: {version_path}"
                     )
-                    row_di = empty_row.update(
-                        {"grid_type": grid_type, "version": use_version}
-                    )
+                    print("ls operation in most recent version directory returned: ")
+                    print(fns_ls)
+                    list_of_row_dicts.append(empty_row.update({"grid_type": grid_type, "version": use_version}))
                 else:
                     n_files = len(fns_ls)
 
@@ -144,7 +150,10 @@ def get_filenames(
                         "n_files": n_files,
                         "filenames": fns_ls,
                     }
-    return row_di
+
+                    list_of_row_dicts.append(row_di)
+
+    return list_of_row_dicts
 
 
 def make_holdings_table(tc, node_ep, node_prefix, variant_lut, ncpus, variable_lut):
@@ -171,7 +180,19 @@ def make_holdings_table(tc, node_ep, node_prefix, variant_lut, ncpus, variable_l
                 )
 
     with Pool(ncpus) as pool:
-        rows = pool.starmap(get_filenames, args)
+        lists_of_row_dicts = pool.starmap(get_filenames, args)
+
+    # holdings data items are returned in lists, with some lists representing >1 row
+    # we need to combine these together as one master list of items to write to rows
+    rows = list(chain(*lists_of_row_dicts))
+    # do a final check for any non-dict items that will not translate to dataframe rows
+    # remove any items that are not dicts, and print error message
+    to_remove = []
+    for row in rows:
+        if not isinstance(row, dict):
+            print(f"Removing a row that is not a dict: {row}")
+            to_remove.append(row)
+    rows = [i for i in rows if i not in to_remove]
 
     filenames_lu = pd.DataFrame(rows)
 
