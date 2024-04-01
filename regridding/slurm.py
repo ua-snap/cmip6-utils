@@ -6,7 +6,6 @@ from pathlib import Path
 from config import *
 
 
-
 def make_sbatch_head(slurm_email, conda_init_script):
     """Make a string of SBATCH commands that can be written into a .slurm script
 
@@ -72,8 +71,8 @@ def write_sbatch_regrid(
         f"-b {regrid_batch_fp} "
         f"-d {dst_fp} "
         f"-o {regrid_dir} "
-        )
-    
+    )
+
     if no_clobber:
         pycommands += "--no-clobber \n\n"
     else:
