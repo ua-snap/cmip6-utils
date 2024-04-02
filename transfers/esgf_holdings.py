@@ -152,6 +152,9 @@ def get_filenames(
                     }
 
                     list_of_row_dicts.append(row_di)
+    
+    if len(list_of_row_dicts) == 0:
+        list_of_row_dicts.append(empty_row)
 
     return list_of_row_dicts
 
@@ -192,9 +195,9 @@ def make_holdings_table(tc, node_ep, node_prefix, variant_lut, ncpus, variable_l
         if not isinstance(row, dict):
             print(f"Removing a row that is not a dict: {row}")
             to_remove.append(row)
-    rows = [i for i in rows if i not in to_remove]
+    rows_for_df = [i for i in rows if i not in to_remove]
 
-    filenames_lu = pd.DataFrame(rows)
+    filenames_lu = pd.DataFrame(rows_for_df)
 
     return filenames_lu
 
