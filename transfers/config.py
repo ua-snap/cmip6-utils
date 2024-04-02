@@ -64,19 +64,19 @@ prod_variant_lu = {
 # this lookup includes all models of interest, including some that will NOT be transferred,
 #  left in here for compatability with any exploratory efforts
 model_inst_lu = {
-    # "ACCESS-CM2": "CSIRO-ARCCSS",
-    # "CESM2": "NCAR",
-    # "CNRM-CM6-1-HR": "CNRM-CERFACS",
-    # "EC-Earth3-Veg": "EC-Earth-Consortium",
-    # "GFDL-ESM4": "NOAA-GFDL",
-    # "HadGEM3-GC31-LL": "MOHC",
-    # "HadGEM3-GC31-MM": "MOHC",
-    # "KACE-1-0-G": "NIMS-KMA",
-    # "MIROC6": "MIROC",
+    "ACCESS-CM2": "CSIRO-ARCCSS",
+    "CESM2": "NCAR",
+    "CNRM-CM6-1-HR": "CNRM-CERFACS",
+    "EC-Earth3-Veg": "EC-Earth-Consortium",
+    "GFDL-ESM4": "NOAA-GFDL",
+    "HadGEM3-GC31-LL": "MOHC",
+    "HadGEM3-GC31-MM": "MOHC",
+    "KACE-1-0-G": "NIMS-KMA",
+    "MIROC6": "MIROC",
     "MRI-ESM2-0": "MRI",
-    # "NorESM2-MM": "NCC",
-    # "TaiESM1": "AS-RCEC",
-    # "CESM2-WACCM": "NCAR",
+    "NorESM2-MM": "NCC",
+    "TaiESM1": "AS-RCEC",
+    "CESM2-WACCM": "NCAR",
     # # Another oddity - MPI-ESM1-2-* models have different representation among the institutions, or "Institution ID":
     # # The -HR version is apparently mostly available under "DKRZ", except for the historical data which is all under "MPI-M".
     # # We will need to transfer data from both of these instiutions to have both historical and ScenarioMIP data.
