@@ -40,17 +40,34 @@ def arguments(argv):
 
 
 def list_variants(tc, node_ep, node_prefix, activity, model, scenario):
-    """List the different variants available on a particular ESGF node for the given activity, model, and scenario"""
-    scenario_path = node_prefix.joinpath(
-        activity, model_inst_lu[model], model, scenario
-    )
+    """List the different variants available on a particular ESGF node for the given activity, model, and scenario.
+    Returns a list of rows to allow for more than one institution per model."""
+    if isinstance(model_inst_lu[model], list):
+        rows = []
+        for inst in model_inst_lu[model]:
+            scenario_path = node_prefix.joinpath(
+            activity, inst, model, scenario
+            )
 
-    variants = utils.operation_ls(tc, node_ep, scenario_path)
+            variants = utils.operation_ls(tc, node_ep, scenario_path)
 
-    if isinstance(variants, int):
-        return {}
-    elif isinstance(variants, list):
-        return {"model": model, "scenario": scenario, "variants": variants}
+            if isinstance(variants, int):
+                rows.append({})
+            elif isinstance(variants, list):
+                rows.append({"model": model, "scenario": scenario, "variants": variants})
+        return rows
+    
+    else:
+        scenario_path = node_prefix.joinpath(
+            activity, model_inst_lu[model], model, scenario
+        )
+
+        variants = utils.operation_ls(tc, node_ep, scenario_path)
+
+        if isinstance(variants, int):
+            return [{}]
+        elif isinstance(variants, list):
+            return [{"model": model, "scenario": scenario, "variants": variants}]
 
 
 def make_model_variants_lut(tc, node_ep, node_prefix, models, scenarios, ncpus):
@@ -66,7 +83,8 @@ def make_model_variants_lut(tc, node_ep, node_prefix, models, scenarios, ncpus):
     args = [[tc, node_ep, node_prefix] + list(a) for a in args]
 
     with Pool(ncpus) as pool:
-        rows = pool.starmap(list_variants, args)
+        lists_of_rows = pool.starmap(list_variants, args)
+        rows = list(set(chain(*lists_of_rows)))
 
     df = pd.DataFrame(rows)
 
@@ -80,16 +98,7 @@ def get_filenames(
     # the subdirectory under the variable name is the grid type.
     #  This is almost always "gn", meaning the model's native grid, but it could be different.
     #  So we have to check it instead of assuming. As of 3/29/24, we now know in multiple models some variables have multiple grids.
-    var_path = node_prefix.joinpath(
-        activity,
-        model_inst_lu[model],
-        model,
-        scenario,
-        variant,
-        table_id,
-        varname,
-    )
-    var_id_ls = utils.operation_ls(tc, node_ep, var_path)
+    
     empty_row = {
         "model": model,
         "scenario": scenario,
@@ -107,51 +116,69 @@ def get_filenames(
     # return row dicts as items in a list (allows for multiple row returns if >1 grid type)
     list_of_row_dicts = []
 
-    if isinstance(var_id_ls, int) or (len(var_id_ls) == 0):
-        # error if int (indicates a http status code, probably error)
-        # or if there is no data for this particular combination,
-        # or if variable folder exists but is empty, also should give empty row
-        list_of_row_dicts.append(empty_row)
+    # check if there is more than one institution listed for the model; list the filenames for each inst
+    if isinstance(model_inst_lu[model], str):
+        insts = [model_inst_lu[model]]
     else:
-        for grid_type in var_id_ls:
-            grid_path = var_path.joinpath(grid_type)
-            grid_type_ls = utils.operation_ls(tc, node_ep, grid_path)
+        insts = model_inst_lu[model]
+        
+    for inst in insts:
+        var_path = node_prefix.joinpath(
+            activity,
+            inst,
+            model,
+            scenario,
+            variant,
+            table_id,
+            varname,
+        )
 
-            # handle possible missing version, even though grid exists? new observation as of 3/29/24
-            if isinstance(grid_type_ls, int) or (len(grid_type_ls) == 0):
-                print(f"Unexpected result, ls error on supposed valid path: {grid_path}")
-                print("ls operation in grid directory returned: ")
-                print(grid_type_ls)
-                list_of_row_dicts.append(empty_row.update({"grid_type": grid_type}))
-            else:
-                use_version = sorted(grid_type_ls)[-1]
-                version_path = var_path.joinpath(grid_type, use_version)
-                fns_ls = utils.operation_ls(tc, node_ep, version_path)
+        var_id_ls = utils.operation_ls(tc, node_ep, var_path)
+        if isinstance(var_id_ls, int) or (len(var_id_ls) == 0):
+            # error if int (indicates a http status code, probably error)
+            # or if there is no data for this particular combination,
+            # or if variable folder exists but is empty, also should give empty row
+            list_of_row_dicts.append(empty_row)
+        else:
+            for grid_type in var_id_ls:
+                grid_path = var_path.joinpath(grid_type)
+                grid_type_ls = utils.operation_ls(tc, node_ep, grid_path)
 
-                # handle possible missing files, even though version exists? new observation as of 2/14/24
-                if isinstance(fns_ls, int) or (len(fns_ls) == 0):
-                    print(
-                        f"Unexpected result, ls error on supposed valid path: {version_path}"
-                    )
-                    print("ls operation in most recent version directory returned: ")
-                    print(fns_ls)
-                    list_of_row_dicts.append(empty_row.update({"grid_type": grid_type, "version": use_version}))
+                # handle possible missing version, even though grid exists? new observation as of 3/29/24
+                if isinstance(grid_type_ls, int) or (len(grid_type_ls) == 0):
+                    print(f"Unexpected result, ls error on supposed valid path: {grid_path}")
+                    print("ls operation in grid directory returned: ")
+                    print(grid_type_ls)
+                    list_of_row_dicts.append(empty_row.update({"grid_type": grid_type}))
                 else:
-                    n_files = len(fns_ls)
+                    use_version = sorted(grid_type_ls)[-1]
+                    version_path = var_path.joinpath(grid_type, use_version)
+                    fns_ls = utils.operation_ls(tc, node_ep, version_path)
 
-                    row_di = {
-                        "model": model,
-                        "scenario": scenario,
-                        "variant": variant,
-                        "table_id": table_id,
-                        "variable": varname,
-                        "grid_type": grid_type,
-                        "version": use_version,
-                        "n_files": n_files,
-                        "filenames": fns_ls,
-                    }
+                    # handle possible missing files, even though version exists? new observation as of 2/14/24
+                    if isinstance(fns_ls, int) or (len(fns_ls) == 0):
+                        print(
+                            f"Unexpected result, ls error on supposed valid path: {version_path}"
+                        )
+                        print("ls operation in most recent version directory returned: ")
+                        print(fns_ls)
+                        list_of_row_dicts.append(empty_row.update({"grid_type": grid_type, "version": use_version}))
+                    else:
+                        n_files = len(fns_ls)
 
-                    list_of_row_dicts.append(row_di)
+                        row_di = {
+                            "model": model,
+                            "scenario": scenario,
+                            "variant": variant,
+                            "table_id": table_id,
+                            "variable": varname,
+                            "grid_type": grid_type,
+                            "version": use_version,
+                            "n_files": n_files,
+                            "filenames": fns_ls,
+                        }
+
+                        list_of_row_dicts.append(row_di)
     
     if len(list_of_row_dicts) == 0:
         list_of_row_dicts.append(empty_row)
