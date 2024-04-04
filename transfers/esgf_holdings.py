@@ -84,9 +84,10 @@ def make_model_variants_lut(tc, node_ep, node_prefix, models, scenarios, ncpus):
 
     with Pool(ncpus) as pool:
         lists_of_rows = pool.starmap(list_variants, args)
-        rows = list(set(chain(*lists_of_rows)))
+    rows = list((chain(*lists_of_rows)))
 
     df = pd.DataFrame(rows)
+    print(df)
 
     return df.dropna()
 
