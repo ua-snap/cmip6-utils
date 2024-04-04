@@ -4,9 +4,9 @@ Note - this script first crops the dataset to the panarctic domain of 50N and up
 """
 
 import argparse
-import calendar
 import random
 import time
+from datetime import datetime
 from pathlib import Path
 import cftime
 import numpy as np
@@ -434,58 +434,51 @@ def write_retry_batch_file(errs):
         for fp in errs:
             f.write(f"{fp}\n")
 
-def parse_output_filename_times_from_timeframe(timeframe):
-    """Parse a date range in format YYYYMM-YYYYMM or YYYYMMDD-YYYYMMDD. 
-    Returns a list of strings representing times that should be used in the output files of a given source file."""
 
-    try:
-        # just break it off if if anything doesn't conform
-        start, end = timeframe.split("-")
-        assert len(start) == len(end), "Date range string in an unexpected format. Expected YYYYMM-YYYYMM or YYYYMMDD-YYYYMMDD."
+def parse_output_filename_times_from_file(fp):
+    """Parse a date range in format YYYYMM-YYYYMM or YYYYMMDD-YYYYMMDD.
 
-        if len(start) == 6:
-            start_year = start[:4]
-            start_month = start[4:]
-            end_year = end[:4]
-            end_month = end[4:]
+    Originally this function relied only on the timeframe string in the filenames.
+    But that is not gauranteed to be correct so this function was refactored to rely on the time variable.
+
+    Returns a list of strings representing times that should be used in all the output files of a given source file, since they are saved by year.
+    """
+    with xr.open_dataset(fp) as ds:
+        if check_is_dayfreq(ds):
+            # calendars get converted to noleap so start / end days of year are consistent
+            start_day = "01"
+            end_day = "31"
+        elif check_is_monfreq(ds):
             start_day = end_day = ""
 
-        elif len(start) == 8:
-            start_year = start[:4]
-            start_month = start[4:6]
-            start_day = start[6:]
-            end_year = end[:4]
-            end_month = end[4:6]
-            end_day = end[6:]
+        years = np.unique(ds.time.dt.year.values)
 
-            assert start_day == "01"
-            assert end_day == "31"
+        # first rule of CMIP6 - don't assume anything
+        # instead of assuming all files have all months, just iterate
+        timerange_strings = []
+        for year in years:
+            months = ds.time.sel(time=f"{year}").dt.month.values
+            start_month = str(months[0]).zfill(2)
+            end_month = str(months[-1]).zfill(2)
+            tr_str = f"{year}{start_month}{start_day}-{year}{end_month}{end_day}"
+            timerange_strings.append(tr_str)
 
-        
-        assert start_month == "01"
-        assert end_month == "12"
+    return timerange_strings
 
-        years = np.arange(int(start_year), int(end_year) + 1)
-        return [f"{year}01{start_day}-{year}12{end_day}" for year in years]
 
-    except AssertionError:
-        return []
-
-def regrid_dataset(fp, regridder, out_fp, lat_slice):
+def regrid_dataset(fp, regridder, out_fp):
     """Regrid a dataset using a regridder object initiated using the target grid with a latitude domain of 50N and up.
 
     Args:
         fp (pathlib.Path): path to file to be regridded
         regridder (xesmf.Regridder): regridder object initialized on source dataset that has the same grid as dataset as read from fp
         out_fp (pathlib.Path): Path to output regridded file
-        lat_slice (slice): slice object for cropping latitude dimension of dataset to
 
     Returns:
         out_fp (pathlib.Path): Path to output regridded file (just to return something)
     """
     # open the source dataset
-    # open the "exteneded" latitude domain so the regridding effort includes the minimum production latitude.
-    src_ds = open_and_crop_dataset(fp, lat_slice=lat_slice)
+    src_ds = xr.open_dataset(fp)
 
     regrid_task = regridder(src_ds, keep_attrs=True)
     regrid_ds = regrid_task.compute()
@@ -517,8 +510,7 @@ if __name__ == "__main__":
     # defining an "extended" latitude slice, so that grids encoompass the entire
     #  production latitude extent before regridding (e.g. a grid will have domain [49.53, 90] instead of [50.75, 90],
     #  so this is probably always going to give just one more row of grid cells for interpolation.)
-    ext_lat_slice = slice(49, 90)
-    src_init_ds = open_and_crop_dataset(src_fps[0], lat_slice=ext_lat_slice)
+    src_init_ds = xr.open_dataset(src_fps[0])
 
     # use one of the source files to be regridded and the destination grid file to create a regridder object
     regridder = init_regridder(src_init_ds, dst_ds)
@@ -543,18 +535,23 @@ if __name__ == "__main__":
         existing_fps = list(out_fp.parent.glob(f"{nodate_out_fn}*.nc"))
 
         # get a list of yearly time ranges from the multi-year source filename
-        expected_filename_time_ranges = parse_output_filename_times_from_timeframe(parse_cmip6_fp(fp)["timeframe"])
+        expected_filename_time_ranges = parse_output_filename_times_from_file(fp)
 
         # search existing filenames for the time range strings
         # if all time range strings are found in existing filenames, and no_clobber=True, then skip regridding
         if (
-            all([any(time_str in fp.name for fp in existing_fps) for time_str in expected_filename_time_ranges])
+            all(
+                [
+                    any(time_str in fp.name for fp in existing_fps)
+                    for time_str in expected_filename_time_ranges
+                ]
+            )
             and no_clobber
         ):
             no_clobbers.append(str(fp))
         else:
             try:
-                results.append(regrid_dataset(fp, regridder, out_fp, ext_lat_slice))
+                results.append(regrid_dataset(fp, regridder, out_fp))
             except Exception as e:
                 errs.append(str(fp))
                 print(f"\nFILE NOT REGRIDDED: {fp}\n     Errors printed below:\n")
