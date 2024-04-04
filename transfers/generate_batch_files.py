@@ -39,7 +39,11 @@ def generate_transfer_paths(row, table_id):
     """
     activity = "CMIP" if row["scenario"] == "historical" else "ScenarioMIP"
     model = row["model"]
-    institution = model_inst_lu[model]
+    if isinstance(model_inst_lu[model], list):
+        # if more than one inst for the model, choose the first if historical and second if scenario
+        institution = model_inst_lu[model][0] if activity == "CMIP" else model_inst_lu[model][1]
+    else: 
+        institution = model_inst_lu[model]
     group_path = Path().joinpath(
         activity,
         institution,

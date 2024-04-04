@@ -35,9 +35,14 @@ def test_mirror():
     for i, row in manifest.iterrows():
         scenario = row["scenario"]
         model = row["model"]
+        if isinstance(model_inst_lu[model], list):
+        # if more than one inst for the model, choose the first if historical and second if scenario
+            institution = model_inst_lu[model][0] if get_activity(scenario) == "CMIP" else model_inst_lu[model][1]
+        else: 
+            institution = model_inst_lu[model]
         fp_kw = {
             "activity": get_activity(scenario),
-            "institution": model_inst_lu[model],
+            "institution": institution,
             "model": model,
             "scenario": scenario,
             "variant": row["variant"],
