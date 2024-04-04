@@ -4,9 +4,9 @@ Note - this script first crops the dataset to the panarctic domain of 50N and up
 """
 
 import argparse
-import calendar
 import random
 import time
+from datetime import datetime
 from pathlib import Path
 import cftime
 import numpy as np
@@ -435,43 +435,35 @@ def write_retry_batch_file(errs):
             f.write(f"{fp}\n")
 
 
-def parse_output_filename_times_from_timeframe(timeframe):
+def parse_output_filename_times_from_file(fp):
     """Parse a date range in format YYYYMM-YYYYMM or YYYYMMDD-YYYYMMDD.
-    Returns a list of strings representing times that should be used in the output files of a given source file."""
 
-    try:
-        # just break it off if if anything doesn't conform
-        start, end = timeframe.split("-")
-        assert len(start) == len(
-            end
-        ), "Date range string in an unexpected format. Expected YYYYMM-YYYYMM or YYYYMMDD-YYYYMMDD."
+    Originally this function relied only on the timeframe string in the filenames.
+    But that is not gauranteed to be correct so this function was refactored to rely on the time variable.
 
-        if len(start) == 6:
-            start_year = start[:4]
-            start_month = start[4:]
-            end_year = end[:4]
-            end_month = end[4:]
+    Returns a list of strings representing times that should be used in all the output files of a given source file, since they are saved by year.
+    """
+    with xr.open_dataset(fp) as ds:
+        if check_is_dayfreq(ds):
+            # calendars get converted to noleap so start / end days of year are consistent
+            start_day = "01"
+            end_day = "31"
+        elif check_is_monfreq(ds):
             start_day = end_day = ""
 
-        elif len(start) == 8:
-            start_year = start[:4]
-            start_month = start[4:6]
-            start_day = start[6:]
-            end_year = end[:4]
-            end_month = end[4:6]
-            end_day = end[6:]
+        years = np.unique(ds.time.dt.year.values)
 
-            assert start_day == "01"
-            assert end_day == "31"
+        # first rule of CMIP6 - don't assume anything
+        # instead of assuming all files have all months, just iterate
+        timerange_strings = []
+        for year in years:
+            months = ds.time.sel(time=f"{year}").dt.month.values
+            start_month = str(months[0]).zfill(2)
+            end_month = str(months[-1]).zfill(2)
+            tr_str = f"{year}{start_month}{start_day}-{year}{end_month}{end_day}"
+            timerange_strings.append(tr_str)
 
-        assert start_month == "01"
-        assert end_month == "12"
-
-        years = np.arange(int(start_year), int(end_year) + 1)
-        return [f"{year}01{start_day}-{year}12{end_day}" for year in years]
-
-    except AssertionError:
-        return []
+    return timerange_strings
 
 
 def regrid_dataset(fp, regridder, out_fp):
@@ -543,9 +535,7 @@ if __name__ == "__main__":
         existing_fps = list(out_fp.parent.glob(f"{nodate_out_fn}*.nc"))
 
         # get a list of yearly time ranges from the multi-year source filename
-        expected_filename_time_ranges = parse_output_filename_times_from_timeframe(
-            parse_cmip6_fp(fp)["timeframe"]
-        )
+        expected_filename_time_ranges = parse_output_filename_times_from_file(fp)
 
         # search existing filenames for the time range strings
         # if all time range strings are found in existing filenames, and no_clobber=True, then skip regridding

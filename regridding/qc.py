@@ -12,8 +12,7 @@ import xarray as xr
 from pathlib import Path
 from regrid import (
     generate_regrid_filepath,
-    parse_cmip6_fp,
-    parse_output_filename_times_from_timeframe,
+    parse_output_filename_times_from_file,
 )
 
 
@@ -31,6 +30,7 @@ def get_source_fps_from_batch_files(regrid_batch_dir, var):
                     if Path(line.strip()).name.startswith(var + "_")
                 ]
             )
+
     return source_fps
 
 
@@ -82,6 +82,9 @@ def compare_expected_to_existing_and_check_values(
         # get existing files for the variable
         existing_fps = list(regrid_dir.glob(f"**/{var}/**/*.nc"))
 
+        test = "/import/beegfs/CMIP6/kmredilla/cmip6_regridding/regrid/KACE-1-0-G/ssp126/Amon/tasmax/tasmax_Amon_KACE-1-0-G_ssp126_regrid"
+        existing_fps = [fp for fp in existing_fps if test in str(fp)]
+
         # create dict of min/max values for each existing file
         regrid_min_max = {}
         # create list of tuples as args for multiprocessing function
@@ -90,13 +93,20 @@ def compare_expected_to_existing_and_check_values(
             results = list(p.map(file_min_max, regrid_var_tups))
         # populate min/max dict / store dataset errors
         for result in results:
-            regrid_min_max[result["file"]] = {"min": result["min"], "max": result["max"]}
+            regrid_min_max[result["file"]] = {
+                "min": result["min"],
+                "max": result["max"],
+            }
 
-        # list all source file paths found in the batch files, and ignore the ones that had processing errors previously identified
+        # # list all source file paths found in the batch files, and ignore the ones that had processing errors previously identified
         var_src_fps = get_source_fps_from_batch_files(regrid_batch_dir, var)
         for fp in fps_to_ignore:
             if fp in var_src_fps:
                 var_src_fps.remove(fp)
+
+        var_src_fps = [
+            fp for fp in var_src_fps if "tasmax_Amon_KACE-1-0-G_ssp126" in fp.name
+        ]
 
         # create dict of min/max values for each source file
         src_min_max = {}
@@ -117,8 +127,8 @@ def compare_expected_to_existing_and_check_values(
             expected_base_fp = generate_regrid_filepath(src_fp, regrid_dir)
             base_timeframe = expected_base_fp.name.split("_")[-1].split(".nc")[0]
             # get a list of yearly time range strings from the multi-year source filename
-            expected_filename_time_ranges = parse_output_filename_times_from_timeframe(
-                parse_cmip6_fp(src_fp)["timeframe"]
+            expected_filename_time_ranges = parse_output_filename_times_from_file(
+                src_fp
             )
             # replace the timeframe in the base file path with the yearly time ranges, and add to expected_fps list
             expected_fps = []
@@ -132,14 +142,22 @@ def compare_expected_to_existing_and_check_values(
             # if all are found, run the final QC step to compare values
             if all([fp in existing_fps for fp in expected_fps]):
                 # call min/max from src dict
-                src_min, src_max = src_min_max[str(src_fp)]["min"], src_min_max[str(src_fp)]["max"]
+                src_min, src_max = (
+                    src_min_max[str(src_fp)]["min"],
+                    src_min_max[str(src_fp)]["max"],
+                )
                 # iterate thru expected filepaths
                 for regrid_fp in expected_fps:
-                    # check if in keys, if not then the file did not open in file_min_max() 
+                    # check if in keys, if not then the file did not open in file_min_max()
                     if str(regrid_fp) in regrid_min_max.keys():
                         # compare values
-                        regrid_min, regrid_max = regrid_min_max[str(regrid_fp)]["min"], regrid_min_max[str(regrid_fp)]["max"]
-                        if (src_max >= regrid_min >= src_min) and (src_max >= regrid_max >= src_min):
+                        regrid_min, regrid_max = (
+                            regrid_min_max[str(regrid_fp)]["min"],
+                            regrid_min_max[str(regrid_fp)]["max"],
+                        )
+                        if (src_max >= regrid_min >= src_min) and (
+                            src_max >= regrid_max >= src_min
+                        ):
                             pass
                         else:
                             value_errors.append(str(regrid_fp))
@@ -157,9 +175,7 @@ def compare_expected_to_existing_and_check_values(
             e.write(("\n".join(map(str, output_errors))))
             e.write("\n\n")
         if ds_errors != []:
-            e.write(
-                "Could not open datasets for the following regridded files:\n\n"
-            )
+            e.write("Could not open datasets for the following regridded files:\n\n")
             e.write(("\n".join(map(str, ds_errors))))
             e.write("\n\n")
         if value_errors != []:
@@ -187,7 +203,9 @@ def file_min_max(args):
     try:
         with xr.open_dataset(file) as src_ds:
             src_ds_slice = src_ds.sel(lat=slice(49, 90))
-            src_min, src_max = float(src_ds_slice[var].min()), float(src_ds_slice[var].max())
+            src_min, src_max = float(src_ds_slice[var].min()), float(
+                src_ds_slice[var].max()
+            )
         return {"file": str(file), "min": src_min, "max": src_max}
     except:
         return {"file": None, "min": None, "max": None}
