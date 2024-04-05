@@ -55,14 +55,15 @@ prod_variant_lu = {
     "KACE-1-0-G": "r1i1p1f1",
     "MIROC6": "r1i1p1f1",
     "MPI-ESM1-2-HR": "r1i1p1f1",
+    "MPI-ESM1-2-LR": "r1i1p1f1",
     "MRI-ESM2-0": "r1i1p1f1",
     "NorESM2-MM": "r1i1p1f1",
     "TaiESM1": "r1i1p1f1",
-    "CESM2-WACCM": "r1i1p1f1",
+    #"CESM2-WACCM": "r1i1p1f1", # compared to CESM2, this model is missing multiple variables and should be excluded (see select_variants.ipynb)
 }
 
 # this lookup includes all models of interest, including some that will NOT be transferred,
-#  left in here for compatability with any exploratory efforts
+# left in here for compatability with any exploratory efforts
 model_inst_lu = {
     "ACCESS-CM2": "CSIRO-ARCCSS",
     "CESM2": "NCAR",
@@ -84,7 +85,7 @@ model_inst_lu = {
     # # The -LR version is mostly available under "MPI-M", but has some ssp119 data available under "DKRZ". 
     # # We will only transfer from "MPI-M" in this case.
     "MPI-ESM1-2-LR": "MPI-M",
-    # # We will also download all of the E3SM Project data for now
+    # # We will also look for E3SM Project data
     "E3SM-1-0": "E3SM-Project",
     "E3SM-1-1-ECA": "E3SM-Project",
     # except for E3SM-2-0, which is not hosted under LLNL's "/css03_data/CMIP6" directory!
