@@ -81,16 +81,16 @@ Email address to send failed slurm job notifications to.
 export SLURM_EMAIL=kmredilla@alaska.edu
 ```
 
-4. Use the `esgf_holdings.py` to create tables detailing availability of requested data combinations on a particular ESGF node. Requested data combinations used in this script are sourced from `config.py`. This script creates lists of the available filenames for all requested data. To list available data on the LLNL node, run it as a script like so:
+4. Use the `esgf_holdings.py` to create tables detailing availability of requested data combinations on a particular ESGF node. Requested data combinations used in this script are sourced from `config.py`. This script creates lists of the available filenames for all requested data. The script will print statements about any empty folders encountered, and any HTTP errors encountered. To save these outputs for review, `tee` the output to a file. To list available data on the LLNL node, run it as a script like so:
 
 ```
-python esgf_holdings.py --node llnl
+python esgf_holdings.py --node llnl --ncpus 24 | tee esgf_holdings_output.txt
 ```
 
 To do the same for the variables we want at non-standard freqeuncies for future WRF runs, add the `--wrf` flag:
 
 ```
-python esgf_holdings.py --node llnl --wrf
+python esgf_holdings.py --node llnl --wrf --ncpus 24 | tee esgf_holdings_wrf_output.txt
 ```
 
 These scripts will create `llnl_esgf_holdings.csv` and `llnl_esgf_holdings_wrf.csv`, which have been committed to version control.
