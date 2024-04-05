@@ -87,6 +87,7 @@ model_inst_lu = {
     "MPI-ESM1-2-LR": "MPI-M",
     # # We will also look for E3SM Project data
     "E3SM-1-0": "E3SM-Project",
+    "E3SM-1-1": "E3SM-Project",
     "E3SM-1-1-ECA": "E3SM-Project",
     # except for E3SM-2-0, which is not hosted under LLNL's "/css03_data/CMIP6" directory!
     # "E3SM-2-0": "E3SM-Project", 
