@@ -1,6 +1,6 @@
 Please go to this URL and login:
 
-https://auth.globus.org/v2/oauth2/authorize?client_id=a316babe-5447-43b0-a82e-4fc86c91b71a&redirect_uri=https%3A%2F%2Fauth.globus.org%2Fv2%2Fweb%2Fauth-code&scope=urn%3Aglobus%3Aauth%3Ascope%3Atransfer.api.globus.org%3Aall&state=_default&response_type=code&code_challenge=hSPUyHhQa2Zp6PP0NOdxAeCAMcRZ-JFGRbBAdIAfIo8&code_challenge_method=S256&access_type=online
+https://auth.globus.org/v2/oauth2/authorize?client_id=a316babe-5447-43b0-a82e-4fc86c91b71a&redirect_uri=https%3A%2F%2Fauth.globus.org%2Fv2%2Fweb%2Fauth-code&scope=urn%3Aglobus%3Aauth%3Ascope%3Atransfer.api.globus.org%3Aall&state=_default&response_type=code&code_challenge=IVeq2-LSjwpiXsbftjvz0jZGnR6Ww11xQkQ9zMq9I-I&code_challenge_method=S256&access_type=online
 
 Please enter the code here: Log in successful. Running the audit now.
             model  ...                                           variants
@@ -10,14 +10,107 @@ Please enter the code here: Log in successful. Running the audit now.
 3   EC-Earth3-Veg  ...  [r10i1p1f1, r11i1p1f1, r12i1p1f1, r13i1p1f1, r...
 4       GFDL-ESM4  ...                     [r1i1p1f1, r2i1p1f1, r3i1p1f1]
 ..            ...  ...                                                ...
-85            NaN  ...                                                NaN
-86            NaN  ...                                                NaN
-87            NaN  ...                                                NaN
-88            NaN  ...                                                NaN
-89            NaN  ...                                                NaN
+90            NaN  ...                                                NaN
+91            NaN  ...                                                NaN
+92            NaN  ...                                                NaN
+93            NaN  ...                                                NaN
+94            NaN  ...                                                NaN
 
-[90 rows x 3 columns]
-Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MPI-M/MPI-ESM1-2-LR/historical/r41i1p1f1/Ofx/sftof/gn
+[95 rows x 3 columns]
+Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r29i1p1f3/Lmon/mrro/gn
+ls operation in grid directory returned: 
+[]
+Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r30i1p1f3/Lmon/mrro/gn
+ls operation in grid directory returned: 
+[]
+Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r31i1p1f3/Lmon/mrro/gn
+ls operation in grid directory returned: 
+[]
+Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r32i1p1f3/Lmon/mrro/gn
+ls operation in grid directory returned: 
+[]
+Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r33i1p1f3/Lmon/mrro/gn
+ls operation in grid directory returned: 
+[]
+Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r34i1p1f3/Lmon/mrro/gn
+ls operation in grid directory returned: 
+[]
+Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r35i1p1f3/Lmon/mrro/gn
+ls operation in grid directory returned: 
+[]
+Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r36i1p1f3/Lmon/mrro/gn
+ls operation in grid directory returned: 
+[]
+Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r37i1p1f3/Lmon/mrro/gn
+ls operation in grid directory returned: 
+[]
+Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r38i1p1f3/Lmon/mrro/gn
+ls operation in grid directory returned: 
+[]
+Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r39i1p1f3/Lmon/mrro/gn
+ls operation in grid directory returned: 
+[]
+Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r40i1p1f3/Lmon/mrro/gn
+ls operation in grid directory returned: 
+[]
+Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r41i1p1f3/Lmon/mrro/gn
+ls operation in grid directory returned: 
+[]
+Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r42i1p1f3/Lmon/mrro/gn
+ls operation in grid directory returned: 
+[]
+Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r43i1p1f3/Lmon/mrro/gn
+ls operation in grid directory returned: 
+[]
+Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r44i1p1f3/Lmon/mrro/gn
+ls operation in grid directory returned: 
+[]
+Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r45i1p1f3/Lmon/mrro/gn
+ls operation in grid directory returned: 
+[]
+Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r46i1p1f3/Lmon/mrro/gn
+ls operation in grid directory returned: 
+[]
+Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r47i1p1f3/Lmon/mrro/gn
+ls operation in grid directory returned: 
+[]
+Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r48i1p1f3/Lmon/mrro/gn
+ls operation in grid directory returned: 
+[]
+Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r49i1p1f3/Lmon/mrro/gn
+ls operation in grid directory returned: 
+[]
+Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r50i1p1f3/Lmon/mrro/gn
+ls operation in grid directory returned: 
+[]
+Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r51i1p1f3/Lmon/mrro/gn
+ls operation in grid directory returned: 
+[]
+Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r52i1p1f3/Lmon/mrro/gn
+ls operation in grid directory returned: 
+[]
+Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r53i1p1f3/Lmon/mrro/gn
+ls operation in grid directory returned: 
+[]
+Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r54i1p1f3/Lmon/mrro/gn
+ls operation in grid directory returned: 
+[]
+Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r55i1p1f3/Lmon/mrro/gn
+ls operation in grid directory returned: 
+[]
+Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r56i1p1f3/Lmon/mrro/gn
+ls operation in grid directory returned: 
+[]
+Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r57i1p1f3/Lmon/mrro/gn
+ls operation in grid directory returned: 
+[]
+Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r58i1p1f3/Lmon/mrro/gn
+ls operation in grid directory returned: 
+[]
+Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r59i1p1f3/Lmon/mrro/gn
+ls operation in grid directory returned: 
+[]
+Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r60i1p1f3/Lmon/mrro/gn
 ls operation in grid directory returned: 
 []
 Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r29i1p1f3/LImon/snd/gn
@@ -116,112 +209,15 @@ ls operation in grid directory returned:
 Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r60i1p1f3/LImon/snd/gn
 ls operation in grid directory returned: 
 []
-Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/ScenarioMIP/DKRZ/MPI-ESM1-2-HR/ssp370/r3i1p1f1/Amon/va/gn/v20190710
-ls operation in most recent version directory returned: 
-502
+Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MPI-M/MPI-ESM1-2-LR/historical/r41i1p1f1/Ofx/sftof/gn
+ls operation in grid directory returned: 
+[]
 Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-MM/historical/r3i1p1f3/Lmon/mrro/gn
 ls operation in grid directory returned: 
 []
 Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-MM/historical/r4i1p1f3/Lmon/mrro/gn
 ls operation in grid directory returned: 
 []
-Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r29i1p1f3/Lmon/mrro/gn
-ls operation in grid directory returned: 
-[]
-Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r30i1p1f3/Lmon/mrro/gn
-ls operation in grid directory returned: 
-[]
-Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r31i1p1f3/Lmon/mrro/gn
-ls operation in grid directory returned: 
-[]
-Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r32i1p1f3/Lmon/mrro/gn
-ls operation in grid directory returned: 
-[]
-Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r33i1p1f3/Lmon/mrro/gn
-ls operation in grid directory returned: 
-[]
-Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r34i1p1f3/Lmon/mrro/gn
-ls operation in grid directory returned: 
-[]
-Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r35i1p1f3/Lmon/mrro/gn
-ls operation in grid directory returned: 
-[]
-Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r36i1p1f3/Lmon/mrro/gn
-ls operation in grid directory returned: 
-[]
-Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r37i1p1f3/Lmon/mrro/gn
-ls operation in grid directory returned: 
-[]
-Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r38i1p1f3/Lmon/mrro/gn
-ls operation in grid directory returned: 
-[]
-Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r39i1p1f3/Lmon/mrro/gn
-ls operation in grid directory returned: 
-[]
-Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r40i1p1f3/Lmon/mrro/gn
-ls operation in grid directory returned: 
-[]
-Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r41i1p1f3/Lmon/mrro/gn
-ls operation in grid directory returned: 
-[]
-Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r42i1p1f3/Lmon/mrro/gn
-ls operation in grid directory returned: 
-[]
-Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r43i1p1f3/Lmon/mrro/gn
-ls operation in grid directory returned: 
-[]
-Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r44i1p1f3/Lmon/mrro/gn
-ls operation in grid directory returned: 
-[]
-Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r45i1p1f3/Lmon/mrro/gn
-ls operation in grid directory returned: 
-[]
-Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r46i1p1f3/Lmon/mrro/gn
-ls operation in grid directory returned: 
-[]
-Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r47i1p1f3/Lmon/mrro/gn
-ls operation in grid directory returned: 
-[]
-Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r48i1p1f3/Lmon/mrro/gn
-ls operation in grid directory returned: 
-[]
-Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r49i1p1f3/Lmon/mrro/gn
-ls operation in grid directory returned: 
-[]
-Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r50i1p1f3/Lmon/mrro/gn
-ls operation in grid directory returned: 
-[]
-Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r51i1p1f3/Lmon/mrro/gn
-ls operation in grid directory returned: 
-[]
-Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r52i1p1f3/Lmon/mrro/gn
-ls operation in grid directory returned: 
-[]
-Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r53i1p1f3/Lmon/mrro/gn
-ls operation in grid directory returned: 
-[]
-Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r54i1p1f3/Lmon/mrro/gn
-ls operation in grid directory returned: 
-[]
-Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r55i1p1f3/Lmon/mrro/gn
-ls operation in grid directory returned: 
-[]
-Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r56i1p1f3/Lmon/mrro/gn
-ls operation in grid directory returned: 
-[]
-Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r57i1p1f3/Lmon/mrro/gn
-ls operation in grid directory returned: 
-[]
-Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r58i1p1f3/Lmon/mrro/gn
-ls operation in grid directory returned: 
-[]
-Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r59i1p1f3/Lmon/mrro/gn
-ls operation in grid directory returned: 
-[]
-Unexpected result, ls error on supposed valid path: /css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/historical/r60i1p1f3/Lmon/mrro/gn
-ls operation in grid directory returned: 
-[]
-Removing a row that is not a dict: None
 Removing a row that is not a dict: None
 Removing a row that is not a dict: None
 Removing a row that is not a dict: None
