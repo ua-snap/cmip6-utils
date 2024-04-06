@@ -62,6 +62,23 @@ prod_variant_lu = {
     #"CESM2-WACCM": "r1i1p1f1", # compared to CESM2, this model is missing multiple variables and should be excluded (see select_variants.ipynb)
 }
 
+# production models and grids to mirror
+# determiend using select_grids.ipynb
+prod_grid_lu = {
+    "CNRM-CM6-1-HR": ["gn", "gr"],
+    "EC-Earth3-Veg": ["gn", "gr"],
+    "GFDL-ESM4": "gr1",
+    "HadGEM3-GC31-LL": "gn",
+    "HadGEM3-GC31-MM": "gn",
+    "KACE-1-0-G": "gr",
+    "MIROC6": "gn",
+    "MPI-ESM1-2-HR": "gn",
+    "MPI-ESM1-2-LR": "gn",
+    "MRI-ESM2-0": "gn",
+    "NorESM2-MM": "gn",
+    "TaiESM1": "gn",
+}
+
 # this lookup includes all models of interest, including some that will NOT be transferred,
 # left in here for compatability with any exploratory efforts
 model_inst_lu = {
