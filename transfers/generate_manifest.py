@@ -119,8 +119,15 @@ if __name__ == "__main__":
             for model in models:
                 # subset to the variant we will be mirroring
                 variant = prod_variant_lu[model]
-                query_str = f"model == '{model}' & variant == '{variant}' & table_id == '{t_id}' & variable == '{var_id}'"
-                pre_manifest.append(holdings.query(query_str))
+                # iterate over grid types if there is more than 1
+                if isinstance(prod_grid_lu[model], list):
+                    grid_types = prod_grid_lu[model]
+                    query_str = f"model == '{model}' & variant == '{variant}' & table_id == '{t_id}' & variable == '{var_id}' & grid_type in @grid_types"
+                    pre_manifest.append(holdings.query(query_str))
+                else:
+                    grid_type = prod_grid_lu[model]
+                    query_str = f"model == '{model}' & variant == '{variant}' & table_id == '{t_id}' & variable == '{var_id}' & grid_type == '{grid_type}'"
+                    pre_manifest.append(holdings.query(query_str))
 
     pre_manifest = pd.concat(pre_manifest)
 
