@@ -253,3 +253,6 @@ if __name__ == "__main__":
                     sbatch_out_fp.name.replace("%j", str(job_id))
                 )
                 job_ids.append(job_id)
+
+    # currently printing Job IDs to give to next steps in prefect. Probably better ways to do this.
+    print(job_ids)
