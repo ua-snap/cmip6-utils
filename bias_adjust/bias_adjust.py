@@ -99,6 +99,23 @@ def add_global_attrs(ds, src_fp):
     return ds
 
 
+def drop_height(ds):
+    """Function to drop the height variable from an xarray.Dataset if present.
+
+    Args:
+        ds (xarray.Dataset): dataset to drop variable from if present
+
+    Returns:
+        ds (xarray.Dataset): dataset with no height variable
+    """
+    try:
+        ds = ds.drop_vars("height")
+    except ValueError:
+        ds = ds
+
+    return ds
+
+
 def parse_args():
     """Parse some arguments"""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -217,6 +234,11 @@ if __name__ == "__main__":
             # convert calendar to noleap to match CMIP6
             ref_ds = xr.open_mfdataset(ref_fps).convert_calendar("noleap")
 
+            # height variable is causing some issues in some cases and we don't need
+            #  it for the bias-adjusted stuff, just drop it.
+            hist_ds = drop_height(hist_ds)
+            ref_ds = drop_height(ref_ds)
+
             # need to select ERA5 or ERA5T if present
             if "expver" in ref_ds.variables:
                 ref_ds = ref_ds.sel(expver=1).drop_vars("expver")
@@ -265,6 +287,7 @@ if __name__ == "__main__":
             # not adjusting historical, no need for now
             # need to rechunk this one too, same reason as for training data
             proj_ds = xr.open_mfdataset(sim_ref_fps + sim_fps)
+            proj_ds = drop_height(proj_ds)
             sim = proj_ds[var_id]
             sim.data = sim.data.rechunk({0: -1, 1: 30, 2: 30})
 
