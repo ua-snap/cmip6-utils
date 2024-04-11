@@ -63,7 +63,7 @@ prod_variant_lu = {
 }
 
 # production models and grids to mirror
-# determiend using select_grids.ipynb
+# determined using select_grids.ipynb
 prod_grid_lu = {
     "CNRM-CM6-1-HR": ["gn", "gr"],
     "EC-Earth3-Veg": ["gn", "gr"],
@@ -98,7 +98,7 @@ model_inst_lu = {
     # # Another oddity - MPI-ESM1-2-* models have different representation among the institutions, or "Institution ID":
     # # The -HR version is apparently mostly available under "DKRZ", except for the historical data which is all under "MPI-M".
     # # We will need to transfer data from both of these instiutions to have both historical and ScenarioMIP data.
-    "MPI-ESM1-2-HR": ["MPI-M", "DKRZ"], # historical and ScenarioMIP data for MPI-ESM1-2-HR, respectively. Hitorical must be first in the list!
+    "MPI-ESM1-2-HR": ["MPI-M", "DKRZ"], # historical and ScenarioMIP data for MPI-ESM1-2-HR, respectively. Historical must be first in the list!
     # # The -LR version is mostly available under "MPI-M", but has some ssp119 data available under "DKRZ". 
     # # We will only transfer from "MPI-M" in this case.
     "MPI-ESM1-2-LR": "MPI-M",
