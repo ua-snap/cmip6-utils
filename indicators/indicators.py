@@ -250,12 +250,8 @@ def build_attrs(
             "start_year": start_year,
             "end_year": end_year,
         },
-        "scenario": {
-            "description": "Forcing scenario used to drive model"
-        },
-        "model": {
-            "description": "Source model of input climate data"
-        },
+        "scenario": {"description": "Forcing scenario used to drive model"},
+        "model": {"description": "Source model of input climate data"},
         indicator: {
             "long_name": indicator_lu[indicator]["long_name"],
             "units": f"{units_lu[indicator]}",
@@ -309,6 +305,9 @@ def find_and_replace_attrs(idx_ds, model, scenario, **kwargs):
         lon_max=lon_max,
     )
     new_vars = list(var_coord_attrs.keys())
+    # need to add this one in as it should always be present in inputs
+    if "spatial_ref" in idx_ds.variables:
+        new_vars.append("spatial_ref")
 
     # test for presence of all original ds vars (excluding height) in the new attrs
     if False in [i in new_vars for i in ds_vars]:
@@ -324,7 +323,7 @@ def find_and_replace_attrs(idx_ds, model, scenario, **kwargs):
         # replace variable and coordinate attributes
         for var in idx_ds.variables:
             idx_ds[var].attrs = var_coord_attrs[var]
-        
+
         # make sure _FillValue is set in .encoding
         idx_ds[idx].encoding["_FillValue"] = fill_value
     return idx_ds
