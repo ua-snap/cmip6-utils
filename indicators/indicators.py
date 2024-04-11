@@ -321,7 +321,7 @@ def find_and_replace_attrs(idx_ds, model, scenario, **kwargs):
         # replace global attrs
         idx_ds.attrs = global_attrs
         # replace variable and coordinate attributes
-        for var in idx_ds.variables:
+        for var in var_coord_attrs:
             idx_ds[var].attrs = var_coord_attrs[var]
 
         # make sure _FillValue is set in .encoding
