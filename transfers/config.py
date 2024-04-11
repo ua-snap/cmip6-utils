@@ -94,7 +94,7 @@ model_inst_lu = {
     "MRI-ESM2-0": "MRI",
     "NorESM2-MM": "NCC",
     "TaiESM1": "AS-RCEC",
-    "CESM2-WACCM": "NCAR",
+    # "CESM2-WACCM": "NCAR",
     # # Another oddity - MPI-ESM1-2-* models have different representation among the institutions, or "Institution ID":
     # # The -HR version is apparently mostly available under "DKRZ", except for the historical data which is all under "MPI-M".
     # # We will need to transfer data from both of these instiutions to have both historical and ScenarioMIP data.
