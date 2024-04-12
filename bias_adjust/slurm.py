@@ -210,7 +210,7 @@ if __name__ == "__main__":
 
     job_ids = []
     for model in models:
-        for scenario in scenarios + "historical":
+        for scenario in scenarios:
             for var_id in var_ids:
                 # filepath for slurm script
                 sbatch_fp = sbatch_dir.joinpath(
