@@ -44,13 +44,12 @@ def write_sbatch_biasadjust(
     sbatch_out_fp,
     var_id,
     model,
-    scenario,
     input_dir,
     reference_dir,
     biasadjust_script,
     adj_dir,
-    no_clobber,
     sbatch_head,
+    scenario=None,
 ):
     """Write an sbatch script for executing the bias adjustment script for a given model, scenario, and variable
 
@@ -63,7 +62,6 @@ def write_sbatch_biasadjust(
         input_dir (path-like): path to directory of files to be adjusted (likely the regridded files)
         biasadjust_script (path_like): path to the script to be called to run the bias adjustment
         adj_dir (path-like): directory to write the adjusted data
-        no_clobber (bool): do not overwrite regridded files if they exist in regrid_dir
         sbatch_head (dict): string for sbatch head script
 
     Returns:
@@ -77,15 +75,14 @@ def write_sbatch_biasadjust(
         f"python {biasadjust_script} "
         f"--var_id {var_id} "
         f"--model {model} "
-        f"--scenario {scenario} "
         f"--input_dir {input_dir} "
         f"--reference_dir {reference_dir} "
         f"--adj_dir {adj_dir} "
     )
-    if no_clobber:
-        pycommands += "--no-clobber \n\n"
-    else:
-        pycommands += "\n\n"
+    if scenario is not None:
+        pycommands += f"--scenario {scenario} "
+
+    pycommands += "\n\n"
 
     pycommands += f"echo End {var_id} bias adjustment && date\n" "echo Job Completed"
     commands = sbatch_head.format(sbatch_out_fp=sbatch_out_fp) + pycommands
@@ -165,12 +162,6 @@ def parse_args():
         type=str,
         help="CPUs per node",
     )
-    parser.add_argument(
-        "--no-clobber",
-        action="store_true",
-        default=False,
-        help="Do not overwrite files if they exists in out_dir",
-    )
     args = parser.parse_args()
 
     return (
@@ -182,7 +173,6 @@ def parse_args():
         Path(args.working_dir),
         args.partition,
         args.ncpus,
-        args.no_clobber,
     )
 
 
@@ -196,7 +186,6 @@ if __name__ == "__main__":
         working_dir,
         partition,
         ncpus,
-        no_clobber,
     ) = parse_args()
 
     working_dir.mkdir(exist_ok=True)
@@ -221,7 +210,7 @@ if __name__ == "__main__":
 
     job_ids = []
     for model in models:
-        for scenario in scenarios:
+        for scenario in scenarios + "historical":
             for var_id in var_ids:
                 # filepath for slurm script
                 sbatch_fp = sbatch_dir.joinpath(
@@ -243,10 +232,19 @@ if __name__ == "__main__":
                     "biasadjust_script": biasadjust_script,
                     "reference_dir": reference_dir,
                     "adj_dir": adj_dir,
-                    "no_clobber": no_clobber,
                     "sbatch_head": sbatch_head,
                 }
+
+                if scenario == "historical":
+                    del sbatch_biasadjust_kwargs["scenario"]
+                    sbatch_biasadjust_kwargs[
+                        "biasadjust_script"
+                    ] = working_dir.joinpath(
+                        "cmip6-utils/bias_adjust/bias_adjust_historical.py"
+                    )
+
                 write_sbatch_biasadjust(**sbatch_biasadjust_kwargs)
+
                 job_id = submit_sbatch(sbatch_fp)
 
                 sbatch_out_fp_with_jobid = sbatch_dir.joinpath(
