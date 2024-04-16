@@ -22,6 +22,9 @@ ceda_ep = "ee3aa1a0-7e4c-11e6-afc4-22000b92c261"
 # path prefix for LLNL ESGF CMIP6 data
 llnl_prefix = Path("/css03_data/CMIP6")
 
+# E3SM scenarioMIP data has different prefix
+e3sm_prefix = Path("/user_pub_work/CMIP6")
+
 # template name for an  ESGF holdings audit table
 # wrf versions will have _wrf suffix
 holdings_tmp_fn = "{esgf_node}_esgf_holdings{suffix}.csv"
@@ -59,7 +62,7 @@ prod_variant_lu = {
     "MRI-ESM2-0": "r1i1p1f1",
     "NorESM2-MM": "r1i1p1f1",
     "TaiESM1": "r1i1p1f1",
-    #"CESM2-WACCM": "r1i1p1f1", # compared to CESM2, this model is missing multiple variables and should be excluded (see select_variants.ipynb)
+    # "CESM2-WACCM": "r1i1p1f1", # compared to CESM2, this model is missing multiple variables and should be excluded (see select_variants.ipynb)
 }
 
 # production models and grids to mirror
@@ -98,17 +101,22 @@ model_inst_lu = {
     # # Another oddity - MPI-ESM1-2-* models have different representation among the institutions, or "Institution ID":
     # # The -HR version is apparently mostly available under "DKRZ", except for the historical data which is all under "MPI-M".
     # # We will need to transfer data from both of these instiutions to have both historical and ScenarioMIP data.
-    "MPI-ESM1-2-HR": ["MPI-M", "DKRZ"], # historical and ScenarioMIP data for MPI-ESM1-2-HR, respectively. Historical must be first in the list!
-    # # The -LR version is mostly available under "MPI-M", but has some ssp119 data available under "DKRZ". 
+    "MPI-ESM1-2-HR": [
+        "MPI-M",
+        "DKRZ",
+    ],  # historical and ScenarioMIP data for MPI-ESM1-2-HR, respectively. Historical must be first in the list!
+    # # The -LR version is mostly available under "MPI-M", but has some ssp119 data available under "DKRZ".
     # # We will only transfer from "MPI-M" in this case.
     "MPI-ESM1-2-LR": "MPI-M",
+}
+
+e3sm_model_inst_lu = {
     # # We will also look for E3SM Project data
     "E3SM-1-0": "E3SM-Project",
     "E3SM-1-1": "E3SM-Project",
     "E3SM-1-1-ECA": "E3SM-Project",
-    # except for E3SM-2-0, which is not hosted under LLNL's "/css03_data/CMIP6" directory!
-    # "E3SM-2-0": "E3SM-Project", 
-    # "E3SM-2-0-NARRM": "E3SM-Project",
+    "E3SM-2-0": "E3SM-Project",
+    "E3SM-2-0-NARRM": "E3SM-Project",
 }
 
 # we will just use this dict as the reference for production variables.

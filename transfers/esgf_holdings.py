@@ -39,24 +39,24 @@ def arguments(argv):
     return esgf_node, ncpus, do_wrf
 
 
-def list_variants(tc, node_ep, node_prefix, activity, model, scenario):
+def list_variants(tc, node_ep, node_prefix, model_inst_lu, activity, model, scenario):
     """List the different variants available on a particular ESGF node for the given activity, model, and scenario.
     Returns a list of rows to allow for more than one institution per model."""
     if isinstance(model_inst_lu[model], list):
         rows = []
         for inst in model_inst_lu[model]:
-            scenario_path = node_prefix.joinpath(
-            activity, inst, model, scenario
-            )
+            scenario_path = node_prefix.joinpath(activity, inst, model, scenario)
 
             variants = utils.operation_ls(tc, node_ep, scenario_path)
 
             if isinstance(variants, int):
                 rows.append({})
             elif isinstance(variants, list):
-                rows.append({"model": model, "scenario": scenario, "variants": variants})
+                rows.append(
+                    {"model": model, "scenario": scenario, "variants": variants}
+                )
         return rows
-    
+
     else:
         scenario_path = node_prefix.joinpath(
             activity, model_inst_lu[model], model, scenario
@@ -70,7 +70,9 @@ def list_variants(tc, node_ep, node_prefix, activity, model, scenario):
             return [{"model": model, "scenario": scenario, "variants": variants}]
 
 
-def make_model_variants_lut(tc, node_ep, node_prefix, models, scenarios, ncpus):
+def make_model_variants_lut(
+    tc, node_ep, node_prefix, model_inst_lu, models, scenarios, ncpus
+):
     """Create a lookup table of all variants available for each model/ scenario combination. Uses an existing TransferClient object.
 
     Returns a pandas DataFrame with a list of variants available for each model/scenario
@@ -80,7 +82,7 @@ def make_model_variants_lut(tc, node_ep, node_prefix, models, scenarios, ncpus):
         product(["ScenarioMIP"], models, scenarios)
     )
     # include the TransferClient object for each query
-    args = [[tc, node_ep, node_prefix] + list(a) for a in args]
+    args = [[tc, node_ep, node_prefix, model_inst_lu] + list(a) for a in args]
 
     with Pool(ncpus) as pool:
         lists_of_rows = pool.starmap(list_variants, args)
@@ -93,13 +95,22 @@ def make_model_variants_lut(tc, node_ep, node_prefix, models, scenarios, ncpus):
 
 
 def get_filenames(
-    tc, node_ep, node_prefix, activity, model, scenario, variant, table_id, varname
+    tc,
+    node_ep,
+    node_prefix,
+    activity,
+    model,
+    scenario,
+    variant,
+    table_id,
+    varname,
+    model_inst_lu,
 ):
     """Get the file names for a some combination of model, scenario, and variable."""
     # the subdirectory under the variable name is the grid type.
     #  This is almost always "gn", meaning the model's native grid, but it could be different.
     #  So we have to check it instead of assuming. As of 3/29/24, we now know in multiple models some variables have multiple grids.
-    
+
     empty_row = {
         "model": model,
         "scenario": scenario,
@@ -122,7 +133,7 @@ def get_filenames(
         insts = [model_inst_lu[model]]
     else:
         insts = model_inst_lu[model]
-        
+
     for inst in insts:
         var_path = node_prefix.joinpath(
             activity,
@@ -147,7 +158,9 @@ def get_filenames(
 
                 # handle possible missing version, even though grid exists? new observation as of 3/29/24
                 if isinstance(grid_type_ls, int) or (len(grid_type_ls) == 0):
-                    print(f"Unexpected result, ls error on supposed valid path: {grid_path}")
+                    print(
+                        f"Unexpected result, ls error on supposed valid path: {grid_path}"
+                    )
                     print("ls operation in grid directory returned: ")
                     print(grid_type_ls)
                     list_of_row_dicts.append(empty_row.update({"grid_type": grid_type}))
@@ -161,9 +174,15 @@ def get_filenames(
                         print(
                             f"Unexpected result, ls error on supposed valid path: {version_path}"
                         )
-                        print("ls operation in most recent version directory returned: ")
+                        print(
+                            "ls operation in most recent version directory returned: "
+                        )
                         print(fns_ls)
-                        list_of_row_dicts.append(empty_row.update({"grid_type": grid_type, "version": use_version}))
+                        list_of_row_dicts.append(
+                            empty_row.update(
+                                {"grid_type": grid_type, "version": use_version}
+                            )
+                        )
                     else:
                         n_files = len(fns_ls)
 
@@ -180,14 +199,16 @@ def get_filenames(
                         }
 
                         list_of_row_dicts.append(row_di)
-    
+
     if len(list_of_row_dicts) == 0:
         list_of_row_dicts.append(empty_row)
 
     return list_of_row_dicts
 
 
-def make_holdings_table(tc, node_ep, node_prefix, variant_lut, ncpus, variable_lut):
+def make_holdings_table(
+    tc, node_ep, node_prefix, variant_lut, ncpus, variable_lut, model_inst_lu
+):
     """Create a table of filename availability for all models, scenarios, variants, and variable names"""
     # generate lists of arguments from all combinations of variables, models, and scenarios
     args = []
@@ -207,6 +228,7 @@ def make_holdings_table(tc, node_ep, node_prefix, variant_lut, ncpus, variable_l
                         row["variants"],
                         [t_id],
                         [var_id],
+                        [model_inst_lu],
                     )
                 )
 
@@ -248,12 +270,11 @@ if __name__ == "__main__":
     node_prefix = Path(globus_esgf_endpoints[esgf_node]["prefix"])
 
     # specify the models we are interested in
-    # currently this is just everything in the config.model_inst_lu table
     models = list(model_inst_lu.keys())
 
     # get a dataframe of variants available for each model and scenario
     variant_lut = make_model_variants_lut(
-        tc, node_ep, node_prefix, models, prod_scenarios, ncpus
+        tc, node_ep, node_prefix, model_inst_lu, models, prod_scenarios, ncpus
     )
 
     # Check that we won't get a particular error which pops up when the user has not logged into the ESGF node via Globus
@@ -284,6 +305,7 @@ if __name__ == "__main__":
         variant_lut=variant_lut,
         ncpus=ncpus,
         variable_lut=variable_lut,
+        model_inst_lu=model_inst_lu,
     )
 
     holdings_df.to_csv(f"{esgf_node}_esgf_holdings{outfn_suffix}.csv", index=False)
