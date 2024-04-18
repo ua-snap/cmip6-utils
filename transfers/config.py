@@ -62,6 +62,9 @@ prod_variant_lu = {
     "MRI-ESM2-0": "r1i1p1f1",
     "NorESM2-MM": "r1i1p1f1",
     "TaiESM1": "r1i1p1f1",
+    # E3SM variants were chosen from looking at globus-available data in the MetaGrid app
+    "E3SM-1-1": "r1i1p1f1",
+    "E3SM-2-0": "r1i1p1f1",
     # "CESM2-WACCM": "r1i1p1f1", # compared to CESM2, this model is missing multiple variables and should be excluded (see select_variants.ipynb)
 }
 
@@ -80,6 +83,9 @@ prod_grid_lu = {
     "MRI-ESM2-0": "gn",
     "NorESM2-MM": "gn",
     "TaiESM1": "gn",
+    # only one E3SM grid is available
+    "E3SM-1-1": "gr",
+    "E3SM-2-0": "gr",
 }
 
 # this lookup includes all models of interest, including some that will NOT be transferred,
