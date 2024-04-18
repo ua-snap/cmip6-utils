@@ -1,4 +1,5 @@
 """Generate a reference table of CMIP6 holdings on a given ESGF node.
+Note, this script can take a fairly long time to run, especially with new retry logic added.
 
 The table resulting from this should have the following columns: model, scenario, variant, table_id, variable, grid_type, version, n_files, filenames
 
@@ -12,6 +13,7 @@ Usage:
 
 import argparse
 import sys
+import time
 from itertools import product, chain
 from multiprocessing import Pool
 import globus_sdk
@@ -94,6 +96,27 @@ def make_model_variants_lut(
     return df.dropna()
 
 
+def run_ls_retry(tc, ls_result, ls_path):
+    """Retry logic for working with bad operation_ls results"""
+    # it seems that 502 is occurring and that we need to re-check those
+    #  because they are most likely valid paths
+    i = 0
+    while ls_result == 502:
+        time.sleep(2**i)
+        ls_result = utils.operation_ls(tc, node_ep, ls_path)
+        i += 1
+        if i == 5:
+            print(f"Unexpected result, 502 error on: {ls_result} (re-tried 5 times)")
+            ls_result = []
+            break
+
+    if isinstance(ls_result, int) and ls_result != 502:
+        print(f"Unexpected result, {ls_result} error on: {ls_path}")
+        ls_result = []
+
+    return ls_result
+
+
 def get_filenames(
     tc,
     node_ep,
@@ -156,28 +179,23 @@ def get_filenames(
                 grid_path = var_path.joinpath(grid_type)
                 grid_type_ls = utils.operation_ls(tc, node_ep, grid_path)
 
-                # handle possible missing version, even though grid exists? new observation as of 3/29/24
-                if isinstance(grid_type_ls, int) or (len(grid_type_ls) == 0):
-                    print(
-                        f"Unexpected result, ls error on supposed valid path: {grid_path}"
-                    )
-                    print("ls operation in grid directory returned: ")
-                    print(grid_type_ls)
+                if isinstance(grid_type_ls, int):
+                    # not sure of other integer errors that happen besides 502
+                    #  which seems to happen on valid paths, possibly just network error
+                    # this will return list regardless
+                    grid_type_ls = run_ls_retry(tc, grid_type_ls, grid_path)
+
+                if len(grid_type_ls) == 0:
                     list_of_row_dicts.append(empty_row.update({"grid_type": grid_type}))
                 else:
                     use_version = sorted(grid_type_ls)[-1]
                     version_path = var_path.joinpath(grid_type, use_version)
                     fns_ls = utils.operation_ls(tc, node_ep, version_path)
 
-                    # handle possible missing files, even though version exists? new observation as of 2/14/24
-                    if isinstance(fns_ls, int) or (len(fns_ls) == 0):
-                        print(
-                            f"Unexpected result, ls error on supposed valid path: {version_path}"
-                        )
-                        print(
-                            "ls operation in most recent version directory returned: "
-                        )
-                        print(fns_ls)
+                    if isinstance(fns_ls, int):
+                        fns_ls = run_ls_retry(tc, fns_ls, version_path)
+
+                    if len(fns_ls) == 0:
                         list_of_row_dicts.append(
                             empty_row.update(
                                 {"grid_type": grid_type, "version": use_version}
