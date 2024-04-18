@@ -46,11 +46,11 @@ if __name__ == "__main__":
     node_ep = globus_esgf_endpoints[esgf_node]["ep"]
     tc.endpoint_autoactivate(node_ep)
     # overriding this as global since it is used in the imported functions
-    models = list(e3sm_model_inst_lu.keys())
+    models = e3sm_models_of_interest
 
     # We know
     variant_lut = make_model_variants_lut(
-        tc, node_ep, e3sm_prefix, e3sm_model_inst_lu, models, prod_scenarios, ncpus
+        tc, node_ep, e3sm_prefix, model_inst_lu, models, prod_scenarios, ncpus
     )
 
     # Check that we won't get a particular error which pops up when the user has not logged into the ESGF node via Globus
@@ -68,7 +68,7 @@ if __name__ == "__main__":
         variant_lut=variant_lut,
         ncpus=ncpus,
         variable_lut=variables,
-        model_inst_lu=e3sm_model_inst_lu,
+        model_inst_lu=model_inst_lu,
     )
 
     e3sm_holdings_df.to_csv(f"{esgf_node}_esgf_holdings_e3sm.csv", index=False)

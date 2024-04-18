@@ -288,7 +288,7 @@ if __name__ == "__main__":
     node_prefix = Path(globus_esgf_endpoints[esgf_node]["prefix"])
 
     # specify the models we are interested in
-    models = list(model_inst_lu.keys())
+    models = models_of_interest
 
     # get a dataframe of variants available for each model and scenario
     variant_lut = make_model_variants_lut(

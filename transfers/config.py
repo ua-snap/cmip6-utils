@@ -93,6 +93,7 @@ prod_grid_lu = {
 model_inst_lu = {
     "ACCESS-CM2": "CSIRO-ARCCSS",
     "CESM2": "NCAR",
+    "CESM2-WACCM": "NCAR",
     "CNRM-CM6-1-HR": "CNRM-CERFACS",
     "EC-Earth3-Veg": "EC-Earth-Consortium",
     "GFDL-ESM4": "NOAA-GFDL",
@@ -103,7 +104,6 @@ model_inst_lu = {
     "MRI-ESM2-0": "MRI",
     "NorESM2-MM": "NCC",
     "TaiESM1": "AS-RCEC",
-    # "CESM2-WACCM": "NCAR",
     # # Another oddity - MPI-ESM1-2-* models have different representation among the institutions, or "Institution ID":
     # # The -HR version is apparently mostly available under "DKRZ", except for the historical data which is all under "MPI-M".
     # # We will need to transfer data from both of these instiutions to have both historical and ScenarioMIP data.
@@ -114,9 +114,6 @@ model_inst_lu = {
     # # The -LR version is mostly available under "MPI-M", but has some ssp119 data available under "DKRZ".
     # # We will only transfer from "MPI-M" in this case.
     "MPI-ESM1-2-LR": "MPI-M",
-}
-
-e3sm_model_inst_lu = {
     # # We will also look for E3SM Project data
     "E3SM-1-0": "E3SM-Project",
     "E3SM-1-1": "E3SM-Project",
@@ -124,6 +121,28 @@ e3sm_model_inst_lu = {
     "E3SM-2-0": "E3SM-Project",
     "E3SM-2-0-NARRM": "E3SM-Project",
 }
+
+# lists of models of interest
+# these are all of the models we want to check holdings for
+models_of_interest = [
+    "ACCESS-CM2",
+    "CESM2",
+    "CNRM-CM6-1-HR",
+    "EC-Earth3-Veg",
+    "GFDL-ESM4",
+    "HadGEM3-GC31-LL",
+    "HadGEM3-GC31-MM",
+    "KACE-1-0-G",
+    "MIROC6",
+    "MRI-ESM2-0",
+    "NorESM2-MM",
+    "TaiESM1",
+    "MPI-ESM1-2-HR",
+    "CESM2-WACCM",
+    "MPI-ESM1-2-LR",
+]
+# E3SM-1-1-NARRM not available on globus according to MetaGrid
+e3sm_models_of_interest = ["E3SM-1-0", "E3SM-1-1", "E3SM-2-0" "E3SM-1-1-ECA"]
 
 # we will just use this dict as the reference for production variables.
 variables = {
