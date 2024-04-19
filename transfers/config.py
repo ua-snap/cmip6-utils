@@ -142,7 +142,7 @@ models_of_interest = [
     "MPI-ESM1-2-LR",
 ]
 # E3SM-1-1-NARRM not available on globus according to MetaGrid
-e3sm_models_of_interest = ["E3SM-1-0", "E3SM-1-1", "E3SM-2-0" "E3SM-1-1-ECA"]
+e3sm_models_of_interest = ["E3SM-1-0", "E3SM-1-1", "E3SM-2-0", "E3SM-1-1-ECA"]
 
 # we will just use this dict as the reference for production variables.
 variables = {
