@@ -59,8 +59,7 @@ def generate_transfer_paths(row, table_id):
 
     fn = row["filename"]
     fp = group_path.joinpath(fn)
-    esgf_prefix = e3sm_prefix if model in e3sm_models_of_interest else llnl_prefix
-    transfer_tpl = (esgf_prefix.joinpath(fp), acdn_prefix.joinpath(fp))
+    transfer_tpl = (llnl_prefix.joinpath(fp), acdn_prefix.joinpath(fp))
 
     return transfer_tpl
 
@@ -95,7 +94,9 @@ if __name__ == "__main__":
 
             transfer_paths = []
             for i, row in freq_df.iterrows():
-                transfer_paths.append(generate_transfer_paths(row, table_id))
+                # we are just skipping E3SM models here for now since there are permissions issues
+                if row["model"] not in e3sm_models_of_interest:
+                    transfer_paths.append(generate_transfer_paths(row, table_id))
 
             # only write batch file if transfer paths were found
             if transfer_paths != []:
