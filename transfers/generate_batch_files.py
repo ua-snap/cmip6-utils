@@ -3,7 +3,7 @@
 This script is used to generate the batch_files/batch_<ESGF node>_(day|Amon)_<variable ID>.txt files that contain the filepaths (<source filepath (on ESGF node)> <destination filepath (on ACDN)>) to transfer to the Arctic Climate Data Node.
 
 Sample usage: 
-    python generate_batch_files.py --node llnl
+    python generate_batch_files.py
 """
 
 import argparse
@@ -15,16 +15,15 @@ from config import *
 def arguments(argv):
     """Parse some args"""
     parser = argparse.ArgumentParser()
-    parser.add_argument("--node", type=str, help="ESGF node to query", required=True)
     parser.add_argument(
         "--wrf",
         action="store_true",
         help="Whether or not to generate the batch files for the WRF variables, at sub-daily resolutions.",
     )
     args = parser.parse_args()
-    esgf_node, do_wrf = args.node, args.wrf
+    do_wrf = args.wrf
 
-    return esgf_node, do_wrf
+    return do_wrf
 
 
 def generate_transfer_paths(row, table_id):
@@ -41,8 +40,10 @@ def generate_transfer_paths(row, table_id):
     model = row["model"]
     if isinstance(model_inst_lu[model], list):
         # if more than one inst for the model, choose the first if historical and second if scenario
-        institution = model_inst_lu[model][0] if activity == "CMIP" else model_inst_lu[model][1]
-    else: 
+        institution = (
+            model_inst_lu[model][0] if activity == "CMIP" else model_inst_lu[model][1]
+        )
+    else:
         institution = model_inst_lu[model]
     group_path = Path().joinpath(
         activity,
@@ -58,7 +59,8 @@ def generate_transfer_paths(row, table_id):
 
     fn = row["filename"]
     fp = group_path.joinpath(fn)
-    transfer_tpl = (llnl_prefix.joinpath(fp), acdn_prefix.joinpath(fp))
+    esgf_prefix = e3sm_prefix if model in e3sm_models_of_interest else llnl_prefix
+    transfer_tpl = (esgf_prefix.joinpath(fp), acdn_prefix.joinpath(fp))
 
     return transfer_tpl
 
@@ -66,7 +68,7 @@ def generate_transfer_paths(row, table_id):
 def write_batch_file(table_id, var_id, transfer_paths):
     """Write the batch file for a particular variable and scenario group"""
     batch_file = batch_dir.joinpath(
-        batch_tmp_fn.format(esgf_node=ESGF_NODE, table_id=table_id, var_id=var_id)
+        batch_tmp_fn.format(esgf_node="llnl", table_id=table_id, var_id=var_id)
     )
     with open(batch_file, "w") as f:
         for paths in transfer_paths:
@@ -75,12 +77,12 @@ def write_batch_file(table_id, var_id, transfer_paths):
 
 if __name__ == "__main__":
     # this script only runs for a single ESGF node
-    ESGF_NODE, do_wrf = arguments(sys.argv)
+    do_wrf = arguments(sys.argv)
 
     # use the manifest file for generating batch files
     suffix = "_wrf" if do_wrf else ""
     manifest = pd.read_csv(
-        manifest_tmp_fn.format(esgf_node=ESGF_NODE, suffix=suffix),
+        manifest_tmp_fn.format(esgf_node="llnl", suffix=suffix),
     )
 
     # group batch files by variable name and
