@@ -112,13 +112,13 @@ These scripts will create `llnl_manifest.csv` and `llnl_manifest_wrf.csv`, which
 6. Use the `generate_batch_files.py` script to generate batch files from the manifest to run the transfer in batches. Batch files will be saved to the `batch_files/` folder.
 
 ```
-python generate_batch_files.py --node llnl
+python generate_batch_files.py
 ```
 
 To do the same for the variables we want at non-standard freqeuncies for future WRF runs, add the `--wrf` flag:
 
 ```
-python generate_batch_files.py --node llnl --wrf
+python generate_batch_files.py --wrf
 ```
 
 
