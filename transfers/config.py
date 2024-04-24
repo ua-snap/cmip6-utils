@@ -17,8 +17,6 @@ acdn_prefix = Path("/CMIP6")
 # the endpoint for the LLNL ESGF node
 llnl_ep = "1889ea03-25ad-4f9f-8110-1ce8833a9d7e"
 
-ceda_ep = "ee3aa1a0-7e4c-11e6-afc4-22000b92c261"
-
 # path prefix for LLNL ESGF CMIP6 data
 llnl_prefix = Path("/css03_data/CMIP6")
 
