@@ -1,4 +1,5 @@
 """Generate a reference table of CMIP6 holdings on a given ESGF node.
+Note, this script can take a fairly long time to run, especially with new retry logic added.
 
 The table resulting from this should have the following columns: model, scenario, variant, table_id, variable, grid_type, version, n_files, filenames
 
@@ -12,7 +13,8 @@ Usage:
 
 import argparse
 import sys
-from itertools import product
+import time
+from itertools import product, chain
 from multiprocessing import Pool
 import globus_sdk
 import numpy as np
@@ -39,21 +41,40 @@ def arguments(argv):
     return esgf_node, ncpus, do_wrf
 
 
-def list_variants(tc, node_ep, node_prefix, activity, model, scenario):
-    """List the different variants available on a particular ESGF node for the given activity, model, and scenario"""
-    scenario_path = node_prefix.joinpath(
-        activity, model_inst_lu[model], model, scenario
-    )
+def list_variants(tc, node_ep, node_prefix, model_inst_lu, activity, model, scenario):
+    """List the different variants available on a particular ESGF node for the given activity, model, and scenario.
+    Returns a list of rows to allow for more than one institution per model."""
+    if isinstance(model_inst_lu[model], list):
+        rows = []
+        for inst in model_inst_lu[model]:
+            scenario_path = node_prefix.joinpath(activity, inst, model, scenario)
 
-    variants = utils.operation_ls(tc, node_ep, scenario_path)
+            variants = utils.operation_ls(tc, node_ep, scenario_path)
 
-    if isinstance(variants, int):
-        return {}
-    elif isinstance(variants, list):
-        return {"model": model, "scenario": scenario, "variants": variants}
+            if isinstance(variants, int):
+                rows.append({})
+            elif isinstance(variants, list):
+                rows.append(
+                    {"model": model, "scenario": scenario, "variants": variants}
+                )
+        return rows
+
+    else:
+        scenario_path = node_prefix.joinpath(
+            activity, model_inst_lu[model], model, scenario
+        )
+
+        variants = utils.operation_ls(tc, node_ep, scenario_path)
+
+        if isinstance(variants, int):
+            return [{}]
+        elif isinstance(variants, list):
+            return [{"model": model, "scenario": scenario, "variants": variants}]
 
 
-def make_model_variants_lut(tc, node_ep, node_prefix, models, scenarios, ncpus):
+def make_model_variants_lut(
+    tc, node_ep, node_prefix, model_inst_lu, models, scenarios, ncpus
+):
     """Create a lookup table of all variants available for each model/ scenario combination. Uses an existing TransferClient object.
 
     Returns a pandas DataFrame with a list of variants available for each model/scenario
@@ -63,33 +84,56 @@ def make_model_variants_lut(tc, node_ep, node_prefix, models, scenarios, ncpus):
         product(["ScenarioMIP"], models, scenarios)
     )
     # include the TransferClient object for each query
-    args = [[tc, node_ep, node_prefix] + list(a) for a in args]
+    args = [[tc, node_ep, node_prefix, model_inst_lu] + list(a) for a in args]
 
     with Pool(ncpus) as pool:
-        rows = pool.starmap(list_variants, args)
+        lists_of_rows = pool.starmap(list_variants, args)
+    rows = list((chain(*lists_of_rows)))
 
     df = pd.DataFrame(rows)
+    print(df)
 
     return df.dropna()
 
 
+def run_ls_retry(tc, ls_result, ls_path):
+    """Retry logic for working with bad operation_ls results"""
+    # it seems that 502 is occurring and that we need to re-check those
+    #  because they are most likely valid paths
+    i = 0
+    while ls_result == 502:
+        time.sleep(2**i)
+        ls_result = utils.operation_ls(tc, node_ep, ls_path)
+        i += 1
+        if i == 5:
+            print(f"Unexpected result, 502 error on: {ls_result} (re-tried 5 times)")
+            ls_result = []
+            break
+
+    if isinstance(ls_result, int) and ls_result != 502:
+        print(f"Unexpected result, {ls_result} error on: {ls_path}")
+        ls_result = []
+
+    return ls_result
+
+
 def get_filenames(
-    tc, node_ep, node_prefix, activity, model, scenario, variant, table_id, varname
+    tc,
+    node_ep,
+    node_prefix,
+    activity,
+    model,
+    scenario,
+    variant,
+    table_id,
+    varname,
+    model_inst_lu,
 ):
     """Get the file names for a some combination of model, scenario, and variable."""
     # the subdirectory under the variable name is the grid type.
     #  This is almost always "gn", meaning the model's native grid, but it could be different.
-    #  So we have to check it instead of assuming. I have only seen one model where this is different (gr1, GFDL-ESM4)
-    var_path = node_prefix.joinpath(
-        activity,
-        model_inst_lu[model],
-        model,
-        scenario,
-        variant,
-        table_id,
-        varname,
-    )
-    var_id_ls = utils.operation_ls(tc, node_ep, var_path)
+    #  So we have to check it instead of assuming. As of 3/29/24, we now know in multiple models some variables have multiple grids.
+
     empty_row = {
         "model": model,
         "scenario": scenario,
@@ -103,56 +147,86 @@ def get_filenames(
         "n_files": None,
         "filenames": None,
     }
-    if isinstance(var_id_ls, int) or (len(var_id_ls) == 0):
-        # error if int
-        # there is no data for this particular combination.
-        # or if variable folder exists but is empty, also should give empty row
-        row_di = empty_row
-    elif len(var_id_ls) > 1:
-        # if this ever happens, we will need to think about how to handle it, so just exit for now :)
-        exit(
-            f"Unexpected result, multiple grid types found for ls operation on {var_path}"
+
+    # return row dicts as items in a list (allows for multiple row returns if >1 grid type)
+    list_of_row_dicts = []
+
+    # check if there is more than one institution listed for the model; list the filenames for each inst
+    if isinstance(model_inst_lu[model], str):
+        insts = [model_inst_lu[model]]
+    else:
+        insts = model_inst_lu[model]
+
+    for inst in insts:
+        var_path = node_prefix.joinpath(
+            activity,
+            inst,
+            model,
+            scenario,
+            variant,
+            table_id,
+            varname,
         )
-    elif len(var_id_ls) == 1:
-        grid_type = var_id_ls[0]
-        grid_path = var_path.joinpath(grid_type)
-        grid_type_ls = utils.operation_ls(tc, node_ep, grid_path)
 
-        if isinstance(grid_type_ls, int):
-            print(f"Unexpected result, ls error on supposed valid path: {grid_path}")
-            row_di = empty_row.update({"grid_type": grid_type})
-        elif len(grid_type_ls) > 0:
-            use_version = sorted(grid_type_ls)[-1]
-            version_path = var_path.joinpath(grid_type, use_version)
-            fns_ls = utils.operation_ls(tc, node_ep, version_path)
+        var_id_ls = utils.operation_ls(tc, node_ep, var_path)
+        if isinstance(var_id_ls, int) or (len(var_id_ls) == 0):
+            # error if int (indicates a http status code, probably error)
+            # or if there is no data for this particular combination,
+            # or if variable folder exists but is empty, also should give empty row
+            list_of_row_dicts.append(empty_row)
+        else:
+            for grid_type in var_id_ls:
+                grid_path = var_path.joinpath(grid_type)
+                grid_type_ls = utils.operation_ls(tc, node_ep, grid_path)
 
-            # handle possible missing files, even though version exists? new observation as of 2/14/24
-            if isinstance(fns_ls, int):
-                print(
-                    f"Unexpected result, ls error on supposed valid path: {version_path}"
-                )
-                row_di = empty_row.update(
-                    {"grid_type": grid_type, "version": use_version}
-                )
-            else:
-                n_files = len(fns_ls)
+                if isinstance(grid_type_ls, int):
+                    # not sure of other integer errors that happen besides 502
+                    #  which seems to happen on valid paths, possibly just network error
+                    # this will return list regardless
+                    grid_type_ls = run_ls_retry(tc, grid_type_ls, grid_path)
 
-                row_di = {
-                    "model": model,
-                    "scenario": scenario,
-                    "variant": variant,
-                    "table_id": table_id,
-                    "variable": varname,
-                    "grid_type": grid_type,
-                    "version": use_version,
-                    "n_files": n_files,
-                    "filenames": fns_ls,
-                }
+                if len(grid_type_ls) == 0:
+                    list_of_row_dicts.append(empty_row.update({"grid_type": grid_type}))
+                else:
+                    use_version = sorted(grid_type_ls)[-1]
+                    version_path = var_path.joinpath(grid_type, use_version)
+                    fns_ls = utils.operation_ls(tc, node_ep, version_path)
 
-    return row_di
+                    if isinstance(fns_ls, int):
+                        fns_ls = run_ls_retry(tc, fns_ls, version_path)
+
+                    if len(fns_ls) == 0:
+                        list_of_row_dicts.append(
+                            empty_row.update(
+                                {"grid_type": grid_type, "version": use_version}
+                            )
+                        )
+                    else:
+                        n_files = len(fns_ls)
+
+                        row_di = {
+                            "model": model,
+                            "scenario": scenario,
+                            "variant": variant,
+                            "table_id": table_id,
+                            "variable": varname,
+                            "grid_type": grid_type,
+                            "version": use_version,
+                            "n_files": n_files,
+                            "filenames": fns_ls,
+                        }
+
+                        list_of_row_dicts.append(row_di)
+
+    if len(list_of_row_dicts) == 0:
+        list_of_row_dicts.append(empty_row)
+
+    return list_of_row_dicts
 
 
-def make_holdings_table(tc, node_ep, node_prefix, variant_lut, ncpus, variable_lut):
+def make_holdings_table(
+    tc, node_ep, node_prefix, variant_lut, ncpus, variable_lut, model_inst_lu
+):
     """Create a table of filename availability for all models, scenarios, variants, and variable names"""
     # generate lists of arguments from all combinations of variables, models, and scenarios
     args = []
@@ -172,13 +246,26 @@ def make_holdings_table(tc, node_ep, node_prefix, variant_lut, ncpus, variable_l
                         row["variants"],
                         [t_id],
                         [var_id],
+                        [model_inst_lu],
                     )
                 )
 
     with Pool(ncpus) as pool:
-        rows = pool.starmap(get_filenames, args)
+        lists_of_row_dicts = pool.starmap(get_filenames, args)
 
-    filenames_lu = pd.DataFrame(rows)
+    # holdings data items are returned in lists, with some lists representing >1 row
+    # we need to combine these together as one master list of items to write to rows
+    rows = list(chain(*lists_of_row_dicts))
+    # do a final check for any non-dict items that will not translate to dataframe rows
+    # remove any items that are not dicts, and print error message
+    to_remove = []
+    for row in rows:
+        if not isinstance(row, dict):
+            print(f"Removing a row that is not a dict: {row}")
+            to_remove.append(row)
+    rows_for_df = [i for i in rows if i not in to_remove]
+
+    filenames_lu = pd.DataFrame(rows_for_df)
 
     return filenames_lu
 
@@ -201,12 +288,11 @@ if __name__ == "__main__":
     node_prefix = Path(globus_esgf_endpoints[esgf_node]["prefix"])
 
     # specify the models we are interested in
-    # currently this is just everything in the config.model_inst_lu table
-    models = list(model_inst_lu.keys())
+    models = models_of_interest
 
     # get a dataframe of variants available for each model and scenario
     variant_lut = make_model_variants_lut(
-        tc, node_ep, node_prefix, models, prod_scenarios, ncpus
+        tc, node_ep, node_prefix, model_inst_lu, models, prod_scenarios, ncpus
     )
 
     # Check that we won't get a particular error which pops up when the user has not logged into the ESGF node via Globus
@@ -237,6 +323,7 @@ if __name__ == "__main__":
         variant_lut=variant_lut,
         ncpus=ncpus,
         variable_lut=variable_lut,
+        model_inst_lu=model_inst_lu,
     )
 
     holdings_df.to_csv(f"{esgf_node}_esgf_holdings{outfn_suffix}.csv", index=False)

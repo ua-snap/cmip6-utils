@@ -44,15 +44,13 @@ def get_ymd_from_str(ymd_str):
         dt = datetime.strptime(ymd_str, "%Y%m%d%H%M")
         ymd_tuple = dt.year, dt.month, dt.day
     else:
-        print(ymd_str)
-        exit()
+        print(f"unexpected ymd_str: {ymd_str}. Aborting.")
 
     return ymd_tuple
 
 
 def split_by_filenames(row, variable_lut):
     row_di = row.to_dict()
-    row_di["filename"] = [fn.replace("'", "") for fn in row_di["filenames"]]
     if variable_lut[row_di["variable"]]["table_ids"][0] in ["fx", "Ofx"]:
         # these variables do not have time ranges
         row_di["start_year"] = [None]
@@ -74,10 +72,29 @@ def split_by_filenames(row, variable_lut):
         row_di["end_month"] = [ymd[1] for ymd in end_ymd]
         row_di["end_day"] = [ymd[2] for ymd in end_ymd]
 
+    row_di["filename"] = row_di["filenames"]
     del row_di["filenames"]
     del row_di["n_files"]
 
     return pd.DataFrame(row_di)
+
+
+def read_holdings_table(fp):
+    """Read CSV with converters to read holdings tables that include list of filenames as an element"""
+    df = pd.read_csv(
+        fp,
+        # a few files have invalid extensions like .nc_1, we will just omit those completely here
+        converters={
+            "filenames": lambda x: [
+                # this
+                y.replace("'", "")
+                for y in x.strip("[]").split(", ")
+                if y.replace("'", "").split(".")[-1] == "nc"
+            ]
+        },
+    )
+
+    return df
 
 
 if __name__ == "__main__":
@@ -94,17 +111,27 @@ if __name__ == "__main__":
         suffix = "_wrf"
         # for WRF, we only are after two models, for now:
         models = ["MPI-ESM1-2-HR", "MIROC6"]
+
+        e3sm_holdings = None
     else:
         variable_lut = variables
         suffix = ""
         # we want all models in prod_variant_lu if not WRF
         models = list(prod_variant_lu.keys())
 
-    holdings = pd.read_csv(
-        holdings_tmp_fn.format(esgf_node=ESGF_NODE, suffix=suffix),
-        # filenames column should be list for each row
-        converters={"filenames": lambda x: x.strip("[]").split(", ")},
+        # read in the E3SM holdings here (not WRF)
+        e3sm_holdings = read_holdings_table(
+            holdings_tmp_fn.format(esgf_node=ESGF_NODE, suffix="_e3sm")
+        )
+
+    holdings = read_holdings_table(
+        holdings_tmp_fn.format(esgf_node=ESGF_NODE, suffix=suffix)
     )
+
+    # concat in e3sm holdings if present
+    if e3sm_holdings is not None:
+        holdings = pd.concat([holdings, e3sm_holdings])
+
     # ignore rows where data not on LLNL node for now
     holdings = holdings.query("~n_files.isnull()")
 
@@ -119,8 +146,15 @@ if __name__ == "__main__":
             for model in models:
                 # subset to the variant we will be mirroring
                 variant = prod_variant_lu[model]
-                query_str = f"model == '{model}' & variant == '{variant}' & table_id == '{t_id}' & variable == '{var_id}'"
-                pre_manifest.append(holdings.query(query_str))
+                # iterate over grid types if there is more than 1
+                if isinstance(prod_grid_lu[model], list):
+                    grid_types = prod_grid_lu[model]
+                    query_str = f"model == '{model}' & variant == '{variant}' & table_id == '{t_id}' & variable == '{var_id}' & grid_type in @grid_types"
+                    pre_manifest.append(holdings.query(query_str))
+                else:
+                    grid_type = prod_grid_lu[model]
+                    query_str = f"model == '{model}' & variant == '{variant}' & table_id == '{t_id}' & variable == '{var_id}' & grid_type == '{grid_type}'"
+                    pre_manifest.append(holdings.query(query_str))
 
     pre_manifest = pd.concat(pre_manifest)
 

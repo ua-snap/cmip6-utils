@@ -17,10 +17,11 @@ acdn_prefix = Path("/CMIP6")
 # the endpoint for the LLNL ESGF node
 llnl_ep = "1889ea03-25ad-4f9f-8110-1ce8833a9d7e"
 
-ceda_ep = "ee3aa1a0-7e4c-11e6-afc4-22000b92c261"
-
 # path prefix for LLNL ESGF CMIP6 data
 llnl_prefix = Path("/css03_data/CMIP6")
+
+# E3SM scenarioMIP data has different prefix
+e3sm_prefix = Path("/user_pub_work/CMIP6")
 
 # template name for an  ESGF holdings audit table
 # wrf versions will have _wrf suffix
@@ -55,17 +56,42 @@ prod_variant_lu = {
     "KACE-1-0-G": "r1i1p1f1",
     "MIROC6": "r1i1p1f1",
     "MPI-ESM1-2-HR": "r1i1p1f1",
+    "CESM2": "r11i1p1f1",
     "MRI-ESM2-0": "r1i1p1f1",
     "NorESM2-MM": "r1i1p1f1",
     "TaiESM1": "r1i1p1f1",
-    "CESM2-WACCM": "r1i1p1f1",
+    # E3SM variants were chosen from looking at globus-available data in the MetaGrid app
+    "E3SM-1-1": "r1i1p1f1",
+    "E3SM-2-0": "r1i1p1f1",
+}
+
+# production models and grids to mirror
+# determined using select_grids.ipynb
+prod_grid_lu = {
+    "CNRM-CM6-1-HR": ["gn", "gr"],
+    "EC-Earth3-Veg": ["gn", "gr"],
+    "GFDL-ESM4": "gr1",
+    "HadGEM3-GC31-LL": "gn",
+    "HadGEM3-GC31-MM": "gn",
+    "KACE-1-0-G": "gr",
+    "MIROC6": "gn",
+    "MPI-ESM1-2-HR": "gn",
+    "MPI-ESM1-2-LR": "gn",
+    "MRI-ESM2-0": "gn",
+    "NorESM2-MM": "gn",
+    "TaiESM1": "gn",
+    "CESM2": "gn",
+    # only one E3SM grid is available
+    "E3SM-1-1": "gr",
+    "E3SM-2-0": "gr",
 }
 
 # this lookup includes all models of interest, including some that will NOT be transferred,
-#  left in here for compatability with any exploratory efforts
+# left in here for compatability with any exploratory efforts
 model_inst_lu = {
     "ACCESS-CM2": "CSIRO-ARCCSS",
     "CESM2": "NCAR",
+    "CESM2-WACCM": "NCAR",
     "CNRM-CM6-1-HR": "CNRM-CERFACS",
     "EC-Earth3-Veg": "EC-Earth-Consortium",
     "GFDL-ESM4": "NOAA-GFDL",
@@ -73,17 +99,48 @@ model_inst_lu = {
     "HadGEM3-GC31-MM": "MOHC",
     "KACE-1-0-G": "NIMS-KMA",
     "MIROC6": "MIROC",
-    "MRI-ESM2-0": "MPI-M",
+    "MRI-ESM2-0": "MRI",
     "NorESM2-MM": "NCC",
     "TaiESM1": "AS-RCEC",
-    "CESM2-WACCM": "NCAR",
-    # Another oddity - MPI-ESM1-2-* models have different representation among the institutions, or "Institution ID".
-    # the -HR version is apparently mostly available under "DKRZ". The -LR version is mostly available under "MPI-M".
-    # There is apparently mixing, too, as the -HR version has historical data under "MPI-M", and the -LR version has
-    #  data available under "DKRZ". We will just go with the institution which has the majority for each, for now.
-    "MPI-ESM1-2-HR": "DKRZ",
+    # # Another oddity - MPI-ESM1-2-* models have different representation among the institutions, or "Institution ID":
+    # # The -HR version is apparently mostly available under "DKRZ", except for the historical data which is all under "MPI-M".
+    # # We will need to transfer data from both of these instiutions to have both historical and ScenarioMIP data.
+    "MPI-ESM1-2-HR": [
+        "MPI-M",
+        "DKRZ",
+    ],  # historical and ScenarioMIP data for MPI-ESM1-2-HR, respectively. Historical must be first in the list!
+    # # The -LR version is mostly available under "MPI-M", but has some ssp119 data available under "DKRZ".
+    # # We will only transfer from "MPI-M" in this case.
     "MPI-ESM1-2-LR": "MPI-M",
+    # # We will also look for E3SM Project data
+    "E3SM-1-0": "E3SM-Project",
+    "E3SM-1-1": "E3SM-Project",
+    "E3SM-1-1-ECA": "E3SM-Project",
+    "E3SM-2-0": "E3SM-Project",
+    "E3SM-2-0-NARRM": "E3SM-Project",
 }
+
+# lists of models of interest
+# these are all of the models we want to check holdings for
+models_of_interest = [
+    "ACCESS-CM2",
+    "CESM2",
+    "CNRM-CM6-1-HR",
+    "EC-Earth3-Veg",
+    "GFDL-ESM4",
+    "HadGEM3-GC31-LL",
+    "HadGEM3-GC31-MM",
+    "KACE-1-0-G",
+    "MIROC6",
+    "MRI-ESM2-0",
+    "NorESM2-MM",
+    "TaiESM1",
+    "MPI-ESM1-2-HR",
+    "CESM2-WACCM",
+    "MPI-ESM1-2-LR",
+]
+# E3SM-1-1-NARRM not available on globus according to MetaGrid
+e3sm_models_of_interest = ["E3SM-1-0", "E3SM-1-1", "E3SM-2-0", "E3SM-1-1-ECA"]
 
 # we will just use this dict as the reference for production variables.
 variables = {
