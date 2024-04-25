@@ -120,21 +120,9 @@ if __name__ == "__main__":
         models = list(prod_variant_lu.keys())
 
         # read in the E3SM holdings here (not WRF)
-        # e3sm_holdings = pd.read_csv(
-        #     holdings_tmp_fn.format(esgf_node=ESGF_NODE, suffix="_e3sm"),
-        #     # filenames column should be list for each row
-        #     converters={"filenames": [y.replace("'", "") for y in x.strip("[]").split(", ")]},
-        # )
-
         e3sm_holdings = read_holdings_table(
             holdings_tmp_fn.format(esgf_node=ESGF_NODE, suffix="_e3sm")
         )
-
-    # holdings = pd.read_csv(
-    #     holdings_tmp_fn.format(esgf_node=ESGF_NODE, suffix=suffix),
-    #     # filenames column should be list for each row
-    #     converters={"filenames": [y.replace("'", "") for y in x.strip("[]").split(", ")]},
-    # )
 
     holdings = read_holdings_table(
         holdings_tmp_fn.format(esgf_node=ESGF_NODE, suffix=suffix)
