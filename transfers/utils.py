@@ -167,15 +167,10 @@ def operation_ls(tc, ep, path):
     Returns:
         contents (list): list of contents (as strings) in the directory or HTTP error code
     """
-    n = 5
-    for retry in range(n):
-        try:
-            r = tc.operation_ls(ep, path)
-        except globus_sdk.TransferAPIError as exc:
-            if retry < n - 1:
-                continue
-            else:
-                return exc.http_status
+    try:
+        r = tc.operation_ls(ep, path)
+    except globus_sdk.TransferAPIError as exc:
+        return exc.http_status
 
     contents = [item["name"] for item in r]
     return contents
