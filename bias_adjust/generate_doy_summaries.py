@@ -8,7 +8,12 @@ Output summary file will be written to working_dir/<config.output_dir_name>/qc/d
 import argparse
 from pathlib import Path
 import xarray as xr
-from config import output_dir_name, qc_dir_name
+from config import (
+    output_dir_name,
+    qc_dir_name,
+    doy_summary_tmp_fn,
+    doy_summary_dir_name,
+)
 from bias_adjust import generate_cmip6_fp
 from slurm import get_directories
 
@@ -48,6 +53,9 @@ def open_and_extract_stats(fps, dim_kwargs):
 
     stat_ds = add_dims(stat_ds, **dim_kwargs)
     del da
+
+    if "height" in stat_ds.coords:
+        stat_ds = stat_ds.drop_vars("height")
 
     return stat_ds
 
@@ -97,7 +105,9 @@ if __name__ == "__main__":
 
     models = [fp.name for fp in sim_dir.glob("*")]
 
-    ds_list = []
+    out_dir = working_dir.joinpath(output_dir_name, qc_dir_name, doy_summary_dir_name)
+    out_dir.mkdir(exist_ok=True, parents=True)
+    # just iterate and write results for each combination
     for model in models:
         for var_id in ["pr", "tasmin", "tasmax"]:
             for scenario in ["historical", "ssp126", "ssp245", "ssp370", "ssp585"]:
@@ -110,17 +120,12 @@ if __name__ == "__main__":
                 dim_kwargs = dict(scenario=scenario, var_id=var_id, model=model)
                 dim_kwargs.update(kind="sim")
                 proj_sim_ds = open_and_extract_stats(sim_fps, dim_kwargs)
-                ds_list.append(proj_sim_ds)
+                out_fp = out_dir.joinpath(doy_summary_tmp_fn.format(**dim_kwargs))
+                proj_sim_ds.to_netcdf(out_fp)
                 print(model, scenario, var_id, "sim done")
 
                 dim_kwargs.update(kind="adj")
                 proj_adj_ds = open_and_extract_stats(adj_fps, dim_kwargs)
-                ds_list.append(proj_adj_ds)
+                out_fp = out_dir.joinpath(doy_summary_tmp_fn.format(**dim_kwargs))
+                proj_adj_ds.to_netcdf(out_fp)
                 print(model, scenario, var_id, "adj done")
-
-    print("merging results")
-    out_ds = xr.merge(ds_list).drop_vars("height")
-
-    out_fp = working_dir.joinpath(output_dir_name, qc_dir_name, "doy_summaries.nc")
-    out_fp.parent.mkdir(exist_ok=True)
-    out_ds.to_netcdf(out_fp)
