@@ -1,4 +1,5 @@
 output_dir_name = "bias_adjust"
+qc_dir_name = "qc"
 
 ref_tmp_fn = "era5_daily_regrid_{ref_var_id}_{year}.nc"
 
