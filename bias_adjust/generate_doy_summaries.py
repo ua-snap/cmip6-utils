@@ -8,6 +8,7 @@ Output summary file will be written to working_dir/<config.output_dir_name>/qc/d
 import argparse
 from pathlib import Path
 import xarray as xr
+from xclim import units
 from config import (
     output_dir_name,
     qc_dir_name,
@@ -38,10 +39,21 @@ def add_dims(ds, kind, scenario, var_id, model):
     ).expand_dims(["kind", "scenario", "var_id", "model"])
 
 
+def force_precip_flux(da):
+    """ "Just ensures precip data has standardized units"""
+    da = units.convert_units_to(da, "kg m-2 s-1")
+
+    return da
+
+
 def open_and_extract_stats(fps, dim_kwargs):
     with xr.open_mfdataset(fps) as ds:
         # just load all the data at once if possible? should be only couple of GBs max
         da = ds[dim_kwargs["var_id"]].load()
+
+        if dim_kwargs["var_id"] == "pr":
+            da = force_precip_flux(da)
+
         doy_da = da.groupby("time.dayofyear")
         stat_ds = xr.merge(
             [
@@ -56,6 +68,8 @@ def open_and_extract_stats(fps, dim_kwargs):
 
     if "height" in stat_ds.coords:
         stat_ds = stat_ds.drop_vars("height")
+    if "spatial_ref" in stat_ds.coords:
+        stat_ds = stat_ds.drop_vars("spatial_ref")
 
     return stat_ds
 
