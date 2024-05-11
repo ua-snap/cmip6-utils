@@ -18,6 +18,8 @@ from config import (
 from bias_adjust import generate_cmip6_fp
 from slurm import get_directories
 
+PR_UNITS = "kg m-2 s-1"
+
 
 def get_sim_fps(model, scenario, var_id):
     """Return list of both original and adjusted simulated (model) filepaths"""
@@ -40,10 +42,17 @@ def add_dims(ds, kind, scenario, var_id, model):
 
 
 def force_precip_flux(da):
-    """ "Just ensures precip data has standardized units"""
-    da = units.convert_units_to(da, "kg m-2 s-1")
+    """Just ensures precip data has standardized units"""
+    da = units.convert_units_to(da, PR_UNITS)
 
     return da
+
+
+def add_units(ds, units):
+    for var_id in ["min", "mean", "max"]:
+        ds[var_id].attrs["units"] = units
+
+    return ds
 
 
 def open_and_extract_stats(fps, dim_kwargs):
@@ -63,6 +72,7 @@ def open_and_extract_stats(fps, dim_kwargs):
             ]
         )
 
+    stat_ds = add_units(stat_ds, da.attrs["units"])
     stat_ds = add_dims(stat_ds, **dim_kwargs)
     del da
 
