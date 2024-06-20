@@ -1,0 +1,31 @@
+title : Exploratory Bias Adjustment of SNAP CMIP6 data
+author: Kyle Redilla
+#logo: 
+
+# Short description about the book
+description: >-
+  Exploratory data analysis performed to help develop a bias adjustment pipeline for CMIP6 data.
+
+execute:
+  execute_notebooks : force
+  timeout: 300
+
+# HTML-specific settings
+html:
+  home_page_in_navbar : false
+
+# Interact link settings
+notebook_interface : "notebook"
+
+# Launch button settings
+repository:
+  url : https://github.com/ua-snap/cmip6-utils
+  path_to_book : "bias_adjust/eda_book"
+
+# LaTeX settings
+# bibtex_bibfiles:
+#    - _bibliography/references.bib
+# latex:
+#   latex_engine                : "xelatex"
+#   latex_documents:
+#     targetname: book.tex

@@ -1,0 +1,5 @@
+format: jb-article
+root: intro
+sections:
+- file: ba_tasmax
+- file: ba_pr
