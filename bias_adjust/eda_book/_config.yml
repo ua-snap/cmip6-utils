@@ -8,7 +8,7 @@ description: >-
 
 execute:
   execute_notebooks : force
-  timeout: 400
+  timeout: 1000
 
 # HTML-specific settings
 html:
