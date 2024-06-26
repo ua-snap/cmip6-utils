@@ -37,6 +37,32 @@ def get_era5_fps(var_id, start_year, end_year):
     ]
 
 
+def get_all_hist_fps(
+    model,
+    var_id,
+    hist_start_year=1993,
+    hist_end_year=2014,
+    sim_ref_start_year=2015,
+    sim_ref_end_year=2022,
+):
+    """Get all historical filepaths for a given model and variable."""
+    var_id = "pr"
+    hist_start_year = 1993
+    hist_end_year = 2014
+    hist_fps = get_cmip6_fps(
+        model, "historical", var_id, hist_start_year, hist_end_year
+    )
+
+    scenario = "ssp585"
+    sim_ref_start_year = 2015
+    sim_ref_end_year = 2022
+    sim_ref_fps = get_cmip6_fps(
+        model, scenario, var_id, sim_ref_start_year, sim_ref_end_year
+    )
+
+    return hist_fps, sim_ref_fps
+
+
 # we will always be pulling out the dataarray from a dataset and rechunking, so make a function for that
 def get_rechunked_da(ds, var_id, lat_chunk=20, lon_chunk=20):
     return ds[var_id].chunk({"time": -1, "lat": lat_chunk, "lon": lon_chunk})
@@ -66,10 +92,11 @@ def print_q15_ratio(ref, hist, doy):
     print(f"Ratio (ref / hist): {ref_doy_q15 / hist_doy_q15:.2f}")
 
 
-def compute_rmse(da1, da2):
+def rmse(da1, da2):
     # copilot code
     # Ensure the two DataArrays have the same shape
-    assert da1.shape == da2.shape, "DataArrays must have the same shape"
+    if not da1.shape == da2.shape:
+        da2 = da2.transpose(*da1.dims)
 
     # Compute the squared difference between the two DataArrays
     squared_diff = (da1 - da2) ** 2
@@ -83,7 +110,7 @@ def compute_rmse(da1, da2):
     return rmse
 
 
-def run_adjust(ref, hist, ju_thresh, adapt_freq_thresh, det):
+def run_adjust(ref, hist, det, ju_thresh, adapt_freq_thresh="1 mm d-1"):
     if ref.attrs["units"] == "m":
         ref.attrs["units"] = "m d-1"
     ref_ju = sdba.processing.jitter_under_thresh(ref, thresh=ju_thresh)
@@ -108,3 +135,25 @@ def doy_means(da, dims=None):
     doy_means = da.groupby("time.dayofyear").mean()
 
     return doy_means.compute()
+
+
+def doy_stats(da, stat_func):
+    doy_stats = stat_func(da.groupby("time.dayofyear"))
+    return doy_stats.compute()
+
+
+def run_adjust_and_compute_doy_rmse(
+    ref,
+    hist,
+    det,
+    ju_thresh="0.01 mm d-1",
+    adapt_freq_thresh="1 mm d-1",
+    doy_stat_func=np.mean,
+):
+    """Run an adjustment and compute the RMSE of DOY stats between the reference and adjusted data."""
+    scen = run_adjust(ref, hist, det, ju_thresh, adapt_freq_thresh)
+
+    ref_doy = doy_stats(ref, stat_func=doy_stat_func)
+    scen_doy = doy_stats(scen, stat_func=doy_stat_func)
+
+    return rmse(ref_doy.values, scen_doy.values)
