@@ -2,8 +2,9 @@
 
 from pathlib import Path
 import matplotlib.pyplot as plt
-from xclim import units, sdba
+from xclim import units, sdba, indices
 import numpy as np
+import xarray as xr
 
 
 # some constants for the paths to the data and such
@@ -12,6 +13,14 @@ era5_dir = Path("/import/beegfs/CMIP6/arctic-cmip6/era5/daily_regrid")
 cmip6_dir = Path("/beegfs/CMIP6/kmredilla/cmip6_regridding/regrid")
 cmip6_tmp_fn = "{var_id}_day_{model}_{scenario}_regrid_{year}0101-{year}1231.nc"
 
+# lookups for functions and indices
+doy_func_lu = {"min": np.min, "max": np.max, "mean": np.mean}
+indices_lu = {
+    "mcdd": indices.maximum_consecutive_dry_days,
+    "dstl": indices.dry_spell_total_length,
+    "mcwd": indices.maximum_consecutive_wet_days,
+    "wstl": indices.wet_spell_total_length,
+}
 
 # we will be getting filepaths in a similar way many times. Make some functions to make this easier
 def get_cmip6_fps(model, scenario, var_id, start_year, end_year):
@@ -157,3 +166,27 @@ def run_adjust_and_compute_doy_rmse(
     scen_doy = doy_stats(scen, stat_func=doy_stat_func)
 
     return rmse(ref_doy.values, scen_doy.values)
+
+
+def summarize(da):
+    """Function for summarizing and packaging results for a given model over DOY and indices."""
+    results = {}
+
+    results["doy"] = {}
+    for func in doy_func_lu:
+        results["doy"][func] = doy_stats(da, doy_func_lu[func]).compute()
+
+    results["indices"] = {}
+    for func in indices_lu:
+        results["indices"][func] = indices_lu[func](da).rename(func).compute()
+
+    return results
+
+
+def get_hist(model, var_id):
+    """Get the dataarray of historical simulations for a given model and variable."""
+    hist_fps, sim_ref_fps = get_all_hist_fps("MIROC6", var_id)
+    hist_ds = xr.open_mfdataset(hist_fps + sim_ref_fps)
+    hist = get_rechunked_da(hist_ds, var_id)
+
+    return hist
