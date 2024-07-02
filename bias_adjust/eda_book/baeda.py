@@ -11,7 +11,6 @@ import xarray as xr
 cmip6_tmp_fn = "{var_id}_day_{model}_{scenario}_regrid_{year}0101-{year}1231.nc"
 era5_dir = Path("/import/beegfs/CMIP6/arctic-cmip6/era5/daily_regrid")
 cmip6_dir = Path("/beegfs/CMIP6/kmredilla/cmip6_regridding/regrid")
-cmip6_tmp_fn = "{var_id}_day_{model}_{scenario}_regrid_{year}0101-{year}1231.nc"
 
 # lookups for functions and indices
 doy_func_lu = {"min": np.min, "max": np.max, "mean": np.mean}
@@ -23,7 +22,7 @@ indices_lu = {
 }
 
 # we will be getting filepaths in a similar way many times. Make some functions to make this easier
-def get_cmip6_fps(model, scenario, var_id, start_year, end_year):
+def get_cmip6_fps(cmip6_dir, model, scenario, var_id, start_year, end_year):
     # need to supply scenario for projected years overlapping historical reference years
     return [
         cmip6_dir.joinpath(
@@ -39,7 +38,7 @@ def get_cmip6_fps(model, scenario, var_id, start_year, end_year):
     ]
 
 
-def get_era5_fps(var_id, start_year, end_year):
+def get_era5_fps(era5_dir, var_id, start_year, end_year):
     return [
         era5_dir.joinpath(var_id).joinpath(f"era5_daily_regrid_{var_id}_{year}.nc")
         for year in range(start_year, end_year + 1)
@@ -47,7 +46,7 @@ def get_era5_fps(var_id, start_year, end_year):
 
 
 def get_all_hist_fps(
-    model,
+    model_dir,
     var_id,
     hist_start_year=1993,
     hist_end_year=2014,
@@ -56,24 +55,26 @@ def get_all_hist_fps(
 ):
     """Get all historical filepaths for a given model and variable."""
     var_id = "pr"
+    model = model_dir.parts[-1]
+    cmip6_dir = model_dir.parent
     hist_start_year = 1993
     hist_end_year = 2014
     hist_fps = get_cmip6_fps(
-        model, "historical", var_id, hist_start_year, hist_end_year
+        cmip6_dir, model, "historical", var_id, hist_start_year, hist_end_year
     )
 
     scenario = "ssp585"
     sim_ref_start_year = 2015
     sim_ref_end_year = 2022
     sim_ref_fps = get_cmip6_fps(
-        model, scenario, var_id, sim_ref_start_year, sim_ref_end_year
+        cmip6_dir, model, scenario, var_id, sim_ref_start_year, sim_ref_end_year
     )
 
     return hist_fps, sim_ref_fps
 
 
 # we will always be pulling out the dataarray from a dataset and rechunking, so make a function for that
-def get_rechunked_da(ds, var_id, lat_chunk=20, lon_chunk=20):
+def get_rechunked_da(ds, var_id, lat_chunk=60, lon_chunk=60):
     return ds[var_id].chunk({"time": -1, "lat": lat_chunk, "lon": lon_chunk})
 
 
@@ -108,7 +109,7 @@ def rmse(da1, da2):
         da2 = da2.transpose(*da1.dims)
 
     # Compute the squared difference between the two DataArrays
-    squared_diff = (da1 - da2) ** 2
+    squared_diff = (da1.values - da2.values) ** 2
 
     # Compute the mean of the squared difference
     mean_squared_diff = squared_diff.mean()
@@ -183,10 +184,10 @@ def summarize(da):
     return results
 
 
-def get_hist(model, var_id):
+def get_hist(model_dir, var_id, chunks={"lat_chunk": 60, "lon_chunk": 60}):
     """Get the dataarray of historical simulations for a given model and variable."""
-    hist_fps, sim_ref_fps = get_all_hist_fps("MIROC6", var_id)
+    hist_fps, sim_ref_fps = get_all_hist_fps(model_dir, var_id)
     hist_ds = xr.open_mfdataset(hist_fps + sim_ref_fps)
-    hist = get_rechunked_da(hist_ds, var_id)
+    hist = get_rechunked_da(hist_ds, var_id, **chunks)
 
     return hist
