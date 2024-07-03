@@ -108,31 +108,48 @@ if __name__ == "__main__":
         "NorESM2-MM",
         "TaiESM1",
     ]
+
+    # these are the different thresholds we will iterate over
+    # the slurm jobs were initially only run for each model, but things were getting stuck so now it's one combination per job.
+    ju_thresholds = [f"{v} mm d-1" for v in [0.01, 0.1, 0.2, 0.3, 0.4]]
+    adapt_freq_thresholds = [f"{v} mm d-1" for v in [0.05, 0.5, 1, 1.5, 2, 2.5]]
+
     for model in models:
-        # filepath for slurm script
-        sbatch_file = sbatch_dir.joinpath(f"profile_adjustment_{model}.slurm")
-        # filepath for slurm stdout
-        sbatch_out_file = sbatch_dir.joinpath(
-            sbatch_file.name.replace(".slurm", "_%j.out")
-        )
-        model_dir = sim_dir.joinpath(model)
-        results_file = adj_prof_dir.joinpath(f"{model}_profiling_results.pkl")
+        for ju_thresh in ju_thresholds:
+            for af_thresh in adapt_freq_thresholds:
+                # numbered values for more sensible naming
+                ju_numeric = ju_thresh.split(" mm ")[0]
+                af_numeric = af_thresh.split(" mm ")[0]
+                # filepath for slurm script
+                sbatch_file = sbatch_dir.joinpath(
+                    f"profile_adjustment_{model}_ju{ju_numeric}_af{af_numeric}.slurm"
+                )
+                # filepath for slurm stdout
+                sbatch_out_file = sbatch_dir.joinpath(
+                    sbatch_file.name.replace(".slurm", "_%j.out")
+                )
+                model_dir = sim_dir.joinpath(model)
+                results_file = adj_prof_dir.joinpath(
+                    f"{model}_ju{ju_numeric}_af{af_numeric}_profiling_results.pkl"
+                )
 
-        sbatch_kwargs = {
-            "sbatch_file": sbatch_file,
-            "sbatch_out_file": sbatch_out_file,
-            "partition": "t2small",
-            "model_dir": model_dir,
-            "ref_dir": ref_dir,
-            "working_dir": working_dir,
-            "conda_init_script": "../conda_init.sh",
-            "profile_script": "profile_pr.py",
-            "results_file": results_file,
-            "env_name": "new_cmip6_utils",
-        }
+                sbatch_kwargs = {
+                    "sbatch_file": sbatch_file,
+                    "sbatch_out_file": sbatch_out_file,
+                    "partition": "t2small",
+                    "model_dir": model_dir,
+                    "ref_dir": ref_dir,
+                    "working_dir": working_dir,
+                    "ju_thresh": ju_thresh,
+                    "af_thresh": af_thresh,
+                    "conda_init_script": "../conda_init.sh",
+                    "profile_script": "profile_pr.py",
+                    "results_file": results_file,
+                    "env_name": "new_cmip6_utils",
+                }
 
-        make_sbatch_script(sbatch_kwargs)
-        job_id = submit_sbatch(sbatch_file)
-        job_ids.append(job_id)
+                make_sbatch_script(sbatch_kwargs)
+                job_id = submit_sbatch(sbatch_file)
+                job_ids.append(job_id)
 
     print(f"Submitted jobs: {job_ids}")

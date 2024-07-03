@@ -32,37 +32,52 @@ def parse_args():
         help="Path to directory of reference data with filepath structure <variable ID>/<files>",
     )
     parser.add_argument(
+        "--ju_thresh",
+        type=str,
+        help="Jitter-under threshold for the adjustment.",
+    )
+    parser.add_argument(
+        "--af_thresh",
+        type=str,
+        help="Frequency adaptation threshold for the adjustment.",
+    )
+    parser.add_argument(
         "--results_file",
         type=str,
         help="Path to write the resulting profiling data to. Will be a pickled list of results.",
     )
     args = parser.parse_args()
 
-    return (Path(args.model_dir), Path(args.ref_dir), Path(args.results_file))
+    return (
+        Path(args.model_dir),
+        Path(args.ref_dir),
+        Path(args.results_file),
+        args.ju_thresh,
+        args.af_thresh,
+    )
 
 
-def run_profile(model_dir, ref, det, ju_thresholds, adapt_freq_thresholds, var_id="pr"):
+def run_profile(model_dir, ref, det, ju_thresh, af_thresh, var_id="pr"):
     results = []
     hist = get_hist(
         model_dir, var_id, chunks=dict(lat_chunk=chunk_size, lon_chunk=chunk_size)
     )
-    for ju_thresh in ju_thresholds:
-        for adapt_freq_thresh in adapt_freq_thresholds:
-            with warnings.catch_warnings():
-                # getting warnings aboutlarge graph size, but have not figured out a way
-                #  to silence them here using the dask methods (e.g. dask.config.set)
-                warnings.simplefilter("ignore")
-                scen = run_adjust(ref, hist, det, ju_thresh, adapt_freq_thresh)
+    with warnings.catch_warnings():
+        # getting warnings aboutlarge graph size, but have not figured out a way
+        #  to silence them here using the dask methods (e.g. dask.config.set)
+        warnings.simplefilter("ignore")
+        scen = run_adjust(ref, hist, det, ju_thresh, af_thresh)
 
-            results.append(
-                {
-                    "ju_thresh": ju_thresh,
-                    "adapt_freq_thresh": adapt_freq_thresh,
-                    "results": summarize(scen),
-                }
-            )
+    results = {
+        "ju_thresh": ju_thresh,
+        "adapt_freq_thresh": af_thresh,
+        "results": summarize(scen),
+    }
 
-            print(f"({ju_thresh}, {adapt_freq_thresh}) done", end="; ", flush=True)
+    print(
+        f"Adjustment with jitter-under thresh: {ju_thresh}, frequency adapt thresh: {af_thresh} done",
+        flush=True,
+    )
 
     return results
 
@@ -72,6 +87,8 @@ if __name__ == "__main__":
         model_dir,
         ref_dir,
         results_file,
+        ju_thresh,
+        af_thresh,
     ) = parse_args()
 
     try:
@@ -88,10 +105,6 @@ if __name__ == "__main__":
             "array.slicing.split_large_chunks": False,
         },
     )
-
-    # these are the different thresholds we will iterate over
-    ju_thresholds = [f"{v} mm d-1" for v in [0.01, 0.1, 0.2, 0.3, 0.4]]
-    adapt_freq_thresholds = [f"{v} mm d-1" for v in [0.05, 0.5, 1, 1.5, 2, 2.5]]
 
     client = Client(n_workers=24, threads_per_worker=1)
 
@@ -114,10 +127,8 @@ if __name__ == "__main__":
 
     # Create the detrending object for reuse in adjustments
     det = LoessDetrend(group="time.dayofyear", d=0, niter=1, f=0.2, weights="tricube")
-    results = run_profile(
-        model_dir, ref, det, ju_thresholds, adapt_freq_thresholds, var_id="pr"
-    )
+    results = run_profile(model_dir, ref, det, ju_thresh, af_thresh, var_id="pr")
 
-    print(f"Done. Writing results to {results_file}.")
+    print(f"\nDone. Writing results to {results_file}.")
     with open(results_file, "wb") as f:
         pickle.dump(results, f)
