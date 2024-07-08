@@ -26,8 +26,9 @@ inst_models = [
     "MIROC_MIROC6",
     "EC-Earth-Consortium_EC-Earth3-Veg",
     "NCAR_CESM2",
-    "NCAR_CESM2-WACCM",
-    "MPI-M_MPI-ESM1-2-LR",
+    "MPI-M_MPI-ESM1-2-HR",
+    "DKRZ_MPI-ESM1-2-HR",
+    "MRI_MRI-ESM2-0",
 ]
 
 model_inst_lu = {
