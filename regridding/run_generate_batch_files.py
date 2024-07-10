@@ -82,7 +82,8 @@ if __name__ == "__main__":
         vars,
     ) = parse_args()
 
-    Path(regrid_batch_dir).mkdir(exist_ok=True, parents=True)
+    regrid_batch_dir.mkdir(exist_ok=True, parents=True)
+
 
     generate_batch_files_sbatch_fp = str(generate_batch_files_script).replace(
         ".py", ".slurm"

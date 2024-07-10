@@ -5,10 +5,13 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import xarray as xr
-from math import radians
 from multiprocessing import Pool
 import tqdm
 import argparse
+
+from concurrent.futures import ProcessPoolExecutor
+from multiprocessing import set_start_method
+
 
 from config import *
 
@@ -57,6 +60,12 @@ def get_grid(fp):
                 grid_di[f"{var_id}_max"] = None
                 grid_di[f"{var_id}_size"] = None
                 grid_di[f"{var_id}_step"] = None
+        ts_min = ds.time.values.min()
+        ts_max = ds.time.values.max()
+
+    # trying to help multiprocessing not hang, not ideal of course
+    ds.close()
+    del ds
 
     # create a new column that is a concatenation of all of these values
     grid_di["grid"] = "_".join([str(grid_di[key]) for key in grid_di.keys()])
@@ -67,7 +76,7 @@ def get_grid(fp):
 
     # only want to process files that have data from 1950-2100
     # want to save the earliest time, because we will just ignore projections greater than 2100, for now at least.
-    ts_min = ds.time.values.min()
+    # ts_min = ds.time.values.min()
     # using pd.Timestamp here because numpy datetime64 can hav OOB errors for large timestamps
     if isinstance(ts_min, np.datetime64):
         start_year = ts_min.astype("datetime64[Y]").astype(int) + 1970
@@ -77,7 +86,7 @@ def get_grid(fp):
     grid_di["start_year"] = start_year
 
     # Same thing as above but for last time in dataset
-    ts_max = ds.time.values.max()
+    # ts_max = ds.time.values.max()
     # using pd.Timestamp here because numpy datetime64 can hav OOB errors for large timestamps
     if isinstance(ts_max, np.datetime64):
         end_year = ts_max.astype("datetime64[Y]").astype(int) + 1970
@@ -90,16 +99,6 @@ def get_grid(fp):
     grid_di["filesize"] = fp.stat().st_size / (1e3**3)
 
     return grid_di
-
-
-def read_grids(fps):
-    """Read the grid info from all files in fps, using multiprocessing and with a progress bar"""
-    grids = []
-    with Pool(20) as pool:
-        for grid_di in tqdm.tqdm(pool.imap_unordered(get_grid, fps), total=len(fps)):
-            grids.append(grid_di)
-
-    return grids
 
 
 def write_batch_files(group_df, model, scenario):
@@ -157,6 +156,7 @@ def write_batch_files(group_df, model, scenario):
 
     return
 
+
 def parse_args():
     """Parse some arguments"""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -177,7 +177,7 @@ def parse_args():
         type=str,
         help="list of variables used in generating batch files",
         required=True,
-    )    
+    )
 
     args = parser.parse_args()
 
@@ -185,33 +185,45 @@ def parse_args():
         Path(args.cmip6_directory),
         Path(args.regrid_batch_dir),
         args.vars,
-        )
+    )
 
 
 if __name__ == "__main__":
-
-    (cmip6_dir,
-     regrid_batch_dir,
-     vars,
-     ) = parse_args()
+    (
+        cmip6_dir,
+        regrid_batch_dir,
+        vars,
+    ) = parse_args()
 
     # read the grid info from all files
-    results = []
+    fps = []
     for inst_model in inst_models:
         inst, model = inst_model.split("_")
-        fps = []
+        # fps = []
         for exp_id in ["ScenarioMIP", "CMIP"]:
             # add only daily and monthly files
             for var in vars.split():
                 fps.extend(
-                    list(cmip6_dir.joinpath(exp_id).glob(f"{inst}/{model}/**/*day/{var}/**/*.nc"))
+                    list(
+                        cmip6_dir.joinpath(exp_id).glob(
+                            f"{inst}/{model}/**/*day/{var}/**/*.nc"
+                        )
+                    )
                 )
                 fps.extend(
-                    list(cmip6_dir.joinpath(exp_id).glob(f"{inst}/{model}/**/*mon/{var}/**/*.nc"))
+                    list(
+                        cmip6_dir.joinpath(exp_id).glob(
+                            f"{inst}/{model}/**/*mon/{var}/**/*.nc"
+                        )
+                    )
                 )
-        results.append(read_grids(fps))
 
-    results_df = pd.concat([pd.DataFrame(rows) for rows in results])
+    grids = []
+    with Pool(14) as pool:
+        for grid_di in tqdm.tqdm(pool.imap_unordered(get_grid, fps), total=len(fps)):
+            grids.append(grid_di)
+
+    results_df = pd.DataFrame(grids)
 
     # here we will exclude some files.
     # we are only going to worry about regridding those which have a latitude variable for now.
