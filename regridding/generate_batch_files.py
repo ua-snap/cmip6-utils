@@ -1,18 +1,13 @@
 """Generate text files ("batch" files) containing all of the files we want to regrid broken up by model and scenario. It utilizes code from the explore_grids.ipynb notebook to select the files which need to be regridded."""
 
 
-from pathlib import Path
 import numpy as np
 import pandas as pd
 import xarray as xr
-from multiprocessing import Pool
 import tqdm
 import argparse
-
-from concurrent.futures import ProcessPoolExecutor
-from multiprocessing import set_start_method
-
-
+from multiprocessing import Pool, set_start_method
+from pathlib import Path
 from config import *
 
 # ignore serializationWarnings from xarray for datasets with multiple FillValues
@@ -101,7 +96,7 @@ def get_grid(fp):
     return grid_di
 
 
-def write_batch_files(group_df, model, scenario):
+def write_batch_files(group_df, model, scenario, frequency):
     """Write the batch file for a particular model and scenario group. Breaks up into multiple jobs if file count exceeds 500"""
 
     def generate_grid_names(df):
@@ -147,7 +142,7 @@ def write_batch_files(group_df, model, scenario):
         for i, chunk in enumerate(fp_chunks):
             batch_file = regrid_batch_dir.joinpath(
                 batch_tmp_fn.format(
-                    model=model, scenario=scenario, grid_name=grid_name, count=i
+                    model=model, scenario=scenario, frequency=frequency, grid_name=grid_name, count=i
                 )
             )
             with open(batch_file, "w") as f:
@@ -178,6 +173,12 @@ def parse_args():
         help="list of variables used in generating batch files",
         required=True,
     )
+    parser.add_argument(
+        "--freqs",
+        type=str,
+        help="list of variables used in generating batch files",
+        required=True,
+    )
 
     args = parser.parse_args()
 
@@ -185,6 +186,7 @@ def parse_args():
         Path(args.cmip6_directory),
         Path(args.regrid_batch_dir),
         args.vars,
+        args.freqs
     )
 
 
@@ -193,7 +195,10 @@ if __name__ == "__main__":
         cmip6_dir,
         regrid_batch_dir,
         vars,
+        freqs
     ) = parse_args()
+
+    set_start_method("spawn")
 
     # read the grid info from all files
     fps = []
@@ -203,25 +208,21 @@ if __name__ == "__main__":
         for exp_id in ["ScenarioMIP", "CMIP"]:
             # add only daily and monthly files
             for var in vars.split():
-                fps.extend(
-                    list(
-                        cmip6_dir.joinpath(exp_id).glob(
-                            f"{inst}/{model}/**/*day/{var}/**/*.nc"
+                for freq in freqs.split():
+                    fps.extend(
+                        list(
+                            cmip6_dir.joinpath(exp_id).glob(
+                                f"{inst}/{model}/**/*{freq}/{var}/**/*.nc"
+                            )
                         )
                     )
-                )
-                fps.extend(
-                    list(
-                        cmip6_dir.joinpath(exp_id).glob(
-                            f"{inst}/{model}/**/*mon/{var}/**/*.nc"
-                        )
-                    )
-                )
 
     grids = []
-    with Pool(14) as pool:
+    with Pool(20) as pool:
         for grid_di in tqdm.tqdm(pool.imap_unordered(get_grid, fps), total=len(fps)):
             grids.append(grid_di)
+        pool.close()
+        pool.join()
 
     results_df = pd.DataFrame(grids)
 
@@ -238,7 +239,7 @@ if __name__ == "__main__":
     results_df = results_df.query("start_year < @max_year")
     results_df = results_df.query("end_year > @min_year")
 
-    for name, group_df in results_df.groupby(["model", "scenario"]):
+    for name, group_df in results_df.groupby(["model", "scenario", "frequency"]):
         # make sure that there are not multiple grids within one model/scenario at this point
-        model, scenario = name
-        write_batch_files(group_df, model, scenario)
+        model, scenario, frequency = name
+        write_batch_files(group_df, model, scenario, frequency)

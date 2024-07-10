@@ -288,15 +288,17 @@ def Amonfreq_fix_time(out_ds, src_ds):
         cftime._cftime.Datetime360Day,
     ]:
         new_times = pd.to_datetime(
-            [f"{t.year}-{t.month}-15T12:00:00" for t in out_ds.time.values]
+            [f"{t.year}-{t.month}-15T12:00:00" for t in out_ds.time.values],
+            format="%Y-%m-%dT%H:%M:%S",
         )
     else:
         if not np.all(out_ds.time.dt.day.values == 15):
             new_times = pd.to_datetime(
                 [
-                    f"{year}-{month}-15T12:00:00"
+                    f"{year.item()}-{month.item()}-15T12:00:00"
                     for year, month in zip(out_ds.time.dt.year, out_ds.time.dt.month)
-                ]
+                ],
+                format="%Y-%m-%dT%H:%M:%S",
             )
         else:
             new_times = out_ds.time.values
@@ -368,7 +370,7 @@ def fix_time_and_write(out_ds, src_ds, out_fp):
     # not sure if they are always/never/sometimes kept through regridding
     for bnd_var in ["bnds", "lat_bnds", "lon_bnds", "time_bnds"]:
         if bnd_var in out_ds:
-            out_ds = out_ds.drop(bnd_var)
+            out_ds = out_ds.drop_vars(bnd_var)
 
     # write out everything (monthly and daily freqs) by year
     for year, year_ds in out_ds.groupby("time.year"):
