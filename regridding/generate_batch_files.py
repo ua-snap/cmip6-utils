@@ -237,7 +237,7 @@ if __name__ == "__main__":
     )
     # only regrid files if their starting date is less than or equal to 2101-01-01.
     results_df = results_df.query("start_year < @max_year")
-    results_df = results_df.query("end_year > @min_year")
+    results_df = results_df.query("end_year >= @min_year")
 
     for name, group_df in results_df.groupby(["model", "scenario", "frequency"]):
         # make sure that there are not multiple grids within one model/scenario at this point
