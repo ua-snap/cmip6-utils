@@ -4,6 +4,10 @@ This script is used to generate the batch_files/batch_<ESGF node>_(day|Amon)_<va
 
 Sample usage: 
     python generate_batch_files.py
+
+    or
+
+    python generate_batch_files.py --wrf
 """
 
 import argparse

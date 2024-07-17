@@ -91,7 +91,6 @@ def make_model_variants_lut(
     rows = list((chain(*lists_of_rows)))
 
     df = pd.DataFrame(rows)
-    print(df)
 
     return df.dropna()
 
@@ -287,13 +286,30 @@ if __name__ == "__main__":
     tc.endpoint_autoactivate(node_ep)
     node_prefix = Path(globus_esgf_endpoints[esgf_node]["prefix"])
 
-    # specify the models we are interested in
-    models = models_of_interest
+    # make the holdings table
+    if do_wrf:
+        models = wrf_models_of_interest
+        variable_lut = wrf_variables
+        # to keep consistent with process for auditing standard variables,
+        #  we need to add a "table_id" key to each child dict in the WRF variable dict.
+        #  We will do so using the main list of all possible subdaily table IDs.
+        for var_id in variable_lut:
+            variable_lut[var_id]["table_ids"] = subdaily_table_ids
+        outfn_suffix = "_wrf"
+        # based on manual audit by the downscaling group, we know we are only interested in a couple models for dyndown
+        model_inst_lu = {
+            model: model_inst_lu[model] for model in wrf_models_of_interest
+        }
+    else:
+        variable_lut = variables
+        models = models_of_interest
+        outfn_suffix = ""
 
     # get a dataframe of variants available for each model and scenario
     variant_lut = make_model_variants_lut(
         tc, node_ep, node_prefix, model_inst_lu, models, prod_scenarios, ncpus
     )
+    print(variant_lut)
 
     # Check that we won't get a particular error which pops up when the user has not logged into the ESGF node via Globus
     try:
@@ -302,19 +318,6 @@ if __name__ == "__main__":
         print(
             "Key error. Check that you have logged into the endpoint via the Globus app."
         )
-
-    # make the holdings table
-    if do_wrf:
-        variable_lut = wrf_variables
-        # to keep consistent with process for auditing standard variables,
-        #  we need to add a "table_id" key to each child dict in the WRF variable dict.
-        #  We will do so using the main list of all possible subdaily table IDs.
-        for var_id in variable_lut:
-            variable_lut[var_id]["table_ids"] = subdaily_table_ids
-        outfn_suffix = "_wrf"
-    else:
-        variable_lut = variables
-        outfn_suffix = ""
 
     holdings_df = make_holdings_table(
         tc=tc,
