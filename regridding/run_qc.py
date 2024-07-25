@@ -50,6 +50,24 @@ def parse_args():
         help="List of variables to QC, separated by whitespace (e.g. 'ta tas pr')",
         required=True,
     )
+    parser.add_argument(
+        "--freqs",
+        type=str,
+        help="list of frequencies used in generating batch files",
+        required=True,
+    )
+    parser.add_argument(
+        "--models",
+        type=str,
+        help="list of models used in generating batch files",
+        required=True,
+    )
+    parser.add_argument(
+        "--scenarios",
+        type=str,
+        help="list of scenarios used in generating batch files",
+        required=True,
+    )
 
     args = parser.parse_args()
 
@@ -61,6 +79,9 @@ def parse_args():
         Path(args.qc_script),
         Path(args.visual_qc_notebook),
         args.vars,
+        args.freqs,
+        args.models,
+        args.scenarios,
     )
 
 
@@ -89,6 +110,9 @@ if __name__ == "__main__":
         qc_script,
         visual_qc_notebook,
         vars,
+        freqs,
+        models,
+        scenarios,
     ) = parse_args()
 
     # Create QC directory
@@ -114,7 +138,7 @@ if __name__ == "__main__":
         f"source {conda_init_script}\n"
         f"conda activate cmip6-utils\n"
         # run the qc script
-        f"python {qc_script} --output_directory {output_directory} --vars '{vars}'"
+        f"python {qc_script} --output_directory {output_directory} --vars '{vars}' --freqs '{freqs}' --models '{models}' --scenarios '{scenarios}'\n"
     )
 
     # save the sbatch text as a new slurm file in the QC directory
