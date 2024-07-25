@@ -1,4 +1,5 @@
 """Script to build a slurm file that runs qc.py and qc.ipynb."""
+
 import argparse
 from pathlib import Path
 import subprocess
@@ -49,12 +50,6 @@ def parse_args():
         help="List of variables to QC, separated by whitespace (e.g. 'ta tas pr')",
         required=True,
     )
-    parser.add_argument(
-        "--slurm_email",
-        type=str,
-        help="Email address to send slurm messages to",
-        required=True,
-    )
 
     args = parser.parse_args()
 
@@ -66,7 +61,6 @@ def parse_args():
         Path(args.qc_script),
         Path(args.visual_qc_notebook),
         args.vars,
-        args.slurm_email,
     )
 
 
@@ -95,7 +89,6 @@ if __name__ == "__main__":
         qc_script,
         visual_qc_notebook,
         vars,
-        slurm_email,
     ) = parse_args()
 
     # Create QC directory
@@ -113,7 +106,6 @@ if __name__ == "__main__":
         "#SBATCH --nodes=1\n"
         f"#SBATCH --cpus-per-task=24\n"
         "#SBATCH --mail-type=FAIL\n"
-        f"#SBATCH --mail-user={slurm_email}\n"
         f"#SBATCH -p t2small\n"
         f"#SBATCH --output {qc_sbatch_out_fp}\n"
         # print start time
@@ -135,15 +127,18 @@ if __name__ == "__main__":
 
     output_nb = qc_dir.joinpath("visual_qc_out.ipynb")
 
-    visual_qc_notebook_sbatch_fp = qc_dir.joinpath(str(visual_qc_notebook.name).replace(".ipynb", "_nb.slurm"))
-    visual_qc_notebook_sbatch_out_fp = qc_dir.joinpath(str(visual_qc_notebook.name).replace(".ipynb", "_nb_%j.out"))
+    visual_qc_notebook_sbatch_fp = qc_dir.joinpath(
+        str(visual_qc_notebook.name).replace(".ipynb", "_nb.slurm")
+    )
+    visual_qc_notebook_sbatch_out_fp = qc_dir.joinpath(
+        str(visual_qc_notebook.name).replace(".ipynb", "_nb_%j.out")
+    )
 
     vqc_sbatch_text = (
         "#!/bin/sh\n"
         "#SBATCH --nodes=1\n"
         f"#SBATCH --cpus-per-task=24\n"
         "#SBATCH --mail-type=FAIL\n"
-        f"#SBATCH --mail-user={slurm_email}\n"
         f"#SBATCH -p t2small\n"
         f"#SBATCH --output {visual_qc_notebook_sbatch_out_fp}\n"
         # print start time
