@@ -33,12 +33,6 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
-        "--slurm_email",
-        type=str,
-        help="Email address to send slurm messages to",
-        required=True,
-    )
-    parser.add_argument(
         "--vars",
         type=str,
         help="list of variables used in generating batch files",
@@ -70,7 +64,6 @@ def parse_args():
         Path(args.generate_batch_files_script),
         Path(args.cmip6_directory),
         Path(args.regrid_batch_dir),
-        args.slurm_email,
         args.vars,
         args.freqs,
         args.models,
@@ -100,7 +93,6 @@ if __name__ == "__main__":
         generate_batch_files_script,
         cmip6_directory,
         regrid_batch_dir,
-        slurm_email,
         vars,
         freqs,
         models,
@@ -108,12 +100,11 @@ if __name__ == "__main__":
     ) = parse_args()
 
     regrid_batch_dir.mkdir(exist_ok=True, parents=True)
-
-    generate_batch_files_sbatch_fp = str(generate_batch_files_script).replace(
-        ".py", ".slurm"
-    )
-    generate_batch_files_sbatch_out_fp = str(generate_batch_files_script).replace(
-        ".py", "_%j.out"
+    slurm_dir = regrid_batch_dir.parent.joinpath("slurm")
+    slurm_dir.mkdir(exist_ok=True)
+    generate_batch_files_sbatch_fp = slurm_dir.joinpath("generate_batch_files.slurm")
+    generate_batch_files_sbatch_out_fp = str(generate_batch_files_sbatch_fp).replace(
+        ".slurm", "_%j.out"
     )
 
     sbatch_text = (
@@ -122,7 +113,6 @@ if __name__ == "__main__":
         f"#SBATCH --exclude=n138\n"
         f"#SBATCH --cpus-per-task=24\n"
         "#SBATCH --mail-type=FAIL\n"
-        f"#SBATCH --mail-user={slurm_email}\n"
         f"#SBATCH -p t2small\n"
         f"#SBATCH --output {generate_batch_files_sbatch_out_fp}\n"
         # print start time
@@ -131,7 +121,7 @@ if __name__ == "__main__":
         f"source {conda_init_script}\n"
         f"conda activate cmip6-utils\n"
         # run the generate batch files script
-        f"python {generate_batch_files_script} --cmip6_directory '{cmip6_directory}' --regrid_batch_dir '{regrid_batch_dir}' --vars '{vars}' --freqs '{freqs}' --models '{models} --scenarios '{scenarios}''\n"
+        f"python {generate_batch_files_script} --cmip6_directory '{cmip6_directory}' --regrid_batch_dir '{regrid_batch_dir}' --vars '{vars}' --freqs '{freqs}' --models '{models}' --scenarios '{scenarios}' \n"
     )
 
     # save the sbatch text as a new slurm file in the repo directory

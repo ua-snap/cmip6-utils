@@ -6,11 +6,10 @@ from pathlib import Path
 from config import *
 
 
-def make_sbatch_head(slurm_email, conda_init_script):
+def make_sbatch_head(conda_init_script):
     """Make a string of SBATCH commands that can be written into a .slurm script
 
     Args:
-        slurm_email (str): email address for slurm failures
         conda_init_script (path_like): path to a script that contains commands for initializing the shells on the compute nodes to use conda activate
 
     Returns:
@@ -22,7 +21,6 @@ def make_sbatch_head(slurm_email, conda_init_script):
         "#SBATCH --nodes=1\n"
         f"#SBATCH --cpus-per-task=24\n"
         "#SBATCH --mail-type=FAIL\n"
-        f"#SBATCH --mail-user={slurm_email}\n"
         f"#SBATCH -p t2small\n"
         "#SBATCH --output {sbatch_out_fp}\n"
         # print start time
@@ -123,12 +121,6 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
-        "--slurm_email",
-        type=str,
-        help="Email to send slurm messages to",
-        required=True,
-    )
-    parser.add_argument(
         "--conda_init_script",
         type=str,
         help="Path to conda init script",
@@ -181,7 +173,6 @@ def parse_args():
         Path(args.slurm_dir),
         Path(args.regrid_dir),
         Path(args.regrid_batch_dir),
-        args.slurm_email,
         Path(args.conda_init_script),
         Path(args.regrid_script),
         Path(args.target_grid_fp),
@@ -198,7 +189,6 @@ if __name__ == "__main__":
         slurm_dir,
         regrid_dir,
         regrid_batch_dir,
-        slurm_email,
         conda_init_script,
         regrid_script,
         target_grid_fp,
@@ -232,7 +222,7 @@ if __name__ == "__main__":
                     sbatch_fp.name.replace(".slurm", "_%j.out")
                 )
 
-                sbatch_head = make_sbatch_head(slurm_email, conda_init_script)
+                sbatch_head = make_sbatch_head(conda_init_script)
                 sbatch_regrid_kwargs = {
                     "sbatch_fp": sbatch_fp,
                     "sbatch_out_fp": sbatch_out_fp,
