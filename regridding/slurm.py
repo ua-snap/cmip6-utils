@@ -151,6 +151,30 @@ def parse_args():
         action="store_true",
         help="Do not overwrite existing regidded files",
     )
+    parser.add_argument(
+        "--vars",
+        type=str,
+        help="list of variables used in generating batch files",
+        required=True,
+    )
+    parser.add_argument(
+        "--freqs",
+        type=str,
+        help="list of frequencies (mon or day) used in generating batch files",
+        required=True,
+    )
+    parser.add_argument(
+        "--models",
+        type=str,
+        help="list of models used in generating batch files",
+        required=True,
+    )
+    parser.add_argument(
+        "--scenarios",
+        type=str,
+        help="list of scenarios used in generating batch files",
+        required=True,
+    )
     args = parser.parse_args()
 
     return (
@@ -162,6 +186,10 @@ def parse_args():
         Path(args.regrid_script),
         Path(args.target_grid_fp),
         args.no_clobber,
+        args.vars,
+        args.freqs,
+        args.models,
+        args.scenarios,
     )
 
 
@@ -175,6 +203,10 @@ if __name__ == "__main__":
         regrid_script,
         target_grid_fp,
         no_clobber,
+        vars,
+        freqs,
+        models,
+        scenarios,
     ) = parse_args()
 
     # make these dirs if they don't exist
@@ -184,29 +216,36 @@ if __name__ == "__main__":
     # build and write sbatch files
     sbatch_fps = []
     sbatch_dir = slurm_dir.joinpath("regrid")
-    # remove any existing slurm jobs in this directory
-    _ = [fp.unlink() for fp in sbatch_dir.glob("*.slurm")]
     sbatch_dir.mkdir(exist_ok=True)
-    for fp in regrid_batch_dir.glob("*.txt"):
-        sbatch_str = fp.name.split("batch_")[1].split(".txt")[0]
-        sbatch_fp = sbatch_dir.joinpath(f"regrid_{sbatch_str}.slurm")
-        # filepath for slurm stdout
-        sbatch_out_fp = sbatch_dir.joinpath(sbatch_fp.name.replace(".slurm", "_%j.out"))
 
-        sbatch_head = make_sbatch_head(slurm_email, conda_init_script)
-        sbatch_regrid_kwargs = {
-            "sbatch_fp": sbatch_fp,
-            "sbatch_out_fp": sbatch_out_fp,
-            "regrid_script": regrid_script,
-            "regrid_batch_dir": regrid_batch_dir,
-            "regrid_dir": regrid_dir,
-            "regrid_batch_fp": fp,
-            "dst_fp": target_grid_fp,
-            "no_clobber": no_clobber,
-            "sbatch_head": sbatch_head,
-        }
-        write_sbatch_regrid(**sbatch_regrid_kwargs)
-        sbatch_fps.append(sbatch_fp)
+    # remove any existing sbatch files in this directory.
+    #  Easier to keep track of things when the only jobs are those submitted from this directory.
+    _ = [fp.unlink() for fp in sbatch_dir.glob("*.slurm")]
+
+    for var in vars.split():
+        for freq in freqs.split():
+            for fp in regrid_batch_dir.glob(f"*{var}*{freq}*.txt"):
+                sbatch_str = fp.name.split("batch_")[1].split(".txt")[0]
+                sbatch_fp = sbatch_dir.joinpath(f"regrid_{sbatch_str}.slurm")
+                # filepath for slurm stdout
+                sbatch_out_fp = sbatch_dir.joinpath(
+                    sbatch_fp.name.replace(".slurm", "_%j.out")
+                )
+
+                sbatch_head = make_sbatch_head(slurm_email, conda_init_script)
+                sbatch_regrid_kwargs = {
+                    "sbatch_fp": sbatch_fp,
+                    "sbatch_out_fp": sbatch_out_fp,
+                    "regrid_script": regrid_script,
+                    "regrid_batch_dir": regrid_batch_dir,
+                    "regrid_dir": regrid_dir,
+                    "regrid_batch_fp": fp,
+                    "dst_fp": target_grid_fp,
+                    "no_clobber": no_clobber,
+                    "sbatch_head": sbatch_head,
+                }
+                write_sbatch_regrid(**sbatch_regrid_kwargs)
+                sbatch_fps.append(sbatch_fp)
 
     # remove existing slurm output files
     _ = [fp.unlink() for fp in sbatch_dir.glob("*.out")]

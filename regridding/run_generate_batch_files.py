@@ -1,4 +1,5 @@
 """Script to build a slurm file that runs generate_batch_files.py."""
+
 import argparse
 from pathlib import Path
 import subprocess
@@ -49,6 +50,18 @@ def parse_args():
         help="list of frequencies (mon or day) used in generating batch files",
         required=True,
     )
+    parser.add_argument(
+        "--models",
+        type=str,
+        help="list of models used in generating batch files",
+        required=True,
+    )
+    parser.add_argument(
+        "--scenarios",
+        type=str,
+        help="list of scenarios used in generating batch files",
+        required=True,
+    )
 
     args = parser.parse_args()
 
@@ -59,7 +72,9 @@ def parse_args():
         Path(args.regrid_batch_dir),
         args.slurm_email,
         args.vars,
-        args.freqs
+        args.freqs,
+        args.models,
+        args.scenarios,
     )
 
 
@@ -87,11 +102,12 @@ if __name__ == "__main__":
         regrid_batch_dir,
         slurm_email,
         vars,
-        freqs
+        freqs,
+        models,
+        scenarios,
     ) = parse_args()
 
     regrid_batch_dir.mkdir(exist_ok=True, parents=True)
-
 
     generate_batch_files_sbatch_fp = str(generate_batch_files_script).replace(
         ".py", ".slurm"
@@ -115,7 +131,7 @@ if __name__ == "__main__":
         f"source {conda_init_script}\n"
         f"conda activate cmip6-utils\n"
         # run the generate batch files script
-        f"python {generate_batch_files_script} --cmip6_directory '{cmip6_directory}' --regrid_batch_dir '{regrid_batch_dir}' --vars '{vars}' --freqs '{freqs}'\n"
+        f"python {generate_batch_files_script} --cmip6_directory '{cmip6_directory}' --regrid_batch_dir '{regrid_batch_dir}' --vars '{vars}' --freqs '{freqs}' --models '{models} --scenarios '{scenarios}''\n"
     )
 
     # save the sbatch text as a new slurm file in the repo directory

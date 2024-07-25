@@ -1,4 +1,8 @@
-"""Generate text files ("batch" files) containing all of the files we want to regrid broken up by model and scenario. It utilizes code from the explore_grids.ipynb notebook to select the files which need to be regridded."""
+"""Generate text files ("batch" files) containing all of the files we want to regrid broken up by frequency, model, scenario, and variable. 
+It utilizes code from the explore_grids.ipynb notebook to select the files which need to be regridded.
+
+
+"""
 
 import numpy as np
 import pandas as pd
@@ -95,7 +99,7 @@ def get_grid(fp):
     return grid_di
 
 
-def write_batch_files(group_df, model, scenario, frequency, regrid_batch_dir):
+def write_batch_files(group_df, model, scenario, var_id, frequency, regrid_batch_dir):
     """Write the batch file for a particular model and scenario group. Breaks up into multiple jobs if file count exceeds 500"""
 
     def generate_grid_names(df):
@@ -143,6 +147,7 @@ def write_batch_files(group_df, model, scenario, frequency, regrid_batch_dir):
                 batch_tmp_fn.format(
                     model=model,
                     scenario=scenario,
+                    var_id=var_id,
                     frequency=frequency,
                     grid_name=grid_name,
                     count=i,
@@ -179,7 +184,19 @@ def parse_args():
     parser.add_argument(
         "--freqs",
         type=str,
-        help="list of variables used in generating batch files",
+        help="list of frequencies used in generating batch files",
+        required=True,
+    )
+    parser.add_argument(
+        "--models",
+        type=str,
+        help="list of models used in generating batch files",
+        required=True,
+    )
+    parser.add_argument(
+        "--scenarios",
+        type=str,
+        help="list of scenarios used in generating batch files",
         required=True,
     )
 
@@ -190,30 +207,32 @@ def parse_args():
         Path(args.regrid_batch_dir),
         args.vars,
         args.freqs,
+        args.models,
+        args.scenarios,
     )
 
 
 if __name__ == "__main__":
-    (cmip6_dir, regrid_batch_dir, vars, freqs) = parse_args()
+    (cmip6_dir, regrid_batch_dir, vars, freqs, models, scenarios) = parse_args()
 
     set_start_method("spawn")
 
     # read the grid info from all files
     fps = []
-    for inst_model in inst_models:
-        inst, model = inst_model.split("_")
-        # fps = []
-        for exp_id in ["ScenarioMIP", "CMIP"]:
-            # add only daily and monthly files
-            for var in vars.split():
-                for freq in freqs.split():
-                    fps.extend(
-                        list(
-                            cmip6_dir.joinpath(exp_id).glob(
-                                f"{inst}/{model}/**/*{freq}/{var}/**/*.nc"
+    for exp_id in ["ScenarioMIP", "CMIP"]:
+        # add only daily and monthly files
+        for var in vars.split():
+            for freq in freqs.split():
+                for model in models.split():
+                    inst = model_inst_lu[model]
+                    for scenario in scenarios.split():
+                        fps.extend(
+                            list(
+                                cmip6_dir.joinpath(exp_id, inst, model, scenario).glob(
+                                    f"*/*{freq}/{var}/**/*.nc"
+                                )
                             )
                         )
-                    )
 
     grids = []
     with Pool(20) as pool:
@@ -240,7 +259,11 @@ if __name__ == "__main__":
     # remove all batch files. We will be generating only those which contain files to be regridded based on flow parameters.
     _ = [fp.unlink() for fp in regrid_batch_dir.glob("*.txt")]
 
-    for name, group_df in results_df.groupby(["model", "scenario", "frequency"]):
+    for name, group_df in results_df.groupby(
+        ["model", "scenario", "var_id", "frequency"]
+    ):
         # make sure that there are not multiple grids within one model/scenario at this point
-        model, scenario, frequency = name
-        write_batch_files(group_df, model, scenario, frequency, regrid_batch_dir)
+        model, scenario, var_id, frequency = name
+        write_batch_files(
+            group_df, model, scenario, var_id, frequency, regrid_batch_dir
+        )
