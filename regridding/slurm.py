@@ -6,7 +6,7 @@ from pathlib import Path
 from config import *
 
 
-def make_sbatch_head(conda_init_script):
+def make_sbatch_head(conda_init_script, conda_env_name):
     """Make a string of SBATCH commands that can be written into a .slurm script
 
     Args:
@@ -20,14 +20,13 @@ def make_sbatch_head(conda_init_script):
         "#!/bin/sh\n"
         "#SBATCH --nodes=1\n"
         f"#SBATCH --cpus-per-task=24\n"
-        "#SBATCH --mail-type=FAIL\n"
         f"#SBATCH -p t2small\n"
         "#SBATCH --output {sbatch_out_fp}\n"
         # print start time
         "echo Start slurm && date\n"
         # prepare shell for using activate
         f"source {conda_init_script}\n"
-        f"conda activate cmip6-utils\n"
+        f"conda activate {conda_env_name}\n"
     )
 
     return sbatch_head
@@ -127,6 +126,12 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
+        "--conda_env_name",
+        type=str,
+        help="Name of conda environment to activate",
+        required=True,
+    )
+    parser.add_argument(
         "--regrid_script",
         type=str,
         help="Path to regrid.py script",
@@ -174,6 +179,7 @@ def parse_args():
         Path(args.regrid_dir),
         Path(args.regrid_batch_dir),
         Path(args.conda_init_script),
+        args.conda_env_name,
         Path(args.regrid_script),
         Path(args.target_grid_fp),
         args.no_clobber,
@@ -190,6 +196,7 @@ if __name__ == "__main__":
         regrid_dir,
         regrid_batch_dir,
         conda_init_script,
+        conda_env_name,
         regrid_script,
         target_grid_fp,
         no_clobber,
@@ -222,7 +229,7 @@ if __name__ == "__main__":
                     sbatch_fp.name.replace(".slurm", "_%j.out")
                 )
 
-                sbatch_head = make_sbatch_head(conda_init_script)
+                sbatch_head = make_sbatch_head(conda_init_script, conda_env_name)
                 sbatch_regrid_kwargs = {
                     "sbatch_fp": sbatch_fp,
                     "sbatch_out_fp": sbatch_out_fp,

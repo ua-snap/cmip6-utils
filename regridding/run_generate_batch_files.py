@@ -15,6 +15,12 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
+        "--conda_env_name",
+        type=str,
+        help="Name of conda environment to activate",
+        required=True,
+    )
+    parser.add_argument(
         "--generate_batch_files_script",
         type=str,
         help="Path to script that generates batch files",
@@ -61,6 +67,7 @@ def parse_args():
 
     return (
         Path(args.conda_init_script),
+        args.conda_env_name,
         Path(args.generate_batch_files_script),
         Path(args.cmip6_directory),
         Path(args.regrid_batch_dir),
@@ -90,6 +97,7 @@ if __name__ == "__main__":
 
     (
         conda_init_script,
+        conda_env_name,
         generate_batch_files_script,
         cmip6_directory,
         regrid_batch_dir,
@@ -110,16 +118,14 @@ if __name__ == "__main__":
     sbatch_text = (
         "#!/bin/sh\n"
         "#SBATCH --nodes=1\n"
-        f"#SBATCH --exclude=n138\n"
         f"#SBATCH --cpus-per-task=24\n"
-        "#SBATCH --mail-type=FAIL\n"
         f"#SBATCH -p t2small\n"
         f"#SBATCH --output {generate_batch_files_sbatch_out_fp}\n"
         # print start time
         "echo Start slurm && date\n"
         # prepare shell for using activate
         f"source {conda_init_script}\n"
-        f"conda activate cmip6-utils\n"
+        f"conda activate {conda_env_name}\n"
         # run the generate batch files script
         f"python {generate_batch_files_script} --cmip6_directory '{cmip6_directory}' --regrid_batch_dir '{regrid_batch_dir}' --vars '{vars}' --freqs '{freqs}' --models '{models}' --scenarios '{scenarios}' \n"
     )
