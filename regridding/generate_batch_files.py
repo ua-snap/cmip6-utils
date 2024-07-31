@@ -215,7 +215,7 @@ def parse_args():
 if __name__ == "__main__":
     (cmip6_dir, regrid_batch_dir, vars, freqs, models, scenarios) = parse_args()
 
-    set_start_method("spawn")
+    set_start_method("fork")
 
     # read the grid info from all files
     fps = []
@@ -235,7 +235,8 @@ if __name__ == "__main__":
                         )
 
     grids = []
-    with Pool(20) as pool:
+    # using fewer cores than is available seems to improve likihood of not hanging!
+    with Pool(10) as pool:
         for grid_di in tqdm.tqdm(pool.imap_unordered(get_grid, fps), total=len(fps)):
             grids.append(grid_di)
         pool.close()
