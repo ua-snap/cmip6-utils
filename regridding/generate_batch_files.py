@@ -99,6 +99,39 @@ def get_grid(fp):
     return grid_di
 
 
+def read_grids(fps, progress=False):
+    """Read the grid info from all files in fps, using multiprocessing and with a progress bar"""
+    with Pool(20) as pool:
+        if progress:
+            grids = []
+            for grid_di in tqdm.tqdm(
+                pool.imap_unordered(get_grid, fps), total=len(fps)
+            ):
+                grids.append(grid_di)
+        else:
+            grids = pool.map(get_grid, fps)
+
+    return grids
+
+
+def chunk_list_of_files(fps, max_count):
+    """Helper function to chunk lists of files for appropriately-sized batches"""
+    fp_chunks = []
+    chunk = []
+    for fp in fps:
+        if len(chunk) >= max_count:
+            fp_chunks.append(chunk)
+            # re-initialize with current filepath
+            chunk = [fp]
+        else:
+            chunk.append(fp)
+
+    if len(chunk) > 0:
+        fp_chunks.append(chunk)
+
+    return fp_chunks
+
+
 def write_batch_files(group_df, model, scenario, var_id, frequency, regrid_batch_dir):
     """Write the batch file for a particular model and scenario group. Breaks up into multiple jobs if file count exceeds 500"""
 
@@ -199,7 +232,11 @@ def parse_args():
         help="list of scenarios used in generating batch files",
         required=True,
     )
-
+    parser.add_argument(
+        "--progress",
+        action="store_true",
+        help="Show progress bars (best used for interactive jobs, default is False)",
+    )
     args = parser.parse_args()
 
     return (
@@ -209,13 +246,17 @@ def parse_args():
         args.freqs,
         args.models,
         args.scenarios,
+        args.progress,
     )
 
 
 if __name__ == "__main__":
-    (cmip6_dir, regrid_batch_dir, vars, freqs, models, scenarios) = parse_args()
+    (cmip6_dir, regrid_batch_dir, vars, freqs, models, scenarios, progress) = (
+        parse_args()
+    )
 
-    set_start_method("fork")
+    # hopefully
+    set_start_method("spawn")
 
     # read the grid info from all files
     fps = []
@@ -235,12 +276,11 @@ if __name__ == "__main__":
                         )
 
     grids = []
-    # using fewer cores than is available seems to improve likihood of not hanging!
-    with Pool(10) as pool:
-        for grid_di in tqdm.tqdm(pool.imap_unordered(get_grid, fps), total=len(fps)):
-            grids.append(grid_di)
-        pool.close()
-        pool.join()
+    # pool seems to be more likely to hang on larger batches of inputs, so we will break up into smaller batches
+    # setting up a Pool is costly, but it might be more robust to just set it up each time, too, instead of re-using it.
+    fps = chunk_list_of_files(fps, 1000)
+    for i, batch in enumerate(fps):
+        grids.extend(read_grids(batch, progress=progress))
 
     results_df = pd.DataFrame(grids)
 
