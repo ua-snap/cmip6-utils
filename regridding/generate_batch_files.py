@@ -47,21 +47,27 @@ def fp_to_attrs(fp):
 
 def get_grid(fp):
     """Read the info from a grid for a single file"""
+    try:
+        # using the h5netcdf engine because it seems faster and might help prevent pool hanging
+        ds = xr.open_dataset(fp, engine="h5netcdf")
+    except OSError:
+        # this seems to have only failed due to some files (KACE model) being written in netCDF3 format
+        ds = xr.open_dataset(fp, engine="scipy")
+
     grid_di = {}
-    with xr.open_dataset(fp) as ds:
-        for var_id in GRID_VARS:
-            if var_id in ds.dims:
-                grid_di[f"{var_id}_min"] = ds[var_id].values.min()
-                grid_di[f"{var_id}_max"] = ds[var_id].values.max()
-                grid_di[f"{var_id}_size"] = ds[var_id].values.shape[0]
-                grid_di[f"{var_id}_step"] = np.diff(ds[var_id].values)[0]
-            else:
-                grid_di[f"{var_id}_min"] = None
-                grid_di[f"{var_id}_max"] = None
-                grid_di[f"{var_id}_size"] = None
-                grid_di[f"{var_id}_step"] = None
-        ts_min = ds.time.values.min()
-        ts_max = ds.time.values.max()
+    for var_id in GRID_VARS:
+        if var_id in ds.dims:
+            grid_di[f"{var_id}_min"] = ds[var_id].values.min()
+            grid_di[f"{var_id}_max"] = ds[var_id].values.max()
+            grid_di[f"{var_id}_size"] = ds[var_id].values.shape[0]
+            grid_di[f"{var_id}_step"] = np.diff(ds[var_id].values)[0]
+        else:
+            grid_di[f"{var_id}_min"] = None
+            grid_di[f"{var_id}_max"] = None
+            grid_di[f"{var_id}_size"] = None
+            grid_di[f"{var_id}_step"] = None
+    ts_min = ds.time.values.min()
+    ts_max = ds.time.values.max()
 
     # trying to help multiprocessing not hang, not ideal of course
     ds.close()
