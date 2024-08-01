@@ -1,10 +1,11 @@
 """Generate a netcdf dataset of DOY summaries for subsequent quality control of bias adjusted outputs.
 
 Example usage:
-    python generate_doy_summaries.py --working_dir /import/beegfs/CMIP6/kmredilla --sim_dir /import/beegfs/CMIP6/kmredilla/cmip6_regridding/regrid
+    python generate_doy_summaries.py --var_id pr --model GFDL-ESM4 --scenario ssp585 --working_dir /import/beegfs/CMIP6/kmredilla --sim_dir /import/beegfs/CMIP6/kmredilla/cmip6_regridding/regrid
 
 Output summary file will be written to working_dir/<config.output_dir_name>/qc/doy_summaries.nc
 """
+
 import argparse
 from pathlib import Path
 import xarray as xr
@@ -21,9 +22,17 @@ from slurm import get_directories
 PR_UNITS = "kg m-2 s-1"
 
 
-def get_sim_fps(model, scenario, var_id):
+def get_sim_fps(model, scenario, var_id, hist_years=None, proj_years=None):
     """Return list of both original and adjusted simulated (model) filepaths"""
+
+    sim_dir = "/import/beegfs/CMIP6/arctic-cmip6/regrid"
+    sim_dir = Path(sim_dir)
+
+    adj_dir = "/import/beegfs/CMIP6/crstephenson/bias_adjust/netcdf"
+    adj_dir = Path(adj_dir)
+
     years = hist_years if scenario == "historical" else proj_years
+
     sim_fps = [
         generate_cmip6_fp(sim_dir, model, scenario, var_id, year) for year in years
     ]
@@ -89,6 +98,24 @@ def parse_args():
     # parameters cell
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        "--var_id",
+        type=str,
+        help="Variable ID to adjust",
+        required=True,
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        help="Model to adjust",
+        required=True,
+    )
+    parser.add_argument(
+        "--scenario",
+        type=str,
+        help="Scenario to adjust",
+        required=True,
+    )
+    parser.add_argument(
         "--working_dir",
         type=str,
         help="Working directory, which will be used to derive the adjusted output directory from config",
@@ -103,14 +130,16 @@ def parse_args():
     args = parser.parse_args()
 
     return (
+        args.var_id,
+        args.model,
+        args.scenario,
         Path(args.working_dir),
         Path(args.sim_dir),
     )
 
 
 if __name__ == "__main__":
-    working_dir, sim_dir = parse_args()
-    # some other useful global variables
+    (var_id, model, scenario, working_dir, sim_dir) = parse_args()
 
     hist_start_year = 1951
     hist_end_year = 2014
@@ -122,7 +151,7 @@ if __name__ == "__main__":
 
     working_dir = Path(working_dir)
     sim_dir = Path(sim_dir)
-    cmip6_tmp_fn = "{var_id}_day_{model}_{scenario}_regrid_{year}0101-{year}1231.nc"
+    cmip6_tmp_fn = "{var_id}_day_{model}_{scenario}_adjusted_{year}0101-{year}1231.nc"
 
     output_dir, adj_dir = get_directories(working_dir, output_dir_name)
     log_dir = "."
@@ -131,25 +160,21 @@ if __name__ == "__main__":
 
     out_dir = working_dir.joinpath(output_dir_name, qc_dir_name, doy_summary_dir_name)
     out_dir.mkdir(exist_ok=True, parents=True)
-    # just iterate and write results for each combination
-    for model in models:
-        for var_id in ["pr", "tasmin", "tasmax"]:
-            for scenario in ["historical", "ssp126", "ssp245", "ssp370", "ssp585"]:
 
-                sim_fps, adj_fps = get_sim_fps(model, scenario, var_id)
-                if len(adj_fps) == 0:
-                    print("No adjusted data found for ", model, scenario, var_id)
-                    continue
+    sim_fps, adj_fps = get_sim_fps(model, scenario, var_id, hist_years, proj_years)
+    if len(adj_fps) == 0:
+        print("No adjusted data found for ", model, scenario, var_id)
+        exit(1)
 
-                dim_kwargs = dict(scenario=scenario, var_id=var_id, model=model)
-                dim_kwargs.update(kind="sim")
-                proj_sim_ds = open_and_extract_stats(sim_fps, dim_kwargs)
-                out_fp = out_dir.joinpath(doy_summary_tmp_fn.format(**dim_kwargs))
-                proj_sim_ds.to_netcdf(out_fp)
-                print(model, scenario, var_id, "sim done")
+    dim_kwargs = dict(scenario=scenario, var_id=var_id, model=model)
+    dim_kwargs.update(kind="sim")
+    proj_sim_ds = open_and_extract_stats(sim_fps, dim_kwargs)
+    out_fp = out_dir.joinpath(doy_summary_tmp_fn.format(**dim_kwargs))
+    proj_sim_ds.to_netcdf(out_fp)
+    print(model, scenario, var_id, "sim done")
 
-                dim_kwargs.update(kind="adj")
-                proj_adj_ds = open_and_extract_stats(adj_fps, dim_kwargs)
-                out_fp = out_dir.joinpath(doy_summary_tmp_fn.format(**dim_kwargs))
-                proj_adj_ds.to_netcdf(out_fp)
-                print(model, scenario, var_id, "adj done")
+    dim_kwargs.update(kind="adj")
+    proj_adj_ds = open_and_extract_stats(adj_fps, dim_kwargs)
+    out_fp = out_dir.joinpath(doy_summary_tmp_fn.format(**dim_kwargs))
+    proj_adj_ds.to_netcdf(out_fp)
+    print(model, scenario, var_id, "adj done")

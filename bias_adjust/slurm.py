@@ -45,11 +45,13 @@ def write_sbatch_biasadjust(
     var_id,
     model,
     input_dir,
+    working_dir,
     reference_dir,
     biasadjust_script,
+    doysummary_script,
     adj_dir,
     sbatch_head,
-    scenario=None,
+    scenario,
 ):
     """Write an sbatch script for executing the bias adjustment script for a given model, scenario, and variable
 
@@ -61,6 +63,7 @@ def write_sbatch_biasadjust(
         scenario (str): scenario being adjusted
         input_dir (path-like): path to directory of files to be adjusted (likely the regridded files)
         biasadjust_script (path_like): path to the script to be called to run the bias adjustment
+        doysummary_script (path_like): path to the script to be called to generate DOY summaries
         adj_dir (path-like): directory to write the adjusted data
         sbatch_head (dict): string for sbatch head script
 
@@ -70,7 +73,7 @@ def write_sbatch_biasadjust(
     Notes:
         since these jobs seem to take on the order of 5 minutes or less, seems better to just run through all years once a node is secured for a job, instead of making a single job for every year / variable combination
     """
-    pycommands = "\n"
+    pycommands = f"echo Begin {var_id} bias adjustment\n"
     pycommands += (
         f"python {biasadjust_script} "
         f"--var_id {var_id} "
@@ -79,12 +82,26 @@ def write_sbatch_biasadjust(
         f"--reference_dir {reference_dir} "
         f"--adj_dir {adj_dir} "
     )
-    if scenario is not None:
+    if scenario != "historical":
         pycommands += f"--scenario {scenario} "
-
     pycommands += "\n\n"
+    pycommands += f"echo End {var_id} bias adjustment\n\n"
 
-    pycommands += f"echo End {var_id} bias adjustment && date\n" "echo Job Completed"
+    pycommands += f"echo Begin {var_id} generate DOY summary\n"
+    pycommands += "\n"
+    pycommands += (
+        f"python {doysummary_script} "
+        f"--var_id {var_id} "
+        f"--model {model} "
+        f"--scenario {scenario} "
+        f"--working_dir {working_dir} "
+        f"--sim_dir {input_dir} "
+    )
+    pycommands += "\n\n"
+    pycommands += f"echo End {var_id} generate DOY summary\n"
+
+    pycommands +=  "date && echo Job Completed"
+
     commands = sbatch_head.format(sbatch_out_fp=sbatch_out_fp) + pycommands
 
     with open(sbatch_fp, "w") as f:
@@ -207,6 +224,7 @@ if __name__ == "__main__":
     }
 
     biasadjust_script = working_dir.joinpath("cmip6-utils/bias_adjust/bias_adjust.py")
+    doysummary_script = working_dir.joinpath("cmip6-utils/bias_adjust/generate_doy_summaries.py")
 
     job_ids = []
     for model in models:
@@ -229,14 +247,15 @@ if __name__ == "__main__":
                     "model": model,
                     "scenario": scenario,
                     "input_dir": input_dir,
+                    "working_dir": working_dir,
                     "biasadjust_script": biasadjust_script,
+                    "doysummary_script": doysummary_script,
                     "reference_dir": reference_dir,
                     "adj_dir": adj_dir,
                     "sbatch_head": sbatch_head,
                 }
 
                 if scenario == "historical":
-                    del sbatch_biasadjust_kwargs["scenario"]
                     sbatch_biasadjust_kwargs[
                         "biasadjust_script"
                     ] = working_dir.joinpath(
