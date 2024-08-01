@@ -13,6 +13,8 @@ from multiprocessing import Pool, set_start_method
 from pathlib import Path
 from config import *
 
+import concurrent.futures
+
 # ignore serializationWarnings from xarray for datasets with multiple FillValues
 import warnings
 
@@ -99,17 +101,26 @@ def get_grid(fp):
     return grid_di
 
 
-def read_grids(fps, progress=False):
+def read_grids(fps, pool, progress=False):
     """Read the grid info from all files in fps, using multiprocessing and with a progress bar"""
-    with Pool(20) as pool:
-        if progress:
-            grids = []
-            for grid_di in tqdm.tqdm(
-                pool.imap_unordered(get_grid, fps), total=len(fps)
-            ):
-                grids.append(grid_di)
-        else:
-            grids = pool.map(get_grid, fps)
+
+    grid_futures = [pool.submit(get_grid, fp) for fp in fps]
+    grids = []
+    for grid in tqdm.tqdm(
+        concurrent.futures.as_completed(grid_futures), total=len(grid_futures)
+    ):
+        grids.append(grid.result())
+
+    # using fewer cores might help prevent hanging with multiprocessing?
+    # with Pool(10) as pool:
+    #     if progress:
+    #         grids = []
+    #         for grid_di in tqdm.tqdm(
+    #             pool.imap_unordered(get_grid, fps), total=len(fps)
+    #         ):
+    #             grids.append(grid_di)
+    #     else:
+    #         grids = pool.map(get_grid, fps)
 
     return grids
 
@@ -277,10 +288,11 @@ if __name__ == "__main__":
 
     grids = []
     # pool seems to be more likely to hang on larger batches of inputs, so we will break up into smaller batches
-    # setting up a Pool is costly, but it might be more robust to just set it up each time, too, instead of re-using it.
+    # also using smaller max workers might help
     fps = chunk_list_of_files(fps, 1000)
-    for i, batch in enumerate(fps):
-        grids.extend(read_grids(batch, progress=progress))
+    with concurrent.futures.ProcessPoolExecutor(max_workers=10) as pool:
+        for i, batch in enumerate(fps):
+            grids.extend(read_grids(batch, pool=pool, progress=progress))
 
     results_df = pd.DataFrame(grids)
 
