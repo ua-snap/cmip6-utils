@@ -221,28 +221,36 @@ if __name__ == "__main__":
 
     for var in vars.split():
         for freq in freqs.split():
-            for fp in regrid_batch_dir.glob(f"*{var}*{freq}*.txt"):
-                sbatch_str = fp.name.split("batch_")[1].split(".txt")[0]
-                sbatch_fp = sbatch_dir.joinpath(f"regrid_{sbatch_str}.slurm")
-                # filepath for slurm stdout
-                sbatch_out_fp = sbatch_dir.joinpath(
-                    sbatch_fp.name.replace(".slurm", "_%j.out")
-                )
+            for model in models.split():
+                for scenario in scenarios.split():
+                    # find the batch file for this model, scenario, variable, and frequency
+                    # now that they are split up by model and scenario as well, most will only be one single file, but it's not garuanteed
+                    for fp in regrid_batch_dir.glob(
+                        f"batch_{model}*{scenario}*{freq}*{var}*.txt"
+                    ):
+                        sbatch_str = fp.name.split("batch_")[1].split(".txt")[0]
+                        sbatch_fp = sbatch_dir.joinpath(f"regrid_{sbatch_str}.slurm")
+                        # filepath for slurm stdout
+                        sbatch_out_fp = sbatch_dir.joinpath(
+                            sbatch_fp.name.replace(".slurm", "_%j.out")
+                        )
 
-                sbatch_head = make_sbatch_head(conda_init_script, conda_env_name)
-                sbatch_regrid_kwargs = {
-                    "sbatch_fp": sbatch_fp,
-                    "sbatch_out_fp": sbatch_out_fp,
-                    "regrid_script": regrid_script,
-                    "regrid_batch_dir": regrid_batch_dir,
-                    "regrid_dir": regrid_dir,
-                    "regrid_batch_fp": fp,
-                    "dst_fp": target_grid_fp,
-                    "no_clobber": no_clobber,
-                    "sbatch_head": sbatch_head,
-                }
-                write_sbatch_regrid(**sbatch_regrid_kwargs)
-                sbatch_fps.append(sbatch_fp)
+                        sbatch_head = make_sbatch_head(
+                            conda_init_script, conda_env_name
+                        )
+                        sbatch_regrid_kwargs = {
+                            "sbatch_fp": sbatch_fp,
+                            "sbatch_out_fp": sbatch_out_fp,
+                            "regrid_script": regrid_script,
+                            "regrid_batch_dir": regrid_batch_dir,
+                            "regrid_dir": regrid_dir,
+                            "regrid_batch_fp": fp,
+                            "dst_fp": target_grid_fp,
+                            "no_clobber": no_clobber,
+                            "sbatch_head": sbatch_head,
+                        }
+                        write_sbatch_regrid(**sbatch_regrid_kwargs)
+                        sbatch_fps.append(sbatch_fp)
 
     # remove existing slurm output files
     _ = [fp.unlink() for fp in sbatch_dir.glob("*.out")]
