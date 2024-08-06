@@ -100,6 +100,17 @@ def write_sbatch_biasadjust(
     pycommands += "\n\n"
     pycommands += f"echo End {var_id} generate DOY summary\n"
 
+    output_nb = f"/beegfs/CMIP6/crstephenson/bias_adjust/qc/{model}_{scenario}_{var_id}.ipynb"
+    pycommands += f"echo Begin {var_id} QC\n"
+    pycommands += "\n"
+    pycommands += (
+        f"cd /beegfs/CMIP6/crstephenson/cmip6-utils/bias_adjust\n"
+        f"papermill qc.ipynb {output_nb} -r working_dir '{working_dir}' -r input_dir '{input_dir}' -r var_id '{var_id}' -r model '{model}' -r scenario '{scenario}' --log-output --log-level INFO\n"
+        f"jupyter nbconvert --to html {output_nb}"
+    )
+    pycommands += "\n\n"
+    pycommands += f"echo End {var_id} QC\n"
+
     pycommands +=  "date && echo Job Completed"
 
     commands = sbatch_head.format(sbatch_out_fp=sbatch_out_fp) + pycommands
