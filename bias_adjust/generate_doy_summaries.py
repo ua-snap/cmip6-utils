@@ -22,7 +22,7 @@ from slurm import get_directories
 PR_UNITS = "kg m-2 s-1"
 
 
-def get_sim_fps(model, scenario, var_id, hist_years=None, proj_years=None):
+def get_sim_fps(model, scenario, var_id, years):
     """Return list of both original and adjusted simulated (model) filepaths"""
 
     sim_dir = "/import/beegfs/CMIP6/arctic-cmip6/regrid"
@@ -30,8 +30,6 @@ def get_sim_fps(model, scenario, var_id, hist_years=None, proj_years=None):
 
     adj_dir = "/import/beegfs/CMIP6/crstephenson/bias_adjust/netcdf"
     adj_dir = Path(adj_dir)
-
-    years = hist_years if scenario == "historical" else proj_years
 
     sim_fps = [
         generate_cmip6_fp(sim_dir, model, scenario, var_id, year) for year in years
@@ -141,13 +139,10 @@ def parse_args():
 if __name__ == "__main__":
     (var_id, model, scenario, working_dir, sim_dir) = parse_args()
 
-    hist_start_year = 1951
-    hist_end_year = 2014
-    hist_years = list(range(hist_start_year, hist_end_year + 1))
-
-    proj_start_year = 2015
-    proj_end_year = 2100
-    proj_years = list(range(proj_start_year, proj_end_year + 1))
+    if scenario == "historical":
+        years = list(range(1951, 2014 + 1))
+    else:
+        years = list(range(2015, 2100 + 1))
 
     working_dir = Path(working_dir)
     sim_dir = Path(sim_dir)
@@ -161,7 +156,7 @@ if __name__ == "__main__":
     out_dir = working_dir.joinpath(output_dir_name, qc_dir_name, doy_summary_dir_name)
     out_dir.mkdir(exist_ok=True, parents=True)
 
-    sim_fps, adj_fps = get_sim_fps(model, scenario, var_id, hist_years, proj_years)
+    sim_fps, adj_fps = get_sim_fps(model, scenario, var_id, years)
     if len(adj_fps) == 0:
         print("No adjusted data found for ", model, scenario, var_id)
         exit(1)
