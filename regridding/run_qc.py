@@ -33,6 +33,12 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
+        "--conda_env_name",
+        type=str,
+        help="Name of conda environment to activate",
+        required=True,
+    )
+    parser.add_argument(
         "--qc_script",
         type=str,
         help="Path to regridding qc script",
@@ -76,6 +82,7 @@ def parse_args():
         Path(args.cmip6_directory),
         Path(args.repo_regridding_directory),
         Path(args.conda_init_script),
+        Path(args.conda_env_name),
         Path(args.qc_script),
         Path(args.visual_qc_notebook),
         args.vars,
@@ -107,6 +114,7 @@ if __name__ == "__main__":
         cmip6_directory,
         repo_regridding_directory,
         conda_init_script,
+        conda_env_name,
         qc_script,
         visual_qc_notebook,
         vars,
@@ -136,7 +144,7 @@ if __name__ == "__main__":
         "echo Start slurm && date\n"
         # prepare shell for using activate
         f"source {conda_init_script}\n"
-        f"conda activate cmip6-utils\n"
+        f"conda activate {conda_env_name}\n"
         # run the qc script
         f"python {qc_script} --output_directory {output_directory} --vars '{vars}' --freqs '{freqs}' --models '{models}' --scenarios '{scenarios}'\n"
     )
@@ -169,7 +177,7 @@ if __name__ == "__main__":
         "echo Start slurm && date\n"
         # prepare shell for using activate
         f"source {conda_init_script}\n"
-        f"conda activate cmip6-utils\n"
+        f"conda activate {conda_env_name}\n"
         # run the notebook
         f"cd {repo_regridding_directory}\n"
         f"papermill {visual_qc_notebook} {output_nb} -r output_directory '{output_directory}' -r cmip6_directory '{cmip6_directory}'\n"
