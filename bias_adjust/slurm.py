@@ -100,12 +100,42 @@ def write_sbatch_biasadjust(
     pycommands += "\n\n"
     pycommands += f"echo End {var_id} generate DOY summary\n"
 
-    output_nb = f"/beegfs/CMIP6/crstephenson/bias_adjust/qc/{model}_{scenario}_{var_id}.ipynb"
+    pycommands +=  "date && echo Job Completed"
+
+    commands = sbatch_head.format(sbatch_out_fp=sbatch_out_fp) + pycommands
+
+    with open(sbatch_fp, "w") as f:
+        f.write(commands)
+
+    return
+
+
+def write_sbatch_biasadjust_qc(
+    sbatch_fp,
+    sbatch_out_fp,
+    var_ids,
+    models,
+    input_dir,
+    working_dir,
+    reference_dir,
+    biasadjust_script,
+    doysummary_script,
+    adj_dir,
+    sbatch_head,
+    scenarios,
+):
+    pycommands = f"echo Begin {var_id} bias adjustment\n"
+ 
+    var_ids_string = " ".join(var_ids)
+    models_string = " ".join(models)
+    scenarios_string = " ".join(scenarios)
+
+    output_nb = f"/beegfs/CMIP6/crstephenson/bias_adjust/qc/visual_qc_out.ipynb"
     pycommands += f"echo Begin {var_id} QC\n"
     pycommands += "\n"
     pycommands += (
         f"cd /beegfs/CMIP6/crstephenson/cmip6-utils/bias_adjust\n"
-        f"papermill qc.ipynb {output_nb} -r working_dir '{working_dir}' -r input_dir '{input_dir}' -r var_id '{var_id}' -r model '{model}' -r scenario '{scenario}' --log-output --log-level INFO\n"
+        f"papermill qc.ipynb {output_nb} -r working_dir '{working_dir}' -r input_dir '{input_dir}' -r var_ids '{var_ids_string}' -r models '{models_string}' -r scenarios '{scenarios_string}' --log-output --log-level INFO\n"
         f"jupyter nbconvert --to html {output_nb}"
     )
     pycommands += "\n\n"
@@ -281,6 +311,39 @@ if __name__ == "__main__":
                     sbatch_out_fp.name.replace("%j", str(job_id))
                 )
                 job_ids.append(job_id)
+    
+
+    # filepath for slurm script
+    sbatch_fp_qc = sbatch_dir.joinpath(
+        f"qc_biasadjust.slurm"
+    )
+    # filepath for slurm stdout
+    sbatch_out_fp = sbatch_dir.joinpath(
+        sbatch_fp_qc.name.replace(".slurm", "_%j.out")
+    )
+    sbatch_head = make_sbatch_head(**sbatch_head_kwargs)
+    sbatch_biasadjust_kwargs = {
+        "sbatch_fp": sbatch_fp,
+        "sbatch_out_fp": sbatch_out_fp,
+        "var_ids": var_ids,
+        "models": models,
+        "scenarios": scenarios,
+        "input_dir": input_dir,
+        "working_dir": working_dir,
+        "biasadjust_script": biasadjust_script,
+        "doysummary_script": doysummary_script,
+        "reference_dir": reference_dir,
+        "adj_dir": adj_dir,
+        "sbatch_head": sbatch_head,
+    }
+    write_sbatch_biasadjust_qc(**sbatch_biasadjust_kwargs)
+
+    job_id = submit_sbatch(sbatch_fp)
+
+    sbatch_out_fp_with_jobid = sbatch_dir.joinpath(
+        sbatch_out_fp.name.replace("%j", str(job_id))
+    )
+    job_ids.append(job_id)
 
     # currently printing Job IDs to give to next steps in prefect. Probably better ways to do this.
     print(job_ids)
