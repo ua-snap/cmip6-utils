@@ -120,6 +120,7 @@ if __name__ == "__main__":
         "#SBATCH --nodes=1\n"
         f"#SBATCH --cpus-per-task=24\n"
         f"#SBATCH -p t2small\n"
+        f"#SBATCH --time=04:00:00\n"
         f"#SBATCH --output {generate_batch_files_sbatch_out_fp}\n"
         # print start time
         "echo Start slurm && date\n"

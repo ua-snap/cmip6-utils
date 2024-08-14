@@ -21,7 +21,8 @@ def make_sbatch_head(conda_init_script, conda_env_name):
         "#SBATCH --nodes=1\n"
         f"#SBATCH --cpus-per-task=24\n"
         f"#SBATCH -p t2small\n"
-        "#SBATCH --output {sbatch_out_fp}\n"
+        f"#SBATCH --time=01:00:00\n"
+        f"#SBATCH --output {sbatch_out_fp}\n"
         # print start time
         "echo Start slurm && date\n"
         # prepare shell for using activate

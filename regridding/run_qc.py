@@ -139,6 +139,7 @@ if __name__ == "__main__":
         f"#SBATCH --cpus-per-task=24\n"
         "#SBATCH --mail-type=FAIL\n"
         f"#SBATCH -p t2small\n"
+        f"#SBATCH --time=01:00:00\n"
         f"#SBATCH --output {qc_sbatch_out_fp}\n"
         # print start time
         "echo Start slurm && date\n"
@@ -172,6 +173,7 @@ if __name__ == "__main__":
         f"#SBATCH --cpus-per-task=24\n"
         "#SBATCH --mail-type=FAIL\n"
         f"#SBATCH -p t2small\n"
+        f"#SBATCH --time=01:00:00\n"
         f"#SBATCH --output {visual_qc_notebook_sbatch_out_fp}\n"
         # print start time
         "echo Start slurm && date\n"
