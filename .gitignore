@@ -8,3 +8,8 @@ tmp/
 
 .env
 .vscode
+
+_build/
+
+*.out
+*.err

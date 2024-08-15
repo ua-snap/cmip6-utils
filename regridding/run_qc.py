@@ -1,4 +1,5 @@
 """Script to build a slurm file that runs qc.py and qc.ipynb."""
+
 import argparse
 from pathlib import Path
 import subprocess
@@ -32,6 +33,12 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
+        "--conda_env_name",
+        type=str,
+        help="Name of conda environment to activate",
+        required=True,
+    )
+    parser.add_argument(
         "--qc_script",
         type=str,
         help="Path to regridding qc script",
@@ -50,9 +57,21 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
-        "--slurm_email",
+        "--freqs",
         type=str,
-        help="Email address to send slurm messages to",
+        help="list of frequencies used in generating batch files",
+        required=True,
+    )
+    parser.add_argument(
+        "--models",
+        type=str,
+        help="list of models used in generating batch files",
+        required=True,
+    )
+    parser.add_argument(
+        "--scenarios",
+        type=str,
+        help="list of scenarios used in generating batch files",
         required=True,
     )
 
@@ -63,10 +82,13 @@ def parse_args():
         Path(args.cmip6_directory),
         Path(args.repo_regridding_directory),
         Path(args.conda_init_script),
+        Path(args.conda_env_name),
         Path(args.qc_script),
         Path(args.visual_qc_notebook),
         args.vars,
-        args.slurm_email,
+        args.freqs,
+        args.models,
+        args.scenarios,
     )
 
 
@@ -92,10 +114,13 @@ if __name__ == "__main__":
         cmip6_directory,
         repo_regridding_directory,
         conda_init_script,
+        conda_env_name,
         qc_script,
         visual_qc_notebook,
         vars,
-        slurm_email,
+        freqs,
+        models,
+        scenarios,
     ) = parse_args()
 
     # Create QC directory
@@ -113,16 +138,16 @@ if __name__ == "__main__":
         "#SBATCH --nodes=1\n"
         f"#SBATCH --cpus-per-task=24\n"
         "#SBATCH --mail-type=FAIL\n"
-        f"#SBATCH --mail-user={slurm_email}\n"
         f"#SBATCH -p t2small\n"
+        f"#SBATCH --time=01:00:00\n"
         f"#SBATCH --output {qc_sbatch_out_fp}\n"
         # print start time
         "echo Start slurm && date\n"
         # prepare shell for using activate
         f"source {conda_init_script}\n"
-        f"conda activate cmip6-utils\n"
+        f"conda activate {conda_env_name}\n"
         # run the qc script
-        f"python {qc_script} --output_directory {output_directory} --vars '{vars}'"
+        f"python {qc_script} --output_directory {output_directory} --vars '{vars}' --freqs '{freqs}' --models '{models}' --scenarios '{scenarios}'\n"
     )
 
     # save the sbatch text as a new slurm file in the QC directory
@@ -135,25 +160,29 @@ if __name__ == "__main__":
 
     output_nb = qc_dir.joinpath("visual_qc_out.ipynb")
 
-    visual_qc_notebook_sbatch_fp = qc_dir.joinpath(str(visual_qc_notebook.name).replace(".ipynb", "_nb.slurm"))
-    visual_qc_notebook_sbatch_out_fp = qc_dir.joinpath(str(visual_qc_notebook.name).replace(".ipynb", "_nb_%j.out"))
+    visual_qc_notebook_sbatch_fp = qc_dir.joinpath(
+        str(visual_qc_notebook.name).replace(".ipynb", "_nb.slurm")
+    )
+    visual_qc_notebook_sbatch_out_fp = qc_dir.joinpath(
+        str(visual_qc_notebook.name).replace(".ipynb", "_nb_%j.out")
+    )
 
     vqc_sbatch_text = (
         "#!/bin/sh\n"
         "#SBATCH --nodes=1\n"
         f"#SBATCH --cpus-per-task=24\n"
         "#SBATCH --mail-type=FAIL\n"
-        f"#SBATCH --mail-user={slurm_email}\n"
         f"#SBATCH -p t2small\n"
+        f"#SBATCH --time=01:00:00\n"
         f"#SBATCH --output {visual_qc_notebook_sbatch_out_fp}\n"
         # print start time
         "echo Start slurm && date\n"
         # prepare shell for using activate
         f"source {conda_init_script}\n"
-        f"conda activate cmip6-utils\n"
+        f"conda activate {conda_env_name}\n"
         # run the notebook
         f"cd {repo_regridding_directory}\n"
-        f"papermill {visual_qc_notebook} {output_nb} -r output_directory '{output_directory}' -r cmip6_directory '{cmip6_directory}'\n"
+        f"papermill {visual_qc_notebook} {output_nb} -r output_directory '{output_directory}' -r cmip6_directory '{cmip6_directory}' -r vars '{vars}' -r freqs '{freqs}' -r models '{models}' -r scenarios '{scenarios}'\n"
         f"jupyter nbconvert --to html {output_nb}"
     )
 

@@ -2,8 +2,8 @@
 Since we are providing our config via Prefect, these were copied from the transfers/config.py file
 to avoid using system environment variables."""
 
-#batch file naming template
-batch_tmp_fn = "batch_{model}_{scenario}_{grid_name}_{count}.txt"
+# batch file naming template
+batch_tmp_fn = "batch_{model}_{scenario}_{frequency}_{var_id}_{grid_name}_{count}.txt"
 
 # names of the ScenarioMIP scenarios that we are interested in,
 #  matching directory names in ESGF archives
@@ -26,8 +26,9 @@ inst_models = [
     "MIROC_MIROC6",
     "EC-Earth-Consortium_EC-Earth3-Veg",
     "NCAR_CESM2",
-    "NCAR_CESM2-WACCM",
-    "MPI-M_MPI-ESM1-2-LR",
+    "MPI-M_MPI-ESM1-2-HR",
+    "DKRZ_MPI-ESM1-2-HR",
+    "MRI_MRI-ESM2-0",
 ]
 
 model_inst_lu = {
@@ -133,4 +134,3 @@ variables = {
         "table_ids": ["Amon", "day", "Eday"],
     },
 }
-

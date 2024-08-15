@@ -246,6 +246,7 @@ def dayfreq_360day_to_noleap(out_ds):
     new_out_ds.attrs = out_ds.attrs
     new_out_ds.time.encoding = out_ds.time.encoding
     new_out_ds.time.encoding["calendar"] = "noleap"
+    out_ds.time.encoding["units"] = "days since 1950-01-01 00:00:00"
     new_out_ds.time.attrs = out_ds.time.attrs
 
     return new_out_ds
@@ -257,6 +258,7 @@ def dayfreq_gregorian_to_noleap(out_ds):
         time=~((out_ds.time.dt.day == 29) & (out_ds.time.dt.month == 2))
     )
     new_out_ds.time.encoding["calendar"] = "noleap"
+    out_ds.time.encoding["units"] = "days since 1950-01-01 00:00:00"
     # Run this function just to ensure consistent hour values
     new_out_ds = fix_hour_in_time_dim(new_out_ds)
 
@@ -288,15 +290,17 @@ def Amonfreq_fix_time(out_ds, src_ds):
         cftime._cftime.Datetime360Day,
     ]:
         new_times = pd.to_datetime(
-            [f"{t.year}-{t.month}-15T12:00:00" for t in out_ds.time.values]
+            [f"{t.year}-{t.month}-15T12:00:00" for t in out_ds.time.values],
+            format="%Y-%m-%dT%H:%M:%S",
         )
     else:
         if not np.all(out_ds.time.dt.day.values == 15):
             new_times = pd.to_datetime(
                 [
-                    f"{year}-{month}-15T12:00:00"
+                    f"{year.item()}-{month.item()}-15T12:00:00"
                     for year, month in zip(out_ds.time.dt.year, out_ds.time.dt.month)
-                ]
+                ],
+                format="%Y-%m-%dT%H:%M:%S",
             )
         else:
             new_times = out_ds.time.values
@@ -304,6 +308,7 @@ def Amonfreq_fix_time(out_ds, src_ds):
     out_ds = out_ds.assign_coords(time=new_times)
     out_ds.time.encoding = src_ds.time.encoding
     out_ds.time.encoding["calendar"] = "noleap"
+    out_ds.time.encoding["units"] = "days since 1950-01-01 00:00:00"
     out_ds.time.attrs = src_ds.time.attrs
 
     return out_ds
@@ -368,12 +373,15 @@ def fix_time_and_write(out_ds, src_ds, out_fp):
     # not sure if they are always/never/sometimes kept through regridding
     for bnd_var in ["bnds", "lat_bnds", "lon_bnds", "time_bnds"]:
         if bnd_var in out_ds:
-            out_ds = out_ds.drop(bnd_var)
+            out_ds = out_ds.drop_vars(bnd_var)
 
     # write out everything (monthly and daily freqs) by year
     for year, year_ds in out_ds.groupby("time.year"):
         if year_ds.time.shape[0] == 1:
             # skip weird files where first time value is last day of a year
+            continue
+        if year < 1950:
+            # skip any years before 1950
             continue
         year_out_fp = generate_single_year_filename(out_fp, year_ds)
         # Make sure we are writing the time dimension as noleap
