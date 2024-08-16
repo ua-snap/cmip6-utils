@@ -33,7 +33,7 @@ def get_file_paths(bias_adjust_dir, models, scenarios, vars, freqs, error_file):
 def check_nodata(fp, ds, e):
     nodata_count = np.count_nonzero(np.isnan(ds.to_array()))
     if nodata_count > 0:
-        e.write(f"Error: {fp} has an unexpected nodata pixels.\n")
+        e.write(f"Error: {fp} has unexpected nodata pixels.\n")
 
 
 def check_bbox(fp, ds, e):
