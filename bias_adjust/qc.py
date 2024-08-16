@@ -1,13 +1,13 @@
 """
 Usage:
-    python qc.py --output_directory /beegfs/CMIP6/crstephenson/bias_adjust --vars 'pr ta' --freqs 'mon day'
+    python qc.py --output_directory /beegfs/CMIP6/crstephenson/bias_adjust --vars 'pr tasmax' --freqs 'mon day'
 """
 
 import argparse
-import multiprocessing
 import numpy as np
 import xarray as xr
 from pathlib import Path
+from luts import expected_value_ranges
 
 
 def make_qc_file(output_directory):
@@ -15,28 +15,15 @@ def make_qc_file(output_directory):
     qc_dir = output_directory.joinpath("qc")
     qc_dir.mkdir(exist_ok=True)
     error_file = qc_dir.joinpath("qc_error.txt")
-    with open(error_file, "w") as e:
-        pass
+    open(error_file, "w") # Clear file if it exists.
     return error_file
 
 
-def get_file_paths(bias_adjust_dir, models, scenarios, vars, freqs, error_file):
-    """Get list of all bias adjusted files."""
-    for model in models.split():
-        for scenario in scenarios.split():
-            for var_id in vars.split():
-                for freq in freqs.split():
-                    fps = list(bias_adjust_dir.glob(f"{model}/{scenario}/{freq}/{var_id}/*.nc"))
-    return fps
+def get_file_paths(bias_adjust_dir, model, scenario, var_id, freq):
+    return list(bias_adjust_dir.glob(f"{model}/{scenario}/{freq}/{var_id}/*.nc"))
 
 
-def check_nodata(fp, ds, e):
-    nodata_count = np.count_nonzero(np.isnan(ds.to_array()))
-    if nodata_count > 0:
-        e.write(f"Error: {fp} has unexpected nodata pixels.\n")
-
-
-def check_bbox(fp, ds, e):
+def valid_bbox(ds):
     lat = ds["lat"]
     lon = ds["lon"]
     min_lat = lat.min().values
@@ -44,19 +31,23 @@ def check_bbox(fp, ds, e):
     min_lon = lon.min().values
     max_lon = lon.max().values
     if min_lon < 0 or max_lon > 360 or min_lat < 50 or max_lat > 90:
-        e.write(f"Error: {fp} has bbox [{min_lon}, {max_lon}, {min_lat}, {max_lat}] outside of expected range.\n")
+        return False
+    return True
 
 
-def inspect_files(fps, error_file):
-    with open(error_file, "a") as e:
-        for fp in fps:
-            try:
-                ds = xr.open_dataset(fp)
-            except Exception as e:
-                e.write(f"Error: {fp} could not be opened.\n")
-                continue
-            check_nodata(fp, ds, e)
-            check_bbox(fp, ds, e)
+def valid_nodata(ds):
+    nodata_count = np.count_nonzero(np.isnan(ds.to_array()))
+    if nodata_count > 0:
+        return False
+    return True
+
+
+def valid_values(var_id, ds):
+    min_val = expected_value_ranges[var_id]["minimum"]
+    max_val = expected_value_ranges[var_id]["maximum"]
+    if ds[var_id].min() < min_val or ds[var_id].max() > max_val:
+        return False
+    return True
 
 
 def parse_args():
@@ -109,23 +100,37 @@ if __name__ == "__main__":
     slurm_dir = output_directory.joinpath("slurm")
     error_file = make_qc_file(output_directory)
 
+    bbox_errors = []
+    nodata_errors = []
+    value_errors = []
+
     print("QC process started...")
 
-    fps = get_file_paths(bias_adjust_dir, models, scenarios, vars, freqs, error_file)
-    inspect_files(fps, error_file)
+    for model in models.split():
+        for scenario in scenarios.split():
+            for var_id in vars.split():
+                for freq in freqs.split():
+                    fps = get_file_paths(bias_adjust_dir, model, scenario, var_id, freq)
+                    for fp in fps:
+                        try:
+                            ds = xr.open_dataset(fp)
+                        except Exception as e:
+                            e.write(f"Error: {fp} could not be opened.\n")
+                            continue
+                        if not valid_bbox(ds):
+                            bbox_errors.append(fp)
+                        if not valid_nodata(ds):
+                            nodata_errors.append(fp)
+                        if not valid_values(var_id, ds):
+                            value_errors.append(fp)
 
-    # # print summary messages
-    # error_count = len(output_errors) + len(ds_errors) + len(value_errors)
-    # print(f"QC process complete: {error_count} errors found.")
-    # if len(output_errors) > 0:
-    #     print(
-    #         f"Errors found when looking for expected output files. {len(output_errors)} files are missing expected outputs. See {str(error_file)} for error log."
-    #     )
-    # if len(ds_errors) > 0:
-    #     print(
-    #         f"Errors in opening some datasets. {len(ds_errors)} files could not be opened. See {str(error_file)} for error log."
-    #     )
-    # if len(value_errors) > 0:
-    #     print(
-    #         f"Errors in dataset values. {len(value_errors)} files have regridded values outside of source file range. See {str(error_file)} for error log."
-    #     )
+    with open(error_file, "a") as e:
+        e.write(f"Files with BBOX errors:\n")
+        e.write("\n".join(str(bbox_errors)) + "\n")
+        e.write(f"Files with nodata errors:\n")
+        e.write("\n".join(str(nodata_errors)) + "\n")
+        e.write(f"Files with value range errors:\n")
+        e.write("\n".join(str(value_errors)) + "\n")
+
+    error_count = len(bbox_errors) + len(nodata_errors) + len(value_errors)
+    print(f"QC process complete. {error_count} errors found.")
