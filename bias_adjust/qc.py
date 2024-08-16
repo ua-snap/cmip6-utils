@@ -1,6 +1,6 @@
 """
 Usage:
-    python qc.py --output_directory /beegfs/CMIP6/crstephenson/bias_adjust --vars 'pr tasmax' --freqs 'mon day'
+    python qc.py --output_directory /beegfs/CMIP6/crstephenson/bias_adjust --models 'GFDL-ESM4' --scenarios 'ssp126 ssp585' --vars 'tasmax pr' --freqs 'day'
 """
 
 import argparse
@@ -11,7 +11,7 @@ from luts import expected_value_ranges
 
 
 def make_qc_file(output_directory):
-    """Make a qc_directory and qc_error.txt file to save results."""
+    """Make a qc_directory and qc_error.txt file to save results"""
     qc_dir = output_directory.joinpath("qc")
     qc_dir.mkdir(exist_ok=True)
     error_file = qc_dir.joinpath("qc_error.txt")
@@ -20,10 +20,12 @@ def make_qc_file(output_directory):
 
 
 def get_file_paths(bias_adjust_dir, model, scenario, var_id, freq):
+    """Get all file paths for a given model, scenario, variable, and frequency"""
     return list(bias_adjust_dir.glob(f"{model}/{scenario}/{freq}/{var_id}/*.nc"))
 
 
 def valid_bbox(ds):
+    """Check if the bounding box is within the expected range"""
     lat = ds["lat"]
     lon = ds["lon"]
     min_lat = lat.min().values
@@ -36,6 +38,7 @@ def valid_bbox(ds):
 
 
 def valid_nodata(ds):
+    """Check if there are any nodata values in the dataset"""
     nodata_count = np.count_nonzero(np.isnan(ds.to_array()))
     if nodata_count > 0:
         return False
@@ -43,6 +46,7 @@ def valid_nodata(ds):
 
 
 def valid_values(var_id, ds):
+    """Check if the values are within the expected range"""
     min_val = expected_value_ranges[var_id]["minimum"]
     max_val = expected_value_ranges[var_id]["maximum"]
     if ds[var_id].min() < min_val or ds[var_id].max() > max_val:
@@ -94,7 +98,6 @@ def parse_args():
 
 
 if __name__ == "__main__":
-
     output_directory, vars, freqs, models, scenarios = parse_args()
     bias_adjust_dir = output_directory.joinpath("netcdf")
     slurm_dir = output_directory.joinpath("slurm")
