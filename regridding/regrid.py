@@ -386,7 +386,7 @@ def fix_time_and_write(out_ds, src_ds, out_fp):
         year_out_fp = generate_single_year_filename(out_fp, year_ds)
         # Make sure we are writing the time dimension as noleap
         assert year_ds.time.encoding["calendar"] == "noleap"
-        year_ds.to_netcdf(year_out_fp)
+        year_ds.to_netcdf(year_out_fp, unlimited_dims=["time"])
         out_fps.append(year_out_fp)
 
     [print(f"{fp} done") for fp in out_fps]
