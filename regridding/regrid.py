@@ -395,6 +395,12 @@ def fix_time_and_write(out_ds, src_ds, out_fp):
     return out_fps
 
 
+def get_var_id(ds):
+    """Get the variable ID from a dataset"""
+    # assumes we only have one data variable
+    return list(ds.data_vars)[0]
+
+
 def apply_wgs84(ds):
     """Function to add spatial_ref coordinate, CRS attributes, and CRS encodings to make CF-compliant metadata for the WGS84 CRS.
     Args:
@@ -425,8 +431,8 @@ def apply_wgs84(ds):
 
             # manually link spatial_ref attributes to the data variable via "grid_mapping" encoding
             # assumes dataset will only have one data variable!
-            var = list(ds.data_vars)[0]
-            ds[var].encoding["grid_mapping"] = "spatial_ref"
+            var_id = get_var_id(ds)
+            ds[var_id].encoding["grid_mapping"] = "spatial_ref"
             return ds
 
         except:
@@ -436,7 +442,7 @@ def apply_wgs84(ds):
 def convert_units(ds):
     """Convert units of a dataset to more useful units."""
     # make sure units are more useful
-    var_id = list(ds.data_vars)[0]
+    var_id = get_var_id(ds)
 
     if var_id in ["pr", "prsn", "prw", "prsn"]:
         # precip
@@ -465,6 +471,32 @@ def rasdafy(ds):
     ds = ds.transpose("time", "lon", "lat")
 
     ds = convert_units(ds)
+
+    return ds
+
+
+def fix_attrs(ds):
+    """Fix some attributes of the dataset to make"""
+    # make sure longitude min and max attributes are set correctly
+    ds["lon"].attrs["valid_max"] = 180
+    ds["lon"].attrs["valid_min"] = -180
+
+    # fix interpolation method attributes (could be remnants from GCM that don't match)
+    var_id = get_var_id(ds)
+    if "interp_method" in ds[var_id].attrs:
+        # save parent interp method if present
+        ds[var_id].attrs["parent_interp_method"] = ds[var_id].attrs["interp_method"]
+
+    ds[var_id].attrs["interp_method"] = ds.attrs["regrid_method"]
+    del ds.attrs["regrid_method"]
+
+    if "grid" in ds.attrs:
+        ds.attrs["parent_grid"] = ds.attrs["grid"]
+        ds.attrs["grid"] = "0.9x1.25 finite volume grid (43x288 latxlon)"
+
+    if "grid_label" in ds.attrs:
+        ds.attrs["parent_grid_label"] = ds.attrs["grid_label"]
+        del ds.attrs["grid_label"]
 
     return ds
 
@@ -528,9 +560,7 @@ def regrid_dataset(fp, regridder, out_fp):
     regrid_task = regridder(src_ds, keep_attrs=True)
     regrid_ds = regrid_task.compute()
 
-    # make sure longitude min and max attributes are set correctly
-    regrid_ds["lon"].attrs["valid_max"] = 180
-    regrid_ds["lon"].attrs["valid_min"] = -180
+    regrid_ds = fix_attrs(regrid_ds)
 
     # add CRS info
     regrid_ds = apply_wgs84(regrid_ds)
