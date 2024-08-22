@@ -13,6 +13,7 @@ from pathlib import Path
 from regrid import (
     generate_regrid_filepath,
     parse_output_filename_times_from_file,
+    convert_units,
 )
 
 
@@ -221,7 +222,16 @@ def file_min_max(args):
     file, var = args
     try:
         with xr.open_dataset(file) as src_ds:
-            src_ds_slice = src_ds.sel(lat=slice(49, 90))
+            # handle regridded data being flipped
+            if src_ds.lat[0] > src_ds.lata[-1]:
+                lat_slicer = slice(90, 49)
+            else:
+                lat_slicer = slice(49, 90)
+
+            src_ds_slice = src_ds.sel(lat=lat_slicer)
+
+            src_ds_slice = convert_units(src_ds_slice)
+
             src_min, src_max = float(src_ds_slice[var].min()), float(
                 src_ds_slice[var].max()
             )
