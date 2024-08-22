@@ -398,7 +398,11 @@ def fix_time_and_write(out_ds, src_ds, out_fp):
 def get_var_id(ds):
     """Get the variable ID from a dataset"""
     # assumes we only have one data variable
-    return list(ds.data_vars)[0]
+    var_ids = [var_id for var_id in list(ds.data_vars) if var_id in variables]
+    assert len(var_ids) != 0, "No variable ID found in Dataset."
+    assert len(var_ids) == 1, f"More than one variable ID found: {var_ids}."
+
+    return var_ids[0]
 
 
 def apply_wgs84(ds):
@@ -497,6 +501,9 @@ def fix_attrs(ds):
     if "grid_label" in ds.attrs:
         ds.attrs["parent_grid_label"] = ds.attrs["grid_label"]
         del ds.attrs["grid_label"]
+
+    # make sure standard names are consistent
+    ds[var_id].attrs["long_name"] = variables[var_id]["name"]
 
     return ds
 
