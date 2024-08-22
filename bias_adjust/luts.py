@@ -11,12 +11,10 @@ expected_value_ranges = {
     #  max temps for panarctic domain were ~45 C, min temps around -60 C
     #  within day differences of 100 C are extremely unlikely
     #  (units for data are kelvin but )
-    "dtr": {"minimum": 0, "maximum": 100},
-
+    "dtr": {"minimum": 0, "maximum": 100, "delta_maximum": 20},
     # ~130 mm in 24 hrs is close to maximum for SE AK.
     # safe max is probably 150 mm, or in 1 kg m-2 s-1
-    "pr": {"minimum": 0, "maximum": 1},
-
+    "pr": {"minimum": 0, "maximum": 1, "delta_maximum": 0.1},
     # 210°K - 330°K is about -63°C - 57°C, or -82°F - 134°F
-    "tasmax": {"minimum": 210, "maximum": 330},
+    "tasmax": {"minimum": 210, "maximum": 330, "delta_maximum": 25},
 }

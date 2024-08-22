@@ -1,6 +1,6 @@
 """
 Usage:
-    python qc.py --output_directory /beegfs/CMIP6/crstephenson/bias_adjust --models 'GFDL-ESM4' --scenarios 'ssp126 ssp585' --vars 'tasmax pr' --freqs 'day'
+    python qc.py --sim_dir /import/beegfs/CMIP6/arctic-cmip6/regrid --adj_dir /beegfs/CMIP6/crstephenson/bias_adjust --models 'GFDL-ESM4' --scenarios 'ssp126 ssp585' --vars 'tasmax pr' --freqs 'day'
 """
 
 import argparse
@@ -9,25 +9,44 @@ import xarray as xr
 from pathlib import Path
 from luts import expected_value_ranges
 
+global sim_dir, adj_dir
+
 
 def make_qc_file(output_directory):
     """Make a qc_directory and qc_error.txt file to save results"""
     qc_dir = output_directory.joinpath("qc")
     qc_dir.mkdir(exist_ok=True)
     error_file = qc_dir.joinpath("qc_error.txt")
-    open(error_file, "w") # Clear file if it exists.
+    open(error_file, "w")  # Clear file if it exists.
     return error_file
 
 
-def get_file_paths(bias_adjust_dir, model, scenario, var_id, freq):
+def get_file_paths(model, scenario, var_id, freq, adjusted=True):
     """Get all file paths for a given model, scenario, variable, and frequency"""
-    return list(bias_adjust_dir.glob(f"{model}/{scenario}/{freq}/{var_id}/*.nc"))
+    # Iterate over years to make sure files are sequential order for sim vs. adj comparisons.
+    years = range(2015, 2101)
+    files = []
+    if adjusted:
+        bias_adjust_dir = adj_dir.joinpath("netcdf")
+        bias_adjust_dir.joinpath(f"{model}/{scenario}/{freq}/{var_id}")
+        for year in years:
+            files += list(
+                bias_adjust_dir.glob(
+                    f"{model}/{scenario}/{freq}/{var_id}/*{year}0101*.nc"
+                )
+            )
+    else:
+        for year in years:
+            files += list(
+                sim_dir.glob(f"{model}/{scenario}/{freq}/{var_id}/*{year}0101*.nc")
+            )
+    return files
 
 
-def valid_bbox(ds):
+def valid_bbox(adj_ds):
     """Check if the bounding box is within the expected range"""
-    lat = ds["lat"]
-    lon = ds["lon"]
+    lat = adj_ds["lat"]
+    lon = adj_ds["lon"]
     min_lat = lat.min().values
     max_lat = lat.max().values
     min_lon = lon.min().values
@@ -37,19 +56,29 @@ def valid_bbox(ds):
     return True
 
 
-def valid_nodata(ds):
+def valid_nodata(adj_ds):
     """Check if there are any nodata values in the dataset"""
-    nodata_count = np.count_nonzero(np.isnan(ds.to_array()))
+    nodata_count = np.count_nonzero(np.isnan(adj_ds.to_array()))
     if nodata_count > 0:
         return False
     return True
 
 
-def valid_values(var_id, ds):
+def valid_values(var_id, adj_ds):
     """Check if the values are within the expected range"""
     min_val = expected_value_ranges[var_id]["minimum"]
     max_val = expected_value_ranges[var_id]["maximum"]
-    if ds[var_id].min() < min_val or ds[var_id].max() > max_val:
+    if adj_ds[var_id].min() < min_val or adj_ds[var_id].max() > max_val:
+        return False
+    return True
+
+
+def valid_deltas(var_id, sim_ds, adj_ds):
+    """Check if the sim vs. adj deltas are below the allowed maximum"""
+    deltas = sim_ds[var_id] - adj_ds[var_id]
+    max_allowed_delta = expected_value_ranges[var_id]["delta_maximum"]
+    max_found_delta = deltas.max().squeeze().values
+    if max_found_delta > max_allowed_delta:
         return False
     return True
 
@@ -58,9 +87,15 @@ def parse_args():
     """Parse arguments"""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--output_directory",
+        "--sim_dir",
         type=str,
         help="Path to directory where all regridded data was written",
+        required=True,
+    )
+    parser.add_argument(
+        "--adj_dir",
+        type=str,
+        help="Path to directory where all bias-adjusted data was written",
         required=True,
     )
     parser.add_argument(
@@ -89,7 +124,8 @@ def parse_args():
     )
     args = parser.parse_args()
     return (
-        Path(args.output_directory),
+        Path(args.sim_dir),
+        Path(args.adj_dir),
         args.vars,
         args.freqs,
         args.models,
@@ -98,42 +134,61 @@ def parse_args():
 
 
 if __name__ == "__main__":
-    output_directory, vars, freqs, models, scenarios = parse_args()
-    bias_adjust_dir = output_directory.joinpath("netcdf")
-    slurm_dir = output_directory.joinpath("slurm")
-    error_file = make_qc_file(output_directory)
+    sim_dir, adj_dir, vars, freqs, models, scenarios = parse_args()
+    slurm_dir = adj_dir.joinpath("slurm")
+    error_file = make_qc_file(adj_dir)
 
     bbox_errors = []
     nodata_errors = []
     value_errors = []
+    delta_errors = []
 
     print("QC process started...")
 
-    for model in models.split():
-        for scenario in scenarios.split():
-            for var_id in vars.split():
-                for freq in freqs.split():
-                    fps = get_file_paths(bias_adjust_dir, model, scenario, var_id, freq)
-                    for fp in fps:
+    for var_id in vars.split():
+        for freq in freqs.split():
+            for model in models.split():
+                for scenario in scenarios.split():
+                    sim_fps = get_file_paths(
+                        model, scenario, var_id, freq, adjusted=False
+                    )
+                    adj_fps = get_file_paths(model, scenario, var_id, freq)
+                    for sim_fp, adj_fp in zip(sim_fps, adj_fps):
                         try:
-                            ds = xr.open_dataset(fp)
+                            sim_ds = xr.open_dataset(sim_fp)
                         except Exception as e:
-                            e.write(f"Error: {fp} could not be opened.\n")
+                            e.write(f"Error: {sim_fp} could not be opened.\n")
                             continue
-                        if not valid_bbox(ds):
-                            bbox_errors.append(fp)
-                        if not valid_nodata(ds):
-                            nodata_errors.append(fp)
-                        if not valid_values(var_id, ds):
-                            value_errors.append(fp)
+                        try:
+                            adj_ds = xr.open_dataset(adj_fp)
+                        except Exception as e:
+                            e.write(f"Error: {adj_fp} could not be opened.\n")
+                            continue
+
+                        if not valid_bbox(adj_ds):
+                            bbox_errors.append(str(adj_fp))
+                        if not valid_nodata(adj_ds):
+                            nodata_errors.append(str(adj_fp))
+                        if not valid_values(var_id, adj_ds):
+                            value_errors.append(str(adj_fp))
+                        if not valid_deltas(var_id, sim_ds, adj_ds):
+                            delta_errors.append(str(adj_fp))
 
     with open(error_file, "a") as e:
-        e.write(f"Files with BBOX errors:\n")
-        e.write("\n".join(str(bbox_errors)) + "\n")
-        e.write(f"Files with nodata errors:\n")
-        e.write("\n".join(str(nodata_errors)) + "\n")
-        e.write(f"Files with value range errors:\n")
-        e.write("\n".join(str(value_errors)) + "\n")
+        if bbox_errors:
+            e.write(f"Files with BBOX errors:\n")
+            e.write("\n".join(bbox_errors) + "\n\n")
+        if nodata_errors:
+            e.write(f"Files with nodata errors:\n")
+            e.write("\n".join(nodata_errors) + "\n\n")
+        if value_errors:
+            e.write(f"Files with value range errors:\n")
+            e.write("\n".join(value_errors) + "\n\n")
+        if delta_errors:
+            e.write(f"Files with max delta errors:\n")
+            e.write("\n".join(delta_errors) + "\n\n")
 
-    error_count = len(bbox_errors) + len(nodata_errors) + len(value_errors)
+    error_count = (
+        len(bbox_errors) + len(nodata_errors) + len(value_errors) + len(delta_errors)
+    )
     print(f"QC process complete. {error_count} errors found.")
