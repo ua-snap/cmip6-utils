@@ -15,6 +15,7 @@ import xesmf as xe
 import xarray as xr
 from config import variables
 from pyproj import CRS
+from xclim.core import units
 
 # ignore serializationWarnings from xarray for datasets with multiple FillValues
 import warnings
@@ -386,7 +387,7 @@ def fix_time_and_write(out_ds, src_ds, out_fp):
         year_out_fp = generate_single_year_filename(out_fp, year_ds)
         # Make sure we are writing the time dimension as noleap
         assert year_ds.time.encoding["calendar"] == "noleap"
-        year_ds.to_netcdf(year_out_fp, unlimited_dims=["time"])
+        year_ds.to_netcdf(year_out_fp)
         out_fps.append(year_out_fp)
 
     [print(f"{fp} done") for fp in out_fps]
@@ -430,6 +431,42 @@ def apply_wgs84(ds):
 
         except:
             return ds
+
+
+def convert_units(ds):
+    """Convert units of a dataset to more useful units."""
+    # make sure units are more useful
+    var_id = list(ds.data_vars)[0]
+
+    if var_id in ["pr", "prsn", "prw", "prsn"]:
+        # precip
+        ds[var_id] = units.convert_units_to(ds[var_id], "mm")
+
+    elif var_id in ["tas", "tasmax", "tasmin"]:
+        # temperature
+        ds[var_id] = units.convert_units_to(ds[var_id], "degC")
+
+    return ds
+
+
+def rasdafy(ds):
+    """Apply some tweaks to the data that make things better for Rasdaman ingestion.
+    We want to make sure the axes are ordered (time, lon, lat), that the time axis is "unlimited", and that the latitutde axis is in decreasing order.
+    We will also make units are more useful (e.g. mm precip instead of kg m-2 s-1).
+    """
+    # make sure the time axis is unlimited (this means it is a "record dimension" in netCDF parlance)
+    ds.encoding["unlimited_dims"] = ["time"]
+
+    # make sure the latitude axis is in decreasing order
+    if ds.lat.values[0] < ds.lat.values[-1]:
+        ds = ds.sel(lat=slice(None, None, -1))
+
+    # make sure the axes are ordered (time, lon, lat)
+    ds = ds.transpose("time", "lon", "lat")
+
+    ds = convert_units(ds)
+
+    return ds
 
 
 def write_retry_batch_file(errs):
@@ -497,6 +534,9 @@ def regrid_dataset(fp, regridder, out_fp):
 
     # add CRS info
     regrid_ds = apply_wgs84(regrid_ds)
+
+    # rasdafy the dataset
+    regrid_ds = rasdafy(regrid_ds)
 
     out_fps = fix_time_and_write(regrid_ds, src_ds, out_fp)
 
