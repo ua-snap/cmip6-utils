@@ -100,7 +100,7 @@ def write_sbatch_biasadjust(
     pycommands += "\n\n"
     pycommands += f"echo End {var_id} generate DOY summary\n"
 
-    pycommands +=  "date && echo Job Completed"
+    pycommands += "date && echo Job Completed"
 
     commands = sbatch_head.format(sbatch_out_fp=sbatch_out_fp) + pycommands
 
@@ -125,23 +125,28 @@ def write_sbatch_biasadjust_qc(
     scenarios,
 ):
     pycommands = f"echo Begin {var_id} bias adjustment\n"
- 
+
     var_ids_string = " ".join(var_ids)
     models_string = " ".join(models)
     scenarios_string = " ".join(scenarios)
 
+    # TODO: Make this path not hard-coded.
     output_nb = f"/beegfs/CMIP6/crstephenson/bias_adjust/qc/visual_qc_out.ipynb"
     pycommands += f"echo Begin {var_id} QC\n"
     pycommands += "\n"
     pycommands += (
         f"cd /beegfs/CMIP6/crstephenson/cmip6-utils/bias_adjust\n"
         f"papermill qc.ipynb {output_nb} -r working_dir '{working_dir}' -r input_dir '{input_dir}' -r var_ids '{var_ids_string}' -r models '{models_string}' -r scenarios '{scenarios_string}' --log-output --log-level INFO\n"
-        f"jupyter nbconvert --to html {output_nb}"
+        f"jupyter nbconvert --to html {output_nb}\n"
+    )
+    pycommands += (
+        f"cd /beegfs/CMIP6/crstephenson/cmip6-utils/bias_adjust\n"
+        f"python qc.py --sim_dir '{input_dir}' --output_dir '{working_dir}' --models '{models_string}' --scenarios '{scenarios_string}' --vars '{var_ids_string}' --freqs 'day'\n"
     )
     pycommands += "\n\n"
     pycommands += f"echo End {var_id} QC\n"
 
-    pycommands +=  "date && echo Job Completed"
+    pycommands += "date && echo Job Completed"
 
     commands = sbatch_head.format(sbatch_out_fp=sbatch_out_fp) + pycommands
 
@@ -265,7 +270,9 @@ if __name__ == "__main__":
     }
 
     biasadjust_script = working_dir.joinpath("cmip6-utils/bias_adjust/bias_adjust.py")
-    doysummary_script = working_dir.joinpath("cmip6-utils/bias_adjust/generate_doy_summaries.py")
+    doysummary_script = working_dir.joinpath(
+        "cmip6-utils/bias_adjust/generate_doy_summaries.py"
+    )
 
     job_ids = []
     for model in models:
@@ -297,10 +304,10 @@ if __name__ == "__main__":
                 }
 
                 if scenario == "historical":
-                    sbatch_biasadjust_kwargs[
-                        "biasadjust_script"
-                    ] = working_dir.joinpath(
-                        "cmip6-utils/bias_adjust/bias_adjust_historical.py"
+                    sbatch_biasadjust_kwargs["biasadjust_script"] = (
+                        working_dir.joinpath(
+                            "cmip6-utils/bias_adjust/bias_adjust_historical.py"
+                        )
                     )
 
                 write_sbatch_biasadjust(**sbatch_biasadjust_kwargs)
@@ -311,16 +318,11 @@ if __name__ == "__main__":
                     sbatch_out_fp.name.replace("%j", str(job_id))
                 )
                 job_ids.append(job_id)
-    
 
     # filepath for slurm script
-    sbatch_fp_qc = sbatch_dir.joinpath(
-        f"qc_biasadjust.slurm"
-    )
+    sbatch_fp_qc = sbatch_dir.joinpath(f"qc_biasadjust.slurm")
     # filepath for slurm stdout
-    sbatch_out_fp = sbatch_dir.joinpath(
-        sbatch_fp_qc.name.replace(".slurm", "_%j.out")
-    )
+    sbatch_out_fp = sbatch_dir.joinpath(sbatch_fp_qc.name.replace(".slurm", "_%j.out"))
     sbatch_head = make_sbatch_head(**sbatch_head_kwargs)
     sbatch_biasadjust_kwargs = {
         "sbatch_fp": sbatch_fp,

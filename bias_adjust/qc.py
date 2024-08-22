@@ -1,6 +1,6 @@
 """
 Usage:
-    python qc.py --sim_dir /import/beegfs/CMIP6/arctic-cmip6/regrid --adj_dir /beegfs/CMIP6/crstephenson/bias_adjust --models 'GFDL-ESM4' --scenarios 'ssp126 ssp585' --vars 'tasmax pr' --freqs 'day'
+    python qc.py --sim_dir /import/beegfs/CMIP6/arctic-cmip6/regrid --output_dir /beegfs/CMIP6/crstephenson --models 'GFDL-ESM4' --scenarios 'ssp126 ssp585' --vars 'tasmax pr' --freqs 'day'
 """
 
 import argparse
@@ -9,12 +9,12 @@ import xarray as xr
 from pathlib import Path
 from luts import expected_value_ranges
 
-global sim_dir, adj_dir
+global sim_dir, output_dir
 
 
-def make_qc_file(output_directory):
+def make_qc_file():
     """Make a qc_directory and qc_error.txt file to save results"""
-    qc_dir = output_directory.joinpath("qc")
+    qc_dir = output_dir.joinpath("bias_adjust/qc")
     qc_dir.mkdir(exist_ok=True)
     error_file = qc_dir.joinpath("qc_error.txt")
     open(error_file, "w")  # Clear file if it exists.
@@ -27,7 +27,7 @@ def get_file_paths(model, scenario, var_id, freq, adjusted=True):
     years = range(2015, 2101)
     files = []
     if adjusted:
-        bias_adjust_dir = adj_dir.joinpath("netcdf")
+        bias_adjust_dir = output_dir.joinpath("bias_adjust/netcdf")
         bias_adjust_dir.joinpath(f"{model}/{scenario}/{freq}/{var_id}")
         for year in years:
             files += list(
@@ -93,7 +93,7 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
-        "--adj_dir",
+        "--output_dir",
         type=str,
         help="Path to directory where all bias-adjusted data was written",
         required=True,
@@ -125,7 +125,7 @@ def parse_args():
     args = parser.parse_args()
     return (
         Path(args.sim_dir),
-        Path(args.adj_dir),
+        Path(args.output_dir),
         args.vars,
         args.freqs,
         args.models,
@@ -134,9 +134,9 @@ def parse_args():
 
 
 if __name__ == "__main__":
-    sim_dir, adj_dir, vars, freqs, models, scenarios = parse_args()
-    slurm_dir = adj_dir.joinpath("slurm")
-    error_file = make_qc_file(adj_dir)
+    sim_dir, output_dir, vars, freqs, models, scenarios = parse_args()
+    slurm_dir = output_dir.joinpath("slurm")
+    error_file = make_qc_file()
 
     bbox_errors = []
     nodata_errors = []
