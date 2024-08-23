@@ -137,8 +137,6 @@ def write_sbatch_biasadjust_qc(
     Returns:
         None, writes the commands to sbatch_fp
     """
-    pycommands = f"echo Begin {var_id} bias adjustment\n"
-
     var_ids_str = " ".join(var_ids)
     models_str = " ".join(models)
     scenarios_str = " ".join(scenarios)
@@ -147,7 +145,7 @@ def write_sbatch_biasadjust_qc(
     qc_output_dir = working_dir.joinpath("bias_adjust/qc")
     output_nb = f"{qc_output_dir}/visual_qc_out.ipynb"
 
-    pycommands += f"echo Begin {var_id} QC\n"
+    pycommands = f"echo Begin bias adjustment QC\n"
     pycommands += "\n"
     pycommands += (
         f"cd {bias_adjust_repo_dir}\n"
@@ -156,7 +154,7 @@ def write_sbatch_biasadjust_qc(
         f"jupyter nbconvert --to html {output_nb}\n"
     )
     pycommands += "\n\n"
-    pycommands += f"echo End {var_id} QC\n"
+    pycommands += f"echo End bias adjustment QC\n"
     pycommands += "date && echo Job Completed"
 
     commands = sbatch_head.format(sbatch_out_fp=sbatch_out_fp) + pycommands
@@ -236,6 +234,11 @@ def parse_args():
         type=str,
         help="CPUs per node",
     )
+    parser.add_argument(
+        "--qc",
+        action="store_true",
+        help="Run QC script",
+    )
     args = parser.parse_args()
 
     return (
@@ -247,6 +250,7 @@ def parse_args():
         Path(args.working_dir),
         args.partition,
         args.ncpus,
+        args.qc,
     )
 
 
@@ -260,6 +264,7 @@ if __name__ == "__main__":
         working_dir,
         partition,
         ncpus,
+        qc,
     ) = parse_args()
 
     working_dir.mkdir(exist_ok=True)
@@ -286,74 +291,77 @@ if __name__ == "__main__":
     )
 
     job_ids = []
-    for model in models:
-        for scenario in scenarios:
-            for var_id in var_ids:
-                # filepath for slurm script
-                sbatch_fp = sbatch_dir.joinpath(
-                    f"{var_id}_{model}_{scenario}_biasadjust.slurm"
-                )
-                # filepath for slurm stdout
-                sbatch_out_fp = sbatch_dir.joinpath(
-                    sbatch_fp.name.replace(".slurm", "_%j.out")
-                )
-                # excluding node 138 until issue resolved
-                sbatch_head = make_sbatch_head(**sbatch_head_kwargs)
-                sbatch_biasadjust_kwargs = {
-                    "sbatch_fp": sbatch_fp,
-                    "sbatch_out_fp": sbatch_out_fp,
-                    "var_id": var_id,
-                    "model": model,
-                    "scenario": scenario,
-                    "input_dir": input_dir,
-                    "working_dir": working_dir,
-                    "biasadjust_script": biasadjust_script,
-                    "doysummary_script": doysummary_script,
-                    "reference_dir": reference_dir,
-                    "adj_dir": adj_dir,
-                    "sbatch_head": sbatch_head,
-                }
-
-                if scenario == "historical":
-                    sbatch_biasadjust_kwargs["biasadjust_script"] = (
-                        working_dir.joinpath(
-                            "cmip6-utils/bias_adjust/bias_adjust_historical.py"
-                        )
+    if not qc:
+        for model in models:
+            for scenario in scenarios:
+                for var_id in var_ids:
+                    # filepath for slurm script
+                    sbatch_fp = sbatch_dir.joinpath(
+                        f"{var_id}_{model}_{scenario}_biasadjust.slurm"
                     )
+                    # filepath for slurm stdout
+                    sbatch_out_fp = sbatch_dir.joinpath(
+                        sbatch_fp.name.replace(".slurm", "_%j.out")
+                    )
+                    # excluding node 138 until issue resolved
+                    sbatch_head = make_sbatch_head(**sbatch_head_kwargs)
+                    sbatch_biasadjust_kwargs = {
+                        "sbatch_fp": sbatch_fp,
+                        "sbatch_out_fp": sbatch_out_fp,
+                        "var_id": var_id,
+                        "model": model,
+                        "scenario": scenario,
+                        "input_dir": input_dir,
+                        "working_dir": working_dir,
+                        "biasadjust_script": biasadjust_script,
+                        "doysummary_script": doysummary_script,
+                        "reference_dir": reference_dir,
+                        "adj_dir": adj_dir,
+                        "sbatch_head": sbatch_head,
+                    }
 
-                write_sbatch_biasadjust(**sbatch_biasadjust_kwargs)
+                    if scenario == "historical":
+                        sbatch_biasadjust_kwargs["biasadjust_script"] = (
+                            working_dir.joinpath(
+                                "cmip6-utils/bias_adjust/bias_adjust_historical.py"
+                            )
+                        )
 
-                job_id = submit_sbatch(sbatch_fp)
+                    write_sbatch_biasadjust(**sbatch_biasadjust_kwargs)
 
-                sbatch_out_fp_with_jobid = sbatch_dir.joinpath(
-                    sbatch_out_fp.name.replace("%j", str(job_id))
-                )
-                job_ids.append(job_id)
+                    job_id = submit_sbatch(sbatch_fp)
 
-    # filepath for slurm script
-    sbatch_fp_qc = sbatch_dir.joinpath(f"qc_biasadjust.slurm")
-    # filepath for slurm stdout
-    sbatch_out_fp = sbatch_dir.joinpath(sbatch_fp_qc.name.replace(".slurm", "_%j.out"))
-    sbatch_head = make_sbatch_head(**sbatch_head_kwargs)
-    sbatch_biasadjust_qc_kwargs = {
-        "sbatch_fp": sbatch_fp,
-        "sbatch_out_fp": sbatch_out_fp,
-        "var_ids": var_ids,
-        "models": models,
-        "scenarios": scenarios,
-        "input_dir": input_dir,
-        "working_dir": working_dir,
-        "reference_dir": reference_dir,
-        "sbatch_head": sbatch_head,
-    }
-    write_sbatch_biasadjust_qc(**sbatch_biasadjust_qc_kwargs)
+                    sbatch_out_fp_with_jobid = sbatch_dir.joinpath(
+                        sbatch_out_fp.name.replace("%j", str(job_id))
+                    )
+                    job_ids.append(job_id)
+    else:
+        # filepath for slurm script
+        sbatch_fp_qc = sbatch_dir.joinpath(f"qc_biasadjust.slurm")
+        # filepath for slurm stdout
+        sbatch_out_fp = sbatch_dir.joinpath(
+            sbatch_fp_qc.name.replace(".slurm", "_%j.out")
+        )
+        sbatch_head = make_sbatch_head(**sbatch_head_kwargs)
+        sbatch_biasadjust_qc_kwargs = {
+            "sbatch_fp": sbatch_fp_qc,
+            "sbatch_out_fp": sbatch_out_fp,
+            "var_ids": var_ids,
+            "models": models,
+            "scenarios": scenarios,
+            "input_dir": input_dir,
+            "working_dir": working_dir,
+            "reference_dir": reference_dir,
+            "sbatch_head": sbatch_head,
+        }
+        write_sbatch_biasadjust_qc(**sbatch_biasadjust_qc_kwargs)
 
-    job_id = submit_sbatch(sbatch_fp)
+        job_id = submit_sbatch(sbatch_fp_qc)
 
-    sbatch_out_fp_with_jobid = sbatch_dir.joinpath(
-        sbatch_out_fp.name.replace("%j", str(job_id))
-    )
-    job_ids.append(job_id)
+        sbatch_out_fp_with_jobid = sbatch_dir.joinpath(
+            sbatch_out_fp.name.replace("%j", str(job_id))
+        )
+        job_ids.append(job_id)
 
     # currently printing Job IDs to give to next steps in prefect. Probably better ways to do this.
     print(job_ids)
