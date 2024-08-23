@@ -15,7 +15,7 @@ import dask
 from dask.distributed import Client
 from xclim import sdba
 from xclim.sdba.detrending import LoessDetrend
-from config import ref_tmp_fn, cmip6_tmp_fn
+from config import ref_tmp_fn, cmip6_tmp_fn, cmip6_adjusted_tmp_fn
 from luts import sim_ref_var_lu, varid_adj_kind_lu, jitter_under_lu
 
 
@@ -47,7 +47,7 @@ def generate_adjusted_filepaths(adj_dir, var_ids, models, scenarios, years):
     return adj_fps
 
 
-def generate_cmip6_fp(input_dir, model, scenario, var_id, year):
+def generate_cmip6_fp(input_dir, model, scenario, var_id, year, adjusted=False):
     """Get the filepath to a cmip6 file in input_dir given the attributes
 
     Args:
@@ -56,17 +56,22 @@ def generate_cmip6_fp(input_dir, model, scenario, var_id, year):
         scenario (str): scenario being processed
         var_id (str): variable ID being processed
         year (int/str): year being processed
+        adjusted (bool): whether the file is adjusted or not
 
     Returns:
         src_fp (pathlib.Path): Path to the source CMIP6 file
     """
-    src_fp = input_dir.joinpath(
-        model,
-        scenario,
-        "day",
-        var_id,
-        cmip6_tmp_fn.format(var_id=var_id, model=model, scenario=scenario, year=year),
-    )
+
+    if adjusted:
+        filename = cmip6_adjusted_tmp_fn.format(
+            var_id=var_id, model=model, scenario=scenario, year=year
+        )
+    else:
+        filename = cmip6_tmp_fn.format(
+            var_id=var_id, model=model, scenario=scenario, year=year
+        )
+
+    src_fp = input_dir.joinpath(model, scenario, "day", var_id, filename)
 
     return src_fp
 
