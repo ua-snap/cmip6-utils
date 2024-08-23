@@ -18,3 +18,9 @@ expected_value_ranges = {
     # 210°K - 330°K is about -63°C - 57°C, or -82°F - 134°F
     "tasmax": {"minimum": 210, "maximum": 330, "delta_maximum": 25},
 }
+
+units_lu = {
+    "pr": "kg m-2 s-1",
+    "dtr": "K",
+    "tasmax": "K",
+}
