@@ -120,11 +120,11 @@ def compare_expected_to_existing_and_check_values(
                         if fp in var_src_fps:
                             var_src_fps.remove(fp)
 
-                    var_src_fps = [
-                        fp
-                        for fp in var_src_fps
-                        if "tasmax_Amon_KACE-1-0-G_ssp126" in fp.name
-                    ]
+                    # var_src_fps = [
+                    #     fp
+                    #     for fp in var_src_fps
+                    #     if "tasmax_Amon_KACE-1-0-G_ssp126" in fp.name
+                    # ]
 
                     # create dict of min/max values for each source file
                     src_min_max = {}
