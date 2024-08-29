@@ -50,9 +50,9 @@ def get_grid(fp):
     try:
         # using the h5netcdf engine because it seems faster and might help prevent pool hanging
         ds = xr.open_dataset(fp, engine="h5netcdf")
-    except OSError:
+    except:
         # this seems to have only failed due to some files (KACE model) being written in netCDF3 format
-        ds = xr.open_dataset(fp, engine="scipy")
+        ds = xr.open_dataset(fp)
 
     grid_di = {}
     for var_id in GRID_VARS:
