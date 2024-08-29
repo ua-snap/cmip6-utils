@@ -41,7 +41,7 @@ model_inst_lu = {
     "HadGEM3-GC31-MM": "MOHC",
     "KACE-1-0-G": "NIMS-KMA",
     "MIROC6": "MIROC",
-    "MRI-ESM2-0": "MPI-M",
+    "MRI-ESM2-0": "MRI",
     "NorESM2-MM": "NCC",
     "TaiESM1": "AS-RCEC",
     "CESM2-WACCM": "NCAR",
