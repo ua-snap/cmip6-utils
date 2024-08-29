@@ -7,7 +7,7 @@ Usage:
 """
 
 import argparse
-import multiprocessing
+from multiprocessing import Pool, set_start_method
 import xarray as xr
 from pathlib import Path
 from regrid import (
@@ -105,7 +105,7 @@ def compare_expected_to_existing_and_check_values(
                     regrid_var_tups = [
                         (existing_fp, var) for existing_fp in existing_fps
                     ]
-                    with multiprocessing.Pool(24) as p:
+                    with Pool(24) as p:
                         results = list(p.map(file_min_max, regrid_var_tups))
                     # populate min/max dict / store dataset errors
                     for result in results:
@@ -124,7 +124,7 @@ def compare_expected_to_existing_and_check_values(
                     src_min_max = {}
                     # create list of tuples as args for multiprocessing function
                     src_var_tups = [(var_src_fp, var) for var_src_fp in var_src_fps]
-                    with multiprocessing.Pool(24) as p:
+                    with Pool(24) as p:
                         results = list(p.map(file_min_max, src_var_tups))
                     # populate min/max dict
                     for result in results:
@@ -215,20 +215,26 @@ def file_min_max(args):
     """Get file min and max values within the Arctic latitudes."""
     file, var = args
     try:
-        with xr.open_dataset(file) as src_ds:
-            # handle regridded data being flipped
-            if src_ds.lat[0] > src_ds.lat[-1]:
-                lat_slicer = slice(90, 49)
-            else:
-                lat_slicer = slice(49, 90)
+        try:
+            # using the h5netcdf engine because it seems faster and might help prevent pool hanging
+            src_ds = xr.open_dataset(file, engine="h5netcdf")
+        except:
+            # this seems to have only failed due to some files (KACE model) being written in netCDF3 format
+            src_ds = xr.open_dataset(file)
 
-            src_ds_slice = src_ds.sel(lat=lat_slicer)
+        # handle regridded data being flipped
+        if src_ds.lat[0] > src_ds.lat[-1]:
+            lat_slicer = slice(90, 49)
+        else:
+            lat_slicer = slice(49, 90)
 
-            src_ds_slice = convert_units(src_ds_slice)
+        src_ds_slice = src_ds.sel(lat=lat_slicer)
 
-            src_min, src_max = float(src_ds_slice[var].min()), float(
-                src_ds_slice[var].max()
-            )
+        src_ds_slice = convert_units(src_ds_slice)
+
+        src_min, src_max = float(src_ds_slice[var].min()), float(
+            src_ds_slice[var].max()
+        )
         return {"file": str(file), "min": src_min, "max": src_max}
     except:
         return {"file": None, "min": None, "max": None}
@@ -286,6 +292,9 @@ if __name__ == "__main__":
     error_file = make_qc_file(output_directory)
 
     print("QC process started...")
+
+    # this might help multiprocessing Pool better
+    set_start_method("spawn")
 
     # check slurm files
     fps_to_ignore = summarize_slurm_out_files(slurm_dir, error_file)
