@@ -84,101 +84,108 @@ def compare_expected_to_existing_and_check_values(
     If all expected files exist, check their values against source files.
     Writes error messages to qc error file, and returns a list of fps with errors for printing a summary message.
     """
+    # set up lists to collect error text
     output_errors = []
     ds_errors = []
     value_errors = []
 
+    # create lists to populate with filepath/var tuples
+    regrid_var_tups = []
+    src_var_tups = []
+
+    # iterate through all var/freq/model/scenario combos to populate the lists
     for var in vars.split():
         for freq in freqs.split():
             for model in models.split():
                 for scenario in scenarios.split():
-                    # get existing files for the variable / frequency combos
-                    existing_fps = list(
-                        regrid_dir.glob(f"{model}/{scenario}/*{freq}/{var}/**/*.nc")
-                    )
+                    # get existing regridded filepaths for the variable / frequency combos
+                    existing_fps = list(regrid_dir.glob(f"{model}/{scenario}/*{freq}/{var}/**/*.nc"))
 
-                    existing_fps = [fp for fp in existing_fps]
+                    #existing_fps = [fp for fp in existing_fps]
 
-                    # create dict of min/max values for each existing file
-                    regrid_min_max = {}
-                    # create list of tuples as args for multiprocessing function
-                    regrid_var_tups = [
-                        (existing_fp, var) for existing_fp in existing_fps
-                    ]
-                    with Pool(24) as p:
-                        results = list(p.map(file_min_max, regrid_var_tups))
-                    # populate min/max dict / store dataset errors
-                    for result in results:
-                        regrid_min_max[result["file"]] = {
-                            "min": result["min"],
-                            "max": result["max"],
-                        }
+                    # populate list with tuples as args for the multiprocessing function
+                    for existing_fp in existing_fps:
+                        regrid_var_tups.append((existing_fp, var))
 
-                    # # list all source file paths found in the batch files, and ignore the ones that had processing errors previously identified
+                    # get source filepaths found in the batch files, ignoring the ones that had processing errors previously identified
                     var_src_fps = get_source_fps_from_batch_files(regrid_batch_dir, var)
                     for fp in fps_to_ignore:
                         if fp in var_src_fps:
                             var_src_fps.remove(fp)
 
-                    # create dict of min/max values for each source file
-                    src_min_max = {}
-                    # create list of tuples as args for multiprocessing function
-                    src_var_tups = [(var_src_fp, var) for var_src_fp in var_src_fps]
-                    with Pool(24) as p:
-                        results = list(p.map(file_min_max, src_var_tups))
-                    # populate min/max dict
-                    for result in results:
-                        src_min_max[result["file"]] = {
-                            "min": result["min"],
-                            "max": result["max"],
-                        }
+                    # populate list with tuples as args for the multiprocessing function
+                    for var_src_fp in var_src_fps:
+                        src_var_tups.append((var_src_fp, var))
 
-                    # create a list of expected regridded file paths from the source file paths
-                    for src_fp in var_src_fps:
-                        # build expected base file path from the source file path
-                        expected_base_fp = generate_regrid_filepath(src_fp, regrid_dir)
-                        base_timeframe = expected_base_fp.name.split("_")[-1].split(
-                            ".nc"
-                        )[0]
-                        # get a list of yearly time range strings from the multi-year source filename
-                        expected_filename_time_ranges = (
-                            parse_output_filename_times_from_file(src_fp)
-                        )
-                        # replace the timeframe in the base file path with the yearly time ranges, and add to expected_fps list
-                        expected_fps = []
-                        for yearly_timeframe in expected_filename_time_ranges:
-                            expected_fp = str(expected_base_fp).replace(
-                                base_timeframe, yearly_timeframe
-                            )
-                            expected_fps.append(Path(expected_fp))
+    # create dicts of min/max values for each regridded file and each source file
+    regrid_min_max = {}
+    src_min_max = {}
+    
+    # using multiprocessing, populate the dicts with min/max values for all regridded files and source files
+    with Pool(24) as p:
+        results = list(p.map(file_min_max, regrid_var_tups))
+    # populate min/max dict / store dataset errors
+    for result in results:
+        regrid_min_max[result["file"]] = {
+            "min": result["min"],
+            "max": result["max"],
+        }
 
-                        # search existing files for the expected files, and if not found add to error list
-                        # if all are found, run the final QC step to compare values
-                        if all([fp in existing_fps for fp in expected_fps]):
-                            # call min/max from src dict
-                            src_min, src_max = (
-                                src_min_max[str(src_fp)]["min"],
-                                src_min_max[str(src_fp)]["max"],
-                            )
-                            # iterate thru expected filepaths
-                            for regrid_fp in expected_fps:
-                                # check if in keys, if not then the file did not open in file_min_max()
-                                if str(regrid_fp) in regrid_min_max.keys():
-                                    # compare values
-                                    regrid_min, regrid_max = (
-                                        regrid_min_max[str(regrid_fp)]["min"],
-                                        regrid_min_max[str(regrid_fp)]["max"],
-                                    )
-                                    if (src_max >= regrid_min >= src_min) and (
-                                        src_max >= regrid_max >= src_min
-                                    ):
-                                        pass
-                                    else:
-                                        value_errors.append(str(regrid_fp))
-                                else:
-                                    ds_errors.append(str(regrid_fp))
-                        else:
-                            output_errors.append(str(src_fp))
+    with Pool(24) as p:
+        results = list(p.map(file_min_max, src_var_tups))
+    # populate min/max dict
+    for result in results:
+        src_min_max[result["file"]] = {
+            "min": result["min"],
+            "max": result["max"],
+        }
+
+    # create a list of expected regridded file paths from the source file paths
+    for src_fp in var_src_fps:
+        # build expected base file path from the source file path
+        expected_base_fp = generate_regrid_filepath(src_fp, regrid_dir)
+        base_timeframe = expected_base_fp.name.split("_")[-1].split(
+            ".nc"
+        )[0]
+        # get a list of yearly time range strings from the multi-year source filename
+        expected_filename_time_ranges = (
+            parse_output_filename_times_from_file(src_fp)
+        )
+        # replace the timeframe in the base file path with the yearly time ranges, and add to expected_fps list
+        expected_fps = []
+        for yearly_timeframe in expected_filename_time_ranges:
+            expected_fp = str(expected_base_fp).replace(
+                base_timeframe, yearly_timeframe
+            )
+            expected_fps.append(Path(expected_fp))
+
+        # search existing files for the expected files, and if not found add text to appropriate error list
+        # if all are found, run the final QC step to compare values
+        if all([fp in existing_fps for fp in expected_fps]):
+            # call min/max from src dict
+            src_min, src_max = (
+                src_min_max[str(src_fp)]["min"],
+                src_min_max[str(src_fp)]["max"],
+            )
+            # iterate thru expected filepaths
+            for regrid_fp in expected_fps:
+                # check if in keys, if not then the file did not open in file_min_max()
+                if str(regrid_fp) in regrid_min_max.keys():
+                    # compare values
+                    regrid_min, regrid_max = (
+                        regrid_min_max[str(regrid_fp)]["min"],
+                        regrid_min_max[str(regrid_fp)]["max"],
+                    )
+                    if (src_max >= regrid_min >= src_min) and (
+                        src_max >= regrid_max >= src_min
+                    ):
+                        pass
+                    else:
+                        value_errors.append(str(regrid_fp))
+                else:
+                    ds_errors.append(str(regrid_fp))
+        else:
+            output_errors.append(str(src_fp))
 
     # write all errors to qc_error.txt
     with open(error_file, "a") as e:
