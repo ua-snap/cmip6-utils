@@ -139,7 +139,7 @@ if __name__ == "__main__":
         f"#SBATCH --cpus-per-task=24\n"
         "#SBATCH --mail-type=FAIL\n"
         f"#SBATCH -p t2small\n"
-        f"#SBATCH --time=01:00:00\n"
+        f"#SBATCH --time=04:00:00\n"
         f"#SBATCH --output {qc_sbatch_out_fp}\n"
         # print start time
         "echo Start slurm && date\n"
@@ -147,7 +147,7 @@ if __name__ == "__main__":
         f"source {conda_init_script}\n"
         f"conda activate {conda_env_name}\n"
         # run the qc script
-        f"python {qc_script} --output_directory {output_directory} --vars '{vars}' --freqs '{freqs}' --models '{models}' --scenarios '{scenarios}'\n"
+        f"time python {qc_script} --output_directory {output_directory} --vars '{vars}' --freqs '{freqs}' --models '{models}' --scenarios '{scenarios}'\n"
     )
 
     # save the sbatch text as a new slurm file in the QC directory

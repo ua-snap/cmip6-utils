@@ -15,6 +15,7 @@ import xesmf as xe
 import xarray as xr
 from config import variables
 from pyproj import CRS
+from xclim.core import units
 
 # ignore serializationWarnings from xarray for datasets with multiple FillValues
 import warnings
@@ -394,6 +395,16 @@ def fix_time_and_write(out_ds, src_ds, out_fp):
     return out_fps
 
 
+def get_var_id(ds):
+    """Get the variable ID from a dataset"""
+    # assumes we only have one data variable
+    var_ids = [var_id for var_id in list(ds.data_vars) if var_id in variables]
+    assert len(var_ids) != 0, "No variable ID found in Dataset."
+    assert len(var_ids) == 1, f"More than one variable ID found: {var_ids}."
+
+    return var_ids[0]
+
+
 def apply_wgs84(ds):
     """Function to add spatial_ref coordinate, CRS attributes, and CRS encodings to make CF-compliant metadata for the WGS84 CRS.
     Args:
@@ -424,12 +435,81 @@ def apply_wgs84(ds):
 
             # manually link spatial_ref attributes to the data variable via "grid_mapping" encoding
             # assumes dataset will only have one data variable!
-            var = list(ds.data_vars)[0]
-            ds[var].encoding["grid_mapping"] = "spatial_ref"
+            var_id = get_var_id(ds)
+            ds[var_id].encoding["grid_mapping"] = "spatial_ref"
             return ds
 
         except:
             return ds
+
+
+def convert_units(ds):
+    """Convert units of a dataset to more useful units."""
+    # make sure units are more useful
+    var_id = get_var_id(ds)
+
+    if var_id in ["pr", "prsn", "prw", "prsn"]:
+        # precip
+        ds[var_id] = units.convert_units_to(ds[var_id], "mm")
+
+    elif var_id in ["tas", "tasmax", "tasmin"]:
+        # temperature
+        ds[var_id] = units.convert_units_to(ds[var_id], "degC")
+
+    return ds
+
+
+def rasdafy(ds):
+    """Apply some tweaks to the data that make things better for Rasdaman ingestion.
+    We want to make sure the axes are ordered (time, lon, lat), that the time axis is "unlimited", and that the latitutde axis is in decreasing order.
+    We will also make units are more useful (e.g. mm precip instead of kg m-2 s-1).
+    """
+    # make sure the time axis is unlimited (this means it is a "record dimension" in netCDF parlance)
+    ds.encoding["unlimited_dims"] = ["time"]
+
+    # make sure the latitude axis is in decreasing order
+    if ds.lat.values[0] < ds.lat.values[-1]:
+        ds = ds.sel(lat=slice(None, None, -1))
+
+    # drop bnds dimension if it exists
+    for bnd_dim in ["bnds", "nbnd", "lat_bnds", "lon_bnds", "time_bnds"]:
+        ds = ds.drop_dims(bnd_dim, errors="ignore")
+
+    # make sure the axes are ordered (time, lon, lat)
+    ds = ds.transpose("time", "lon", "lat")
+
+    ds = convert_units(ds)
+
+    return ds
+
+
+def fix_attrs(ds):
+    """Fix some attributes of the dataset to make"""
+    # make sure longitude min and max attributes are set correctly
+    ds["lon"].attrs["valid_max"] = 180
+    ds["lon"].attrs["valid_min"] = -180
+
+    # fix interpolation method attributes (could be remnants from GCM that don't match)
+    var_id = get_var_id(ds)
+    if "interp_method" in ds[var_id].attrs:
+        # save parent interp method if present
+        ds[var_id].attrs["parent_interp_method"] = ds[var_id].attrs["interp_method"]
+
+    ds[var_id].attrs["interp_method"] = ds.attrs["regrid_method"]
+    del ds.attrs["regrid_method"]
+
+    if "grid" in ds.attrs:
+        ds.attrs["parent_grid"] = ds.attrs["grid"]
+        ds.attrs["grid"] = "0.9x1.25 finite volume grid (43x288 latxlon)"
+
+    if "grid_label" in ds.attrs:
+        ds.attrs["parent_grid_label"] = ds.attrs["grid_label"]
+        del ds.attrs["grid_label"]
+
+    # make sure standard names are consistent
+    ds[var_id].attrs["long_name"] = variables[var_id]["name"]
+
+    return ds
 
 
 def write_retry_batch_file(errs):
@@ -491,12 +571,13 @@ def regrid_dataset(fp, regridder, out_fp):
     regrid_task = regridder(src_ds, keep_attrs=True)
     regrid_ds = regrid_task.compute()
 
-    # make sure longitude min and max attributes are set correctly
-    regrid_ds["lon"].attrs["valid_max"] = 180
-    regrid_ds["lon"].attrs["valid_min"] = -180
+    regrid_ds = fix_attrs(regrid_ds)
 
     # add CRS info
     regrid_ds = apply_wgs84(regrid_ds)
+
+    # rasdafy the dataset
+    regrid_ds = rasdafy(regrid_ds)
 
     out_fps = fix_time_and_write(regrid_ds, src_ds, out_fp)
 
