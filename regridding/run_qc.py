@@ -128,26 +128,42 @@ if __name__ == "__main__":
     qc_dir = output_directory.joinpath("qc")
     qc_dir.mkdir(exist_ok=True)
 
-    # Create and submit QC script
+    # Create QC config file and populate with task ID numbers and vars
 
+    qc_config_fp = qc_dir.joinpath(str(qc_script.name).replace(".py", "_config.txt"))
+    qc_config_text = ("ArrayTaskID\tVar\n")
+    for var, number in zip(vars.split(" "), range(len(vars))):
+        qc_config_text += (f"{number+1}\t{var}\n")
+    with open(qc_config_fp, "w") as f:
+        f.write(qc_config_text)
+
+    # Create and submit QC script
+        
     qc_sbatch_fp = qc_dir.joinpath(str(qc_script.name).replace(".py", ".slurm"))
-    qc_sbatch_out_fp = qc_dir.joinpath(str(qc_script.name).replace(".py", "_%j.out"))
+    qc_sbatch_out_fp = qc_dir.joinpath(str(qc_script.name).replace(".py", "_slurm.out"))
 
     sbatch_text = (
+        # set sbatch parameters
         "#!/bin/sh\n"
         "#SBATCH --nodes=1\n"
         f"#SBATCH --cpus-per-task=24\n"
         "#SBATCH --mail-type=FAIL\n"
         f"#SBATCH -p t2small\n"
         f"#SBATCH --time=04:00:00\n"
+        f"#SBATCH --array=1-3\n"
+        f"#SBATCH --open-mode=append\n"
         f"#SBATCH --output {qc_sbatch_out_fp}\n"
         # print start time
         "echo Start slurm && date\n"
         # prepare shell for using activate
         f"source {conda_init_script}\n"
         f"conda activate {conda_env_name}\n"
+        # define the config file and get task/variable combo
+        f"config={qc_config_fp}\n"
+        f"var=$(awk -v ArrayTaskID=$SLURM_ARRAY_TASK_ID '$1==ArrayTaskID \u007bprint $2\u007d' $config)\n"
+        f"echo Submitting job for variable: $var\n"
         # run the qc script
-        f"time python {qc_script} --output_directory {output_directory} --vars '{vars}' --freqs '{freqs}' --models '{models}' --scenarios '{scenarios}'\n"
+        f"time python {qc_script} --output_directory {output_directory} --vars $var --freqs '{freqs}' --models '{models}' --scenarios '{scenarios}'\n"
     )
 
     # save the sbatch text as a new slurm file in the QC directory
