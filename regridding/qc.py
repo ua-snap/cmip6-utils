@@ -9,6 +9,7 @@ Usage:
 import argparse
 from multiprocessing import Pool, set_start_method
 import xarray as xr
+from datetime import datetime
 from pathlib import Path
 from regrid import (
     generate_regrid_filepath,
@@ -221,6 +222,8 @@ def make_qc_file(output_directory):
 def file_min_max(args):
     """Get file min and max values within the Arctic latitudes."""
     file, var = args
+    print(file)
+    print(str(datetime.now()))
     try:
         try:
             # using the h5netcdf engine because it seems faster and might help prevent pool hanging
