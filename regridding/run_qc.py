@@ -150,7 +150,7 @@ if __name__ == "__main__":
         "#SBATCH --mail-type=FAIL\n"
         f"#SBATCH -p t2small\n"
         f"#SBATCH --time=04:00:00\n"
-        f"#SBATCH --array=1-3\n"
+        f"#SBATCH --array=1-{len(vars.split(" "))}\n"
         f"#SBATCH --open-mode=append\n"
         f"#SBATCH --output {qc_sbatch_out_fp}\n"
         # print start time
