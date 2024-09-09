@@ -45,9 +45,9 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
-        "--visual_qc_notebook",
+        "--qc_notebook",
         type=str,
-        help="Path to regridding visual qc notebook",
+        help="Path to regridding QC notebook",
         required=True,
     )
     parser.add_argument(
@@ -84,7 +84,7 @@ def parse_args():
         Path(args.conda_init_script),
         Path(args.conda_env_name),
         Path(args.qc_script),
-        Path(args.visual_qc_notebook),
+        Path(args.qc_notebook),
         args.vars,
         args.freqs,
         args.models,
@@ -116,7 +116,7 @@ if __name__ == "__main__":
         conda_init_script,
         conda_env_name,
         qc_script,
-        visual_qc_notebook,
+        qc_notebook,
         vars,
         freqs,
         models,
@@ -128,59 +128,15 @@ if __name__ == "__main__":
     qc_dir = output_directory.joinpath("qc")
     qc_dir.mkdir(exist_ok=True)
 
-    # Create QC config file and populate with task ID numbers and vars
-
-    qc_config_fp = qc_dir.joinpath(str(qc_script.name).replace(".py", "_config.txt"))
-    qc_config_text = ("ArrayTaskID\tVar\n")
-    for var, number in zip(vars.split(" "), range(len(vars))):
-        qc_config_text += (f"{number+1}\t{var}\n")
-    with open(qc_config_fp, "w") as f:
-        f.write(qc_config_text)
-
-    # Create and submit QC script
-        
-    qc_sbatch_fp = qc_dir.joinpath(str(qc_script.name).replace(".py", ".slurm"))
-    qc_sbatch_out_fp = qc_dir.joinpath(str(qc_script.name).replace(".py", "_slurm.out"))
-
-    sbatch_text = (
-        # set sbatch parameters
-        "#!/bin/sh\n"
-        "#SBATCH --nodes=1\n"
-        f"#SBATCH --cpus-per-task=24\n"
-        "#SBATCH --mail-type=FAIL\n"
-        f"#SBATCH -p t2small\n"
-        f"#SBATCH --time=04:00:00\n"
-        f"#SBATCH --array=1-{len(vars.split(" "))}\n"
-        f"#SBATCH --open-mode=append\n"
-        f"#SBATCH --output {qc_sbatch_out_fp}\n"
-        # print start time
-        "echo Start slurm && date\n"
-        # prepare shell for using activate
-        f"source {conda_init_script}\n"
-        f"conda activate {conda_env_name}\n"
-        # define the config file and get task/variable combo
-        f"config={qc_config_fp}\n"
-        f"var=$(awk -v ArrayTaskID=$SLURM_ARRAY_TASK_ID '$1==ArrayTaskID \u007bprint $2\u007d' $config)\n"
-        f"echo Submitting job for variable: $var\n"
-        # run the qc script
-        f"time python {qc_script} --output_directory {output_directory} --vars $var --freqs '{freqs}' --models '{models}' --scenarios '{scenarios}'\n"
-    )
-
-    # save the sbatch text as a new slurm file in the QC directory
-    with open(qc_sbatch_fp, "w") as f:
-        f.write(sbatch_text)
-
-    submit_sbatch(qc_sbatch_fp)
-
     # Create and submit notebook script
 
-    output_nb = qc_dir.joinpath("visual_qc_out.ipynb")
+    output_nb = qc_dir.joinpath("qc_out.ipynb")
 
-    visual_qc_notebook_sbatch_fp = qc_dir.joinpath(
-        str(visual_qc_notebook.name).replace(".ipynb", "_nb.slurm")
+    qc_notebook_sbatch_fp = qc_dir.joinpath(
+        str(qc_notebook.name).replace(".ipynb", "_nb.slurm")
     )
-    visual_qc_notebook_sbatch_out_fp = qc_dir.joinpath(
-        str(visual_qc_notebook.name).replace(".ipynb", "_nb_%j.out")
+    qc_notebook_sbatch_out_fp = qc_dir.joinpath(
+        str(qc_notebook.name).replace(".ipynb", "_nb_%j.out")
     )
 
     vqc_sbatch_text = (
@@ -190,7 +146,7 @@ if __name__ == "__main__":
         "#SBATCH --mail-type=FAIL\n"
         f"#SBATCH -p t2small\n"
         f"#SBATCH --time=01:00:00\n"
-        f"#SBATCH --output {visual_qc_notebook_sbatch_out_fp}\n"
+        f"#SBATCH --output {qc_notebook_sbatch_out_fp}\n"
         # print start time
         "echo Start slurm && date\n"
         # prepare shell for using activate
@@ -198,12 +154,12 @@ if __name__ == "__main__":
         f"conda activate {conda_env_name}\n"
         # run the notebook
         f"cd {repo_regridding_directory}\n"
-        f"papermill {visual_qc_notebook} {output_nb} -r output_directory '{output_directory}' -r cmip6_directory '{cmip6_directory}' -r vars '{vars}' -r freqs '{freqs}' -r models '{models}' -r scenarios '{scenarios}'\n"
+        f"papermill {qc_notebook} {output_nb} -r output_directory '{output_directory}' -r cmip6_directory '{cmip6_directory}' -r vars '{vars}' -r freqs '{freqs}' -r models '{models}' -r scenarios '{scenarios}'\n"
         f"jupyter nbconvert --to html {output_nb}"
     )
 
     # save the sbatch text as a new slurm file in the QC directory
-    with open(visual_qc_notebook_sbatch_fp, "w") as f:
+    with open(qc_notebook_sbatch_fp, "w") as f:
         f.write(vqc_sbatch_text)
 
-    submit_sbatch(visual_qc_notebook_sbatch_fp)
+    submit_sbatch(qc_notebook_sbatch_fp)
