@@ -139,7 +139,7 @@ if __name__ == "__main__":
         str(qc_notebook.name).replace(".ipynb", "_nb_%j.out")
     )
 
-    vqc_sbatch_text = (
+    qc_sbatch_text = (
         "#!/bin/sh\n"
         "#SBATCH --nodes=1\n"
         f"#SBATCH --cpus-per-task=24\n"
@@ -160,6 +160,6 @@ if __name__ == "__main__":
 
     # save the sbatch text as a new slurm file in the QC directory
     with open(qc_notebook_sbatch_fp, "w") as f:
-        f.write(vqc_sbatch_text)
+        f.write(qc_sbatch_text)
 
     submit_sbatch(qc_notebook_sbatch_fp)

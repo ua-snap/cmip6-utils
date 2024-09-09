@@ -1,22 +1,24 @@
-"""Script for performing QC checks on files produced via the regridding pipeline and their individual slurm job output files.
-This script uses the regridding batch files as a "to-do list" of files to check.
-QC errors are written to {output_directory}/qc/qc_error.txt, and are summarized in print statements. 
-
-Usage:
-    python qc.py --output_directory /center1/CMIP6/jdpaul3/regrid/cmip6_regridding --vars 'pr ta' --freqs 'mon day'
+"""Module for QC functions for regridded data.
 """
 
-import argparse
-from multiprocessing import Pool, set_start_method
-import xarray as xr
-from datetime import datetime
+import concurrent.futures
 from pathlib import Path
+import cftime
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import xarray as xr
+from pandas.errors import OutOfBoundsDatetime
 from regrid import (
     generate_regrid_filepath,
     parse_output_filename_times_from_file,
     convert_units,
     parse_cmip6_fp,
+    prod_lat_slice,
+    open_and_crop_dataset,
+    get_var_id,
 )
+from config import model_inst_lu, prod_scenarios
 
 
 def get_source_fps_from_batch_files(regrid_batch_dir):
@@ -235,3 +237,179 @@ def compare_expected_to_existing_and_check_values(
                 ds_errors.append(str(regrid_fp))
 
     return ds_errors, value_errors
+
+
+def get_matching_time_filepath(fps, test_date):
+    """Find a file from a given list of raw CMIP6 filepaths that conatins the test date within the timespan in the filename."""
+    matching_fps = []
+    for fp in fps:
+        start_str, end_str = fp.name.split(".nc")[0].split("_")[-1].split("-")
+        start_str = f"{start_str}01" if len(start_str) == 6 else start_str
+        # end date should be constructed as the end of month for monthly data
+        #  (and should always be December??)
+        end_str = f"{end_str}31" if len(end_str) == 6 else end_str
+        format_str = "%Y%m%d"
+        try:
+            start_dt = pd.to_datetime(start_str, format=format_str)
+            # it should be OK if end date is
+            end_dt = pd.to_datetime(end_str, format=format_str)
+        except OutOfBoundsDatetime:
+            # we should not be regridding files with time values that cause this (2300 etc)
+            continue
+
+        if start_dt <= test_date < end_dt:
+            matching_fps.append(fp)
+
+    # there should only be one
+    assert (
+        len(matching_fps) == 1
+    ), f"Test date {test_date} matched {len(matching_fps)} files (from {fps})."
+
+    return matching_fps[0]
+
+
+def generate_cmip6_filepath_from_regrid_filename(fn, cmip6_dir):
+    """Get the path to the original CMIP6 filename from a regridded file name.
+
+    Because the original CMIP6 filenames were split up during the processing,
+    this method finds the original filename based on matching all possible attributes,
+    then testing for inclusion of regrid file start date within the date range formed by the CMIP6 file timespan.
+    """
+    var_id, freq, model, scenario, _, timespan = fn.split(".nc")[0].split("_")
+    institution = model_inst_lu[model]
+    experiment_id = "ScenarioMIP" if scenario in prod_scenarios else "CMIP"
+    # Construct the original CMIP6 filepath from the filename.
+    # Need to use glob because of the "grid type" filename attribute that we do not have a lookup for.
+    var_dir = cmip6_dir.joinpath(f"{experiment_id}/{institution}/{model}/{scenario}")
+    glob_str = f"*/{freq}/{var_id}/*/*/{var_id}_{freq}_{model}_{scenario}_*.nc"
+    candidate_fps = list(var_dir.glob(glob_str))
+
+    assert (
+        candidate_fps
+    ), f"No files found for regridded file {fn} in {var_dir} with {glob_str}."
+
+    start_str = timespan.split("-")[0]
+    format_str = "%Y%m" if len(start_str) == 6 else "%Y%m%d"
+    start_dt = pd.to_datetime(start_str, format=format_str)
+    cmip6_fp = get_matching_time_filepath(candidate_fps, start_dt)
+
+    return cmip6_fp
+
+
+def plot_comparison(regrid_fp, cmip6_dir):
+    """For a given regridded file, find the source file and plot side by side."""
+    src_fp = generate_cmip6_filepath_from_regrid_filename(regrid_fp.name, cmip6_dir)
+    src_ds = open_and_crop_dataset(src_fp, lat_slice=prod_lat_slice)
+    # entire plotting function is inside this try block
+    # if the dataset cannot be opened, just print a message instead of an error
+    try:
+        regrid_ds = xr.open_dataset(regrid_fp)
+    except:
+        print(f"Regridded dataset could not be opened: {regrid_fp}")
+
+    # lat axis is flipped in regrid files
+    src_lat_slice = slice(55, 75)
+    regrid_lat_slice = slice(75, 55)
+    lon_slice_src = slice(200, 240)
+    lon_slice_regrid = slice(-160, -120)
+    time_val = regrid_ds.time.values[0]
+    var_id = src_ds.attrs["variable_id"]
+    assert get_var_id(src_ds) == var_id, "Variable ID mismatch"
+    assert get_var_id(regrid_ds) == var_id, "Variable ID mismatch"
+
+    fig, axes = plt.subplots(1, 2, figsize=(15, 4))
+    fig.suptitle(
+        f"Variable: {var_id}     Model: {src_ds.attrs['source_id']}     Scenario: {src_ds.attrs['experiment_id']}"
+    )
+
+    # now, there are multiple possible time formats for the source dataset.
+    # convert the chosen time value to that matching format for subsetting.
+    sel_method = None
+    if isinstance(src_ds.time.values[0], cftime._cftime.Datetime360Day):
+        # It seems like monthly data use 16 for the day
+        src_hour = src_ds.time.dt.hour[0]
+        src_time = cftime.Datetime360Day(
+            year=time_val.year,
+            month=time_val.month,
+            day=time_val.day,
+            hour=src_hour,
+        )
+    elif isinstance(
+        src_ds.time.values[0], pd._libs.tslibs.timestamps.Timestamp
+    ) or isinstance(src_ds.time.values[0], np.datetime64):
+        src_hour = src_ds.time.dt.hour[0].values.item()
+        src_time = pd.to_datetime(
+            f"{time_val.year}-{time_val.month}-{time_val.day}T{src_hour}:00:00"
+        )
+    else:
+        if time_val not in src_ds.time.values:
+            src_hour = src_ds.time.dt.hour[0]
+            src_time = cftime.DatetimeNoLeap(
+                year=time_val.year,
+                month=time_val.month,
+                day=time_val.day,
+                hour=src_hour,
+            )
+        else:
+            src_time = time_val
+    if src_time not in src_ds.time.values:
+        print(f"Sample timestamp not found in source file ({src_fp}). Using nearest.")
+        # probably safe to just use nearest method in any event
+        # since there can be incorrectly labeled frequency attributes
+        sel_method = "nearest"
+        if src_ds.attrs["frequency"] == "mon":
+            # We expect that the file will be monthly if the source time chosen is not actually in the dataset
+            # This is because we make the time values consistent in the regridded files,
+            # and monthly source files might have used e.g. 16th day
+            pass
+        else:
+            # OK this happens and there is nothing we can do about the source data not having consistent attributes.
+            # Don't need to fail. Just print a message.
+            print("Expected monthly file but frequency attribute does not match.")
+
+    # ensure units are consistent with regridded dataset
+    src_ds = convert_units(src_ds)
+
+    # get a vmin and vmax from src dataset to use for both plots, if a map
+    try:
+        vmin = (
+            src_ds[var_id]
+            .sel(time=src_time, method=sel_method)
+            .sel(lat=src_lat_slice, lon=lon_slice_src)
+            .values.min()
+        )
+        vmax = (
+            src_ds[var_id]
+            .sel(time=src_time, method=sel_method)
+            .sel(lat=src_lat_slice, lon=lon_slice_src)
+            .values.max()
+        )
+    except:
+        print("Error getting vmin and vmax values from source data.")
+
+    try:  # maps
+        src_ds[var_id].sel(time=src_time, method=sel_method).sel(
+            lat=src_lat_slice, lon=lon_slice_src
+        ).plot(ax=axes[0], vmin=vmin, vmax=vmax)
+        axes[0].set_title(f"Source dataset (timestamp: {src_time})")
+        regrid_ds[var_id].sel(time=time_val).sel(
+            lat=regrid_lat_slice,
+            lon=lon_slice_regrid,
+            # explitictly set the x axis to be the standard longitude for regridded data
+            #  because grid is (confusingly) oriented time, lon, lat for rasdaman
+        ).plot(ax=axes[1], vmin=vmin, vmax=vmax, x="lon")
+        axes[1].set_title(f"Regridded dataset (timestamp: {time_val})")
+        axes[1].set_xlabel("longitude [standard]")
+        plt.show()
+
+    except:  # histograms
+        src_ds[var_id].sel(time=src_time, method=sel_method).sel(
+            lat=src_lat_slice, lon=lon_slice_src
+        ).plot(ax=axes[0])
+        axes[0].set_title(f"Source dataset (timestamp: {src_time})")
+        regrid_ds[var_id].sel(time=time_val).sel(
+            lat=regrid_lat_slice, lon=lon_slice_regrid
+        ).plot(ax=axes[1])
+        axes[1].set_title(f"Regridded dataset (timestamp: {time_val})")
+
+    plt.show()
