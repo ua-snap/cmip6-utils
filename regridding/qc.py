@@ -151,6 +151,7 @@ def file_min_max(fp):
 def compare_expected_to_existing_and_check_values(
     regrid_dir,
     regrid_batch_dir,
+    slurm_dir,
     vars,
     freqs,
     models,
