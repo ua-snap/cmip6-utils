@@ -39,12 +39,6 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
-        "--qc_script",
-        type=str,
-        help="Path to regridding qc script",
-        required=True,
-    )
-    parser.add_argument(
         "--qc_notebook",
         type=str,
         help="Path to regridding QC notebook",
@@ -83,7 +77,6 @@ def parse_args():
         Path(args.repo_regridding_directory),
         Path(args.conda_init_script),
         Path(args.conda_env_name),
-        Path(args.qc_script),
         Path(args.qc_notebook),
         args.vars,
         args.freqs,
@@ -115,7 +108,6 @@ if __name__ == "__main__":
         repo_regridding_directory,
         conda_init_script,
         conda_env_name,
-        qc_script,
         qc_notebook,
         vars,
         freqs,
