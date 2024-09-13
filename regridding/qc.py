@@ -4,6 +4,7 @@
 import concurrent.futures
 from pathlib import Path
 import cftime
+import random
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -148,6 +149,20 @@ def file_min_max(fp):
         return {"file": None, "min": None, "max": None}
 
 
+def subsample_files(fps, min_qc=20, max_qc=75):
+    """Get a random sample of files for QC."""
+    pct = 10
+    pct_count = round(len(fps) * (pct / 100))
+    if len(fps) <= min_qc:
+        qc_files = fps
+    elif pct_count >= max_qc:
+        qc_files = random.sample(fps, max_qc)
+    else:
+        qc_files = random.sample(fps, pct_count)
+
+    return qc_files
+
+
 def compare_expected_to_existing_and_check_values(
     regrid_dir,
     regrid_batch_dir,
@@ -177,6 +192,9 @@ def compare_expected_to_existing_and_check_values(
     existing_regrid_fps = generate_regrid_fps_from_params(
         models, scenarios, vars, freqs, regrid_dir
     )
+
+    # we can subsample more files here because we don't need to review them visually
+    subsample_files(existing_regrid_fps, max_qc=1000)
 
     # create dicts of min/max values for each regridded file and each source file
     regrid_min_max = {}
