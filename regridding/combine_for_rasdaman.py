@@ -2,7 +2,7 @@
 This is just a simple wrapper for xarray's open_mfdataset function. 
 It is assumed that the data has already been regridded and is stored in the following 
 directory structure: <model>/<scenario>/<frequency (table ID)>/<variable ID>/<filename>. 
-The script will combine all files for all models, scenarios, and the supplied table_id / frequency and the supplied variables into a single xarray dataset and write to disk.
+The script will combine all files for all models, scenarios, and the supplied temporal frequency and the supplied variables into a single xarray dataset and write to disk.
 """
 
 import argparse
@@ -20,22 +20,41 @@ def get_var_ids(var_group_id):
     return var_ids
 
 
-def get_files(var_ids, model, scenario, table_id, regrid_dir):
-    """Note, we are using the "table_id" which is specific to CMIP6 and
-    contains the frequency information in it but is how the data are organized.
-    """
+def get_models(regrid_dir):
+    """Get a list of models from the regridded data directory."""
+    return [d.name for d in regrid_dir.glob("*")]
+
+
+def get_scenarios(regrid_dir, model):
+    """Get a list of scenarios for a given model from the regridded model data directory."""
+    return [d.name for d in regrid_dir.joinpath(model).glob("*")]
+
+
+def get_files(var_ids, model, scenario, frequency, regrid_dir):
+    """Get a list of file paths for a given model, scenario, frequency, and variable IDs."""
     fps = []
 
     for var_id in var_ids:
-        fps.extend(regrid_dir.glob(f"{model}/{scenario}/{table_id}/{var_id}/*.nc"))
+        fps.extend(regrid_dir.glob(f"{model}/{scenario}/*{frequency}/{var_id}/*.nc"))
 
     return fps
 
 
-def open_and_combine(var_group_id, model, scenario, table_id, regrid_dir, rasda_dir):
+def open_and_combine(
+    var_group_id, model, scenario, frequency, regrid_dir, rasda_dir, no_clobber
+):
     """Rasda_dir is the directory where the combined dataset will be written to disk."""
     var_ids = get_var_ids(var_group_id)
-    fps = get_files(var_ids, model, scenario, table_id, regrid_dir)
+
+    out_fp = rasda_dir.joinpath(f"{model}_{scenario}_{frequency}_{var_group_id}.nc")
+
+    if no_clobber and out_fp.exists():
+        print(f"File {out_fp} already exists and no_clobber was supplied, skipping.")
+        return
+
+    fps = get_files(var_ids, model, scenario, frequency, regrid_dir)
+    assert len(fps) > 0, f"No files found for {model}, {scenario}, {frequency}."
+
     ds = xr.open_mfdataset(
         fps,
         coords="all",
@@ -43,7 +62,29 @@ def open_and_combine(var_group_id, model, scenario, table_id, regrid_dir, rasda_
         preprocess=lambda x: x.drop_vars(["spatial_ref", "height"], errors="ignore"),
     )
 
-    ds.to_netcdf(rasda_dir.joinpath(f"{model}_{scenario}_{table_id}_{var_group_id}.nc"))
+    ds.to_netcdf(out_fp)
+    print(
+        f"Combined data for {var_group_id} variables, {model}, {scenario}, {frequency} temporal resolution written to {out_fp}."
+    )
+
+
+def run_open_and_combine_for_all_groups(
+    var_group_id, frequency, regrid_dir, rasda_dir, no_clobber
+):
+    """Run the open_and_combine function for all model-scenario groups available in the regridded data directory."""
+    models = get_models(regrid_dir)
+
+    for model in models:
+        for scenario in get_scenarios(regrid_dir, model):
+            open_and_combine(
+                var_group_id,
+                model,
+                scenario,
+                frequency,
+                regrid_dir,
+                rasda_dir,
+                no_clobber,
+            )
 
 
 def parse_args():
@@ -52,44 +93,43 @@ def parse_args():
         description="Combine regridded CMIP6 data for ingestion into rasdaman."
     )
     parser.add_argument(
-        "var_group_id", type=str, help="Variable group ID, one of v1_1, v1_2."
-    )
-    parser.add_argument("table_id", type=str, help="CMIP6 table ID.")
-    parser.add_argument(
-        "regrid_dir", type=str, help="Directory where regridded data is stored."
+        "--var_group_id", type=str, help="Variable group ID, one of v1_1, v1_2."
     )
     parser.add_argument(
-        "rasda_dir",
+        "--frequency",
+        type=str,
+        help="Temporal resolution / frequency of data, either 'mon' or 'day'.",
+    )
+    parser.add_argument(
+        "--regrid_dir", type=str, help="Directory where regridded data is stored."
+    )
+    parser.add_argument(
+        "--rasda_dir",
         type=str,
         help="Directory where combined data will be written to disk.",
+    )
+    parser.add_argument(
+        "--no_clobber",
+        action="store_true",
+        default=False,
+        help="Do not overwrite existing files in rasda_dir.",
     )
 
     args = parser.parse_args()
 
     return (
         args.var_group_id,
-        args.table_id,
+        args.frequency,
         Path(args.regrid_dir),
         Path(args.rasda_dir),
+        args.no_clobber,
     )
 
 
 if __name__ == "__main__":
 
-    var_group_id, table_id, regrid_dir, rasda_dir = parse_args()
+    var_group_id, frequency, regrid_dir, rasda_dir, no_clobber = parse_args()
 
-    fps = []
-    for year in years:
-        for var_id in var_ids:
-            fps.extend(
-                regrid_dir.glob(
-                    f"{model}/{scenario}/Amon/{var_id}/*{year}01-{year}12.nc"
-                )
-            )
-
-    ds = xr.open_mfdataset(
-        fps,
-        coords="all",
-        compat="override",
-        preprocess=lambda x: x.drop_vars(["spatial_ref", "height"], errors="ignore"),
+    run_open_and_combine_for_all_groups(
+        var_group_id, frequency, regrid_dir, rasda_dir, no_clobber
     )
