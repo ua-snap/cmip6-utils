@@ -11,7 +11,7 @@ byte_buffer = 20
 
 
 def find_duplicates(root_dir):
-    # Get list of model names from subdirectories
+    # Get list of model names from subdirectories.
     subdirs = glob.glob(os.path.join(root_dir, "*/*"))
     models = []
     for subdir in subdirs:
@@ -19,11 +19,11 @@ def find_duplicates(root_dir):
         model = subdir_split[7]
         models.append(model)
 
-    # Iterate through models, get the size of the first (alphabetical) file from
-    # each subdirectory, and if multiple files from this model have the same
-    # filesize, do an xarray equals() comparison to check if the files are the same.
-    # Comparing files in this way is necessary because two NetCDF files can have
-    # identical data even if the md5 sums are different.
+    # Iterate through models, get the size of the first (alphabetical) file
+    # from each subdirectory, and if multiple files from this model have
+    # similar file sizes, do an xarray equals() comparison to check if the data
+    # are the same. Comparing files in this way is necessary because two NetCDF
+    # files can have identical data even if the md5 sums are different.
     for model in models:
         sizes = {}
         subdirs = glob.glob(os.path.join(root_dir, f"*/{model}/*/*/*/*/*/*"))
@@ -38,9 +38,9 @@ def find_duplicates(root_dir):
                 sizes[file_size] = sizes.get(file_size, []) + [file_path]
 
         for current_size in sizes.keys():
-            # Find any other files within 10 bytes of the current file size,
-            # since it's conceivable that the data is the same even if the
-            # file size differs slightly.
+            # Find any other files within byte_buffer bytes of the current
+            # file size, since it's conceivable that the data are the same even
+            # if the file size differs slightly.
             files_to_compare = []
             for size, files in sizes.items():
                 if (
