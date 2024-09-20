@@ -210,6 +210,19 @@ def write_batch_files(group_df, model, scenario, var_id, frequency, regrid_batch
     return
 
 
+def get_institution_id(model, scenario):
+    """This should just be a simple lookup, however there is the oddity of MPI-ESM1-2-HR having different institution IDs for historical and SSP data"""
+    if model == "MPI-ESM1-2-HR":
+        if scenario == "historical":
+            inst = "MPI-M"
+        else:
+            inst = "DKRZ"
+    else:
+        inst = model_inst_lu[model]
+
+    return inst
+
+
 def parse_args():
     """Parse some arguments"""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -282,8 +295,8 @@ if __name__ == "__main__":
         for var in vars.split():
             for freq in freqs.split():
                 for model in models.split():
-                    inst = model_inst_lu[model]
                     for scenario in scenarios.split():
+                        inst = get_institution_id(model, scenario)
                         fps.extend(
                             list(
                                 cmip6_dir.joinpath(exp_id, inst, model, scenario).glob(
