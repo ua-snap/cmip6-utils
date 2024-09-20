@@ -3,9 +3,13 @@ This is just a simple wrapper for xarray's open_mfdataset function.
 It is assumed that the data has already been regridded and is stored in the following 
 directory structure: <model>/<scenario>/<frequency (table ID)>/<variable ID>/<filename>. 
 The script will combine all files for all models, scenarios, and the supplied temporal frequency and the supplied variables into a single xarray dataset and write to disk.
+
+example usage:
+  python combine_for_rasdaman.py --var_group_id v1_1 --frequency mon --regrid_dir /beegfs/CMIP6/kmredilla/cmip6_regridding/regrid --rasda_dir /beegfs/CMIP6/kmredilla/cmip6_regridding/rasdaman_ready
 """
 
 import argparse
+import numpy as np
 import xarray as xr
 from pathlib import Path
 from config import var_group_id_lu
@@ -33,11 +37,54 @@ def get_scenarios(regrid_dir, model):
 def get_files(var_ids, model, scenario, frequency, regrid_dir):
     """Get a list of file paths for a given model, scenario, frequency, and variable IDs."""
     fps = []
+    missing_variables = []
 
     for var_id in var_ids:
-        fps.extend(regrid_dir.glob(f"{model}/{scenario}/*{frequency}/{var_id}/*.nc"))
+        var_files = list(
+            regrid_dir.glob(f"{model}/{scenario}/*{frequency}/{var_id}/*.nc")
+        )
+        if len(var_files) > 0:
+            fps.extend(var_files)
+        else:
+            missing_variables.append(var_id)
 
-    return fps
+    return fps, missing_variables
+
+
+def add_missing_variable(ds, var_id):
+    """Add a missing variable to the dataset."""
+    nan_arr = np.empty((ds["time"].size, ds["lon"].size, ds["lat"].size))
+    nan_arr[:] = np.nan
+    empty_da = xr.DataArray(
+        nan_arr, coords=[ds["time"], ds["lon"], ds["lat"]], dims=["time", "lon", "lat"]
+    )
+    ds[var_id] = empty_da
+    ds[var_id].encoding = {
+        "dtype": np.float64,
+        "zlib": False,
+        "szip": False,
+        "zstd": False,
+        "bzip2": False,
+        "blosc": False,
+        "shuffle": False,
+        "complevel": 0,
+        "fletcher32": False,
+        "contiguous": True,
+        "chunksizes": None,
+        "original_shape": (ds["time"].shape[0], ds["lon"].shape[0], ds["lat"].shape[0]),
+        "_FillValue": np.nan,
+        "coordinates": "spatial_ref",
+    }
+
+    return ds
+
+
+def add_missing_variables(ds, missing_variables):
+    """wrapper for add_missing_variables to add a list of missing variables to the dataset."""
+    for var_id in missing_variables:
+        ds = add_missing_variable(ds, var_id)
+
+    return ds
 
 
 def open_and_combine(
@@ -52,7 +99,7 @@ def open_and_combine(
         print(f"File {out_fp} already exists and no_clobber was supplied, skipping.")
         return
 
-    fps = get_files(var_ids, model, scenario, frequency, regrid_dir)
+    fps, missing_variables = get_files(var_ids, model, scenario, frequency, regrid_dir)
     assert len(fps) > 0, f"No files found for {model}, {scenario}, {frequency}."
 
     ds = xr.open_mfdataset(
@@ -61,6 +108,12 @@ def open_and_combine(
         compat="override",
         preprocess=lambda x: x.drop_vars(["spatial_ref", "height"], errors="ignore"),
     )
+
+    ds = add_missing_variables(ds, missing_variables)
+
+    assert all(
+        var_id in ds.data_vars for var_id in var_ids
+    ), "Missing variables from combined dataset."
 
     ds.to_netcdf(out_fp)
     print(
