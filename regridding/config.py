@@ -134,7 +134,3 @@ variables = {
         "table_ids": ["Amon", "day", "Eday"],
     },
 }
-
-var_group_id_lu = {
-    "v1_1": ["tas", "tasmax", "tasmin", "pr", "sfcWind", "sfcWindmax"],
-}
