@@ -3,7 +3,7 @@ This means a set of indicators that share the same source variable or variables,
 Handling of missing data (e.g. a model-scenario-variable combination that does not exist) should be done outside of this script.
 
 Usage: 
-    python indicators.py --indicators rx1day --model CESM2 --scenario ssp585 --input_dir /center1/CMIP6/kmredilla/cmip6_regridding/regrid --out_dir /center1/CMIP6/kmredilla/indicators
+    python indicators.py --indicators rx1day --model CESM2 --scenario ssp585 --input_dir /beegfs/CMIP6/kmredilla/cmip6_regridding/regrid --out_dir /beegfs/CMIP6/kmredilla/indicators
 """
 
 import argparse
