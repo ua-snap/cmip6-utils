@@ -25,8 +25,6 @@ def make_sbatch_head(slurm_email, partition, conda_init_script, ncpus, exclude_n
         "#SBATCH --nodes=1\n"
         f"#SBATCH --exclude={exclude_nodes}\n"
         f"#SBATCH --cpus-per-task={ncpus}\n"
-        "#SBATCH --mail-type=FAIL\n"
-        f"#SBATCH --mail-user={slurm_email}\n"
         f"#SBATCH -p {partition}\n"
         "#SBATCH --output {sbatch_out_fp}\n"
         # print start time
@@ -77,7 +75,6 @@ def write_sbatch_indicators(
         f"--model {model} "
         f"--scenario {scenario} "
         f"--input_dir {input_dir} "
-        f"--backup_dir {backup_dir} "
         f"--out_dir {indicators_dir} "
     )
     if no_clobber:
@@ -139,12 +136,6 @@ def parse_args():
         default=str(regrid_dir),
     )
     parser.add_argument(
-        "--backup_dir",
-        type=str,
-        help="Path to backup input directory having filepath structure <model>/<scenario>/day/<variable ID>/<files>",
-        default=str(cmip6_dir.parent.joinpath("regrid")),
-    )
-    parser.add_argument(
         "--working_dir",
         type=str,
         help="Path to directory where all underlying directories and files are written.",
@@ -163,7 +154,6 @@ def parse_args():
         args.models.split(" "),
         args.scenarios.split(" "),
         Path(args.input_dir),
-        Path(args.backup_dir),
         Path(args.working_dir),
         args.no_clobber,
     )
@@ -175,7 +165,6 @@ if __name__ == "__main__":
         models,
         scenarios,
         input_dir,
-        backup_dir,
         working_dir,
         no_clobber,
     ) = parse_args()
