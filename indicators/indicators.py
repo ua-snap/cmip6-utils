@@ -25,6 +25,16 @@ from config import *
 from luts import *
 
 
+def fix_pr_units(pr):
+    """Fix precipitation units to mm/day if needed"""
+    if pr.attrs["units"] == "mm":
+        # assumes we are only dealing with daily data
+        # this is just a check to make sure we have daily data by diff'ing the days
+        assert np.sum(np.diff(pr.time.dt.day) == 1) / len(pr.time) > 0.9
+        pr.attrs["units"] = "mm/day"
+    return pr
+
+
 def rx1day(pr):
     """'Max 1-day precip' - the max daily precip value recorded for a year.
 
@@ -34,6 +44,7 @@ def rx1day(pr):
     Returns:
         Max 1-day precip for each year
     """
+    pr = fix_pr_units(pr)
     out = xci.max_n_day_precipitation_amount(pr, freq="YS")
     out.attrs["units"] = "mm"
 
