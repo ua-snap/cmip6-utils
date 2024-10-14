@@ -5,14 +5,13 @@ import subprocess
 from config import *
 
 
-def make_sbatch_head(slurm_email, partition, conda_init_script, ncpus, exclude_nodes):
+def make_sbatch_head(slurm_email, partition, conda_init_script, exclude_nodes):
     """Make a string of SBATCH commands that can be written into a .slurm script
 
     Args:
         slurm_email (str): email address for slurm failures
         partition (str): name of the partition to use
         conda_init_script (path_like): path to a script that contains commands for initializing the shells on the compute nodes to use conda activate
-        ncpus (int): number of cpus to request
         exclude_nodes (str): comma-separated string of nodes to exclude
 
     Returns:
@@ -24,7 +23,7 @@ def make_sbatch_head(slurm_email, partition, conda_init_script, ncpus, exclude_n
         "#!/bin/sh\n"
         "#SBATCH --nodes=1\n"
         f"#SBATCH --exclude={exclude_nodes}\n"
-        f"#SBATCH --cpus-per-task={ncpus}\n"
+        f"#SBATCH --exclusive\n"
         f"#SBATCH -p {partition}\n"
         "#SBATCH --output {sbatch_out_fp}\n"
         # print start time
@@ -138,7 +137,7 @@ def parse_args():
     parser.add_argument(
         "--working_dir",
         type=str,
-        help="Path to directory where all underlying directories and files are written.",
+        help="Path to directory where all underlying directories and files are written. Must have an up-to-date clone of cmip6-utils repo.",
         required=True,
     )
     parser.add_argument(
@@ -169,17 +168,21 @@ if __name__ == "__main__":
         no_clobber,
     ) = parse_args()
 
-    output_dir = working_dir.joinpath("output")
-    output_dir.mkdir(exist_ok=True)
+    # update working dir to be subir with this name
+    working_dir = working_dir.joinpath("cmip6_indicators")
+    working_dir.mkdir(exist_ok=True)
+
+    # make output_dir the place where we actually write indicators data
+    output_dir = working_dir.joinpath("netcdf")
 
     # make batch files for each model / scenario / variable combination
-    sbatch_dir = output_dir.joinpath("slurm")
+    sbatch_dir = working_dir.joinpath("slurm")
     sbatch_dir.mkdir(exist_ok=True)
     _ = [fp.unlink() for fp in sbatch_dir.glob("*.slurm")]
 
     # make QC dir and "to-do" list for each model / scenario / indicator combination
     # the "w" accessor should overwrite any previous qc.txt files encountered
-    qc_dir = output_dir.joinpath("qc")
+    qc_dir = working_dir.joinpath("qc")
     qc_dir.mkdir(exist_ok=True)
     qc_file = qc_dir.joinpath("qc.csv")
     with open(qc_file, "w") as q:
