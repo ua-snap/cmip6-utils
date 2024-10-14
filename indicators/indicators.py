@@ -3,7 +3,7 @@ This means a set of indicators that share the same source variable or variables,
 Handling of missing data (e.g. a model-scenario-variable combination that does not exist) should be done outside of this script.
 
 Usage: 
-    python indicators.py --indicators rx1day --model CESM2 --scenario ssp585 --input_dir /center1/CMIP6/kmredilla/cmip6_regridding/regrid --backup_dir /beegfs/CMIP6/arctic-cmip6/regrid --out_dir /center1/CMIP6/kmredilla/indicators
+    python indicators.py --indicators rx1day --model CESM2 --scenario ssp585 --input_dir /center1/CMIP6/kmredilla/cmip6_regridding/regrid --out_dir /center1/CMIP6/kmredilla/indicators
 """
 
 import argparse
@@ -103,7 +103,10 @@ def convert_times_to_years(time_da):
             cftime.num2date(t / 1e9, "seconds since 1970-01-01")
             for t in time_da.values.astype(int)
         ]
-    elif isinstance(time_da.values[0], cftime._cftime.Datetime360Day,) or isinstance(
+    elif isinstance(
+        time_da.values[0],
+        cftime._cftime.Datetime360Day,
+    ) or isinstance(
         time_da.values[0],
         cftime._cftime.DatetimeNoLeap,
     ):
@@ -339,8 +342,8 @@ def check_varid_indicator_compatibility(indicators, var_ids):
         )
 
 
-def find_var_files_and_create_fp_dict(model, scenario, var_ids, input_dir, backup_dir):
-    """Check that input files exist in the input directory. If not, check the backup directory. Output a dictionary of filepaths."""
+def find_var_files_and_create_fp_dict(model, scenario, var_ids, input_dir):
+    """Check that input files exist in the input directory. Output a dictionary of filepaths."""
 
     # Lookup correct "day" frequency for each var id by searching for substring - this should grab "0day" and "SIday"
     # We build dicts for frequency and filepath to allow for possibility of more than one variable
@@ -371,7 +374,7 @@ def find_var_files_and_create_fp_dict(model, scenario, var_ids, input_dir, backu
     return fp_di
 
 
-def generate_base_kwargs(model, scenario, indicators, var_ids, input_dir, backup_dir):
+def generate_base_kwargs(model, scenario, indicators, var_ids, input_dir):
     """Function for creating some kwargs for the run_compute_indicators function.
     Contains a validation routine to ensure input files exist, and attempts to copy them from the backup directory if they don't.
 
@@ -381,13 +384,10 @@ def generate_base_kwargs(model, scenario, indicators, var_ids, input_dir, backup
         indicators (list): indicators to derive using data in provided filepaths
         var_ids (list): list of CMIP6 variable IDs needed for that
         input_dir (pathlib.Path): path to main directory containing regridded files
-        backup_dir (pathlib.Path): path to backup directory containing regridded files
     """
     check_varid_indicator_compatibility(indicators, var_ids)
 
-    fp_di = find_var_files_and_create_fp_dict(
-        model, scenario, var_ids, input_dir, backup_dir
-    )
+    fp_di = find_var_files_and_create_fp_dict(model, scenario, var_ids, input_dir)
 
     coord_labels = dict(
         scenario=scenario,
@@ -430,13 +430,6 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
-        "--backup_dir",
-        type=str,
-        help="Path to backup input directory having filepath structure <model>/<scenario>/day/<variable ID>/<files>",
-        required=True,
-        default=str(cmip6_dir.parent.joinpath("regrid")),
-    )
-    parser.add_argument(
         "--out_dir",
         type=str,
         help="Path to directory where indicators data should be written",
@@ -455,7 +448,6 @@ def parse_args():
         args.model,
         args.scenario,
         Path(args.input_dir),
-        Path(args.backup_dir),
         Path(args.out_dir),
         args.no_clobber,
     )
@@ -467,7 +459,6 @@ if __name__ == "__main__":
         model,
         scenario,
         input_dir,
-        backup_dir,
         out_dir,
         no_clobber,
     ) = parse_args()
@@ -480,7 +471,6 @@ if __name__ == "__main__":
         indicators=indicators,
         var_ids=var_ids,
         input_dir=input_dir,
-        backup_dir=backup_dir,
     )
 
     indicators_ds = xr.merge(run_compute_indicators(**kwargs))
