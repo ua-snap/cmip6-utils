@@ -88,10 +88,6 @@ if __name__ == "__main__":
     for var_id, var_df in manifest.groupby("variable"):
         for table_id, freq_df in var_df.groupby("table_id"):
 
-            # skipping fx variables for now
-            if table_id in ["fx", "Ofx"]:
-                continue
-
             transfer_paths = []
             for i, row in freq_df.iterrows():
                 # we are just skipping E3SM models here for now since there are permissions issues
