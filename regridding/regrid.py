@@ -176,8 +176,12 @@ def open_and_crop_dataset(fp, lat_slice):
         src_ds (xarray.Dataset): xarray Dataset (chunked with Dask) cropped to a panarctic domain
     """
     # we are cropping the dataset using the .sel method as we do not need to regrid the entire grid,
-    #  only the part that will evetually wind up in the dataset.
-    src_ds = xr.open_dataset(fp, chunks={"time": 100}).sel(lat=lat_slice)
+    #  only the part that will eventually wind up in the dataset.
+    try:
+        src_ds = xr.open_dataset(fp, chunks={"time": 100}).sel(lat=lat_slice)
+    # if the file does not have a time dimension, do not chunk
+    except:
+        src_ds = xr.open_dataset(fp).sel(lat=lat_slice)
 
     return src_ds
 
@@ -579,9 +583,12 @@ def regrid_dataset(fp, regridder, out_fp):
     # rasdafy the dataset
     regrid_ds = rasdafy(regrid_ds)
 
-    out_fps = fix_time_and_write(regrid_ds, src_ds, out_fp)
-
-    return out_fps
+    # if the variable is a fixed frequency variable, just write it as is without any time modifications
+    if any(fixed_freq_var in out_fp for fixed_freq_var in ["fx", "Ofx", "orog"]):
+        regrid_ds.to_netcdf(out_fp)
+    else:
+        out_fp = fix_time_and_write(regrid_ds, src_ds, out_fp)
+    return out_fp
 
 
 if __name__ == "__main__":
