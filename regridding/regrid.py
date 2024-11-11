@@ -584,7 +584,7 @@ def regrid_dataset(fp, regridder, out_fp):
     regrid_ds = rasdafy(regrid_ds)
 
     # if the variable is a fixed frequency variable, just write it as is without any time modifications
-    if any(fixed_freq_var in out_fp for fixed_freq_var in ["fx", "Ofx", "orog"]):
+    if any(fixed_freq_var in out_fp for fixed_freq_var in ["sftlf", "sftof"]):
         regrid_ds.to_netcdf(out_fp)
     else:
         out_fp = fix_time_and_write(regrid_ds, src_ds, out_fp)
