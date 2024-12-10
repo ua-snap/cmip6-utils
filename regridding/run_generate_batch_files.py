@@ -125,7 +125,9 @@ if __name__ == "__main__":
         # print start time
         "echo Start slurm && date\n"
         # prepare shell for using activate
-        f"source {conda_init_script}\n"
+        # f"source {conda_init_script}\n"
+        # this should work to initialize conda without init script
+        'eval "$($HOME/miniconda3/bin/conda shell.bash hook)"\n'
         f"conda activate {conda_env_name}\n"
         # run the generate batch files script
         f"python {generate_batch_files_script} --cmip6_directory '{cmip6_directory}' --regrid_batch_dir '{regrid_batch_dir}' --vars '{vars}' --freqs '{freqs}' --models '{models}' --scenarios '{scenarios}' \n"
