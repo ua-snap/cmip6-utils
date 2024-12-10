@@ -135,4 +135,9 @@ if __name__ == "__main__":
     with open(generate_batch_files_sbatch_fp, "w") as f:
         f.write(sbatch_text)
 
-    submit_sbatch(generate_batch_files_sbatch_fp)
+    job_id = submit_sbatch(generate_batch_files_sbatch_fp)
+
+    # print the job_id to stdout
+    # there is no way to set an env var for the parent shell, so the only ways to
+    # directly pass job ids are through stdout or a temp file
+    print(job_id)
