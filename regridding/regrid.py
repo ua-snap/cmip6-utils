@@ -91,7 +91,8 @@ def init_regridder(src_ds, dst_ds):
     dst_ds["lon"].attrs["valid_max"] = 180
     dst_ds["lon"].attrs["valid_min"] = -180
     # sort
-    dst_ds = dst_ds.sortby(dst_ds.lon, ascending=True)
+    if len(dst_ds.lon.dims) == 1:
+        dst_ds = dst_ds.sortby(dst_ds.lon, ascending=True)
     # initialize the regridder which now contains standard -180 to 180 longitude values
     regridder = xe.Regridder(
         src_ds, dst_ds, "bilinear", unmapped_to_nan=True, periodic=True
