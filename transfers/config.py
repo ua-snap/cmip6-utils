@@ -313,17 +313,17 @@ globus_esgf_endpoints = {
     }
 }
 
-# TODO: decide how to list these files in a way that makes sense for adding to manifest!
-# these are specific files we want to add to the manifest;
+# these are full filepaths of specific files we want to add to the manifest;
 # these do not get captured by our current audit workflow and so are hardcoded here
+# since these are all under the css03_data/CMIP6 directory, we can use the llnl_ep endpoint
+# adding the directory components directly to the manifest should be fine
 add_to_manifest = [
     # sftlf
-    [
-        "CMIP6.CMIP.MOHC.HadGEM3-GC31-LL.piControl.r1i1p1f1.fx.sftlf.gn",
-        "/css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/piControl/r1i1p1f1/fx/sftlf/gn/v20190709/sftlf_fx_HadGEM3-GC31-LL_piControl_r1i1p1f1_gn.nc",
-    ],
-    "CMIP6.CMIP.MOHC.HadGEM3-GC31-MM.piControl.r1i1p1f1.fx.sftlf.gn",
+    # these are the only two models that have additional sftlf data available on the LLNL ESGF node; KACE-1-0-G has no sftlf data, and MRI-ESM2-0 directories are empty (probably not accessible without DoD permissions)
+    "http://aims3.llnl.gov/thredds/dodsC/css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/piControl/r1i1p1f1/fx/sftlf/gn/v20190709/sftlf_fx_HadGEM3-GC31-LL_piControl_r1i1p1f1_gn.nc",
+    "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-MM/piControl/r1i1p1f1/fx/sftlf/gn/v20200108/sftlf_fx_HadGEM3-GC31-MM_piControl_r1i1p1f1_gn.nc",
     # sftof
-    "CMIP6.CMIP.MOHC.HadGEM3-GC31-LL.piControl.r1i1p1f1.Ofx.sftof.gn",
-    "CMIP6.CMIP.MOHC.HadGEM3-GC31-MM.piControl.r1i1p1f1.Ofx.sftof.gn",
+    # these are the only two models that have additional sftof data available on the LLNL ESGF node; CNRM-CM6-1-HR, GFDL-ESM4, KACE-1-0-G, TaiESM1, E3SM-1-1 and E3SM-2-0 have no sftof data, and MRI-ESM2-0 directories are empty (probably not accessible without DoD permissions)
+    "http://aims3.llnl.gov/thredds/dodsC/css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/piControl/r1i1p1f1/Ofx/sftof/gn/v20190709/sftof_Ofx_HadGEM3-GC31-LL_piControl_r1i1p1f1_gn.nc",
+    "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-MM/piControl/r1i1p1f1/Ofx/sftof/gn/v20200108/sftof_Ofx_HadGEM3-GC31-MM_piControl_r1i1p1f1_gn.nc",
 ]

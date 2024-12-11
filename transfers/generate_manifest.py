@@ -15,8 +15,9 @@ from datetime import datetime
 import sys
 import pandas as pd
 from config import *
+from pathlib import Path
 
-# ignore pandas set with copy warning
+# ignore pandas set with copy warning during messages about land/sea fraction variables
 pd.options.mode.chained_assignment = None
 
 
@@ -220,8 +221,46 @@ if __name__ == "__main__":
                         print(lsf_var_in_holdings)
                         manifest = pd.concat([manifest, lsf_var_in_holdings])
 
-    # get list of additional files from config
-    # add_to_manifest
+    # get list of additional files from config and add to the manifest
+    to_add = []
+    for filepath in add_to_manifest:
+        # extract the components from the filepath
+        model = Path(filepath).parts[8]
+        scenario = Path(filepath).parts[9]
+        variant = Path(filepath).parts[10]
+        table_id = Path(filepath).parts[11]
+        variable = Path(filepath).parts[12]
+        grid_type = Path(filepath).parts[13]
+        version = Path(filepath).parts[14]
+        start_year = None
+        start_month = None
+        start_day = None
+        end_year = None
+        end_month = None
+        end_day = None
+        filename = f"{variable}_{table_id}_{model}_{scenario}_{variant}_{grid_type}.nc"
+        # create a new row for the manifest
+        row = pd.DataFrame(
+            {
+                "model": [model],
+                "scenario": [scenario],
+                "variant": [variant],
+                "table_id": [table_id],
+                "variable": [variable],
+                "grid_type": [grid_type],
+                "version": [version],
+                "start_year": [start_year],
+                "start_month": [start_month],
+                "start_day": [start_day],
+                "end_year": [end_year],
+                "end_month": [end_month],
+                "end_day": [end_day],
+                "filename": [filename],
+            }
+        )
+        to_add.append(row)
+    # add the additional files to the manifest
+    manifest = pd.concat([manifest] + to_add)
 
     manifest.to_csv(
         manifest_tmp_fn.format(esgf_node=ESGF_NODE, suffix=suffix), index=False
