@@ -312,3 +312,18 @@ globus_esgf_endpoints = {
         "prefix": "/css03_data/CMIP6",
     }
 }
+
+# TODO: decide how to list these files in a way that makes sense for adding to manifest!
+# these are specific files we want to add to the manifest;
+# these do not get captured by our current audit workflow and so are hardcoded here
+add_to_manifest = [
+    # sftlf
+    [
+        "CMIP6.CMIP.MOHC.HadGEM3-GC31-LL.piControl.r1i1p1f1.fx.sftlf.gn",
+        "/css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/piControl/r1i1p1f1/fx/sftlf/gn/v20190709/sftlf_fx_HadGEM3-GC31-LL_piControl_r1i1p1f1_gn.nc",
+    ],
+    "CMIP6.CMIP.MOHC.HadGEM3-GC31-MM.piControl.r1i1p1f1.fx.sftlf.gn",
+    # sftof
+    "CMIP6.CMIP.MOHC.HadGEM3-GC31-LL.piControl.r1i1p1f1.Ofx.sftof.gn",
+    "CMIP6.CMIP.MOHC.HadGEM3-GC31-MM.piControl.r1i1p1f1.Ofx.sftof.gn",
+]

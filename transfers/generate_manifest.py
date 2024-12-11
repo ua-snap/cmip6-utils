@@ -16,6 +16,9 @@ import sys
 import pandas as pd
 from config import *
 
+# ignore pandas set with copy warning
+pd.options.mode.chained_assignment = None
+
 
 def arguments(argv):
     """Parse some args"""
@@ -140,7 +143,6 @@ if __name__ == "__main__":
     # group batch files by variable name and
     for var_id in variable_lut:
         for t_id in variable_lut[var_id]["table_ids"]:
-            transfer_paths = []
             # holdings table is created from production scenarios only, so all scenarios in here should be included
             # iterate over model so that we can subset by the correct variant to be mirrored:
             for model in models:
@@ -168,6 +170,58 @@ if __name__ == "__main__":
     manifest = manifest.query(
         "filename != 'psl_day_CESM2-WACCM_historical_r1i1p1f1_gn_18500101-20150101.nc'"
     )
+
+    # check if any model in the manifest does not have land or sea fraction variables present
+    # if a model is missing one or both of those variables, query the holdings again for the first instance of that model and variable and add it to the manifest
+    # this is to ensure that the land and ocean fraction variables are included in the manifest, regardless of the model variant or grid type
+    # also prints a message for each model that is missing one or both of those variables
+
+    lsf_vars = ["sftlf", "sftof"]
+
+    for lsf_var in lsf_vars:
+        for model in models:
+            query_str = f"model == '{model}' & variable == '{lsf_var}'"
+            lsf_var_in_manifest = manifest.query(
+                f"model == '{model}' & variable == '{lsf_var}'"
+            )
+            if lsf_var_in_manifest.empty:
+                print(
+                    f"Could not find variable {lsf_var} for {model} in manifest. Searching non-production variants in holdings..."
+                )
+                lsf_var_in_holdings = holdings.query(query_str)
+                if lsf_var_in_holdings.empty:
+                    print(
+                        f"Could not find variable {lsf_var} for {model} among all variants and grids in holdings."
+                    )
+                else:
+                    # reset index and
+                    # convert filename column from list to first element of that list
+                    lsf_var_in_holdings.reset_index(drop=True, inplace=True)
+                    lsf_var_in_holdings["filename"] = lsf_var_in_holdings[
+                        "filenames"
+                    ].apply(lambda x: x[0])
+
+                    # drop the filenames and n_files columns
+                    lsf_var_in_holdings.drop(
+                        ["filenames", "n_files"], axis=1, inplace=True
+                    )
+
+                    if len(lsf_var_in_holdings) > 1:
+                        print(
+                            f"Found multiple instances of variable {lsf_var} in non-production variants for {model} in holdings. Adding first available to manifest:"
+                        )
+
+                        print(lsf_var_in_holdings[:1])
+                        manifest = pd.concat([manifest, lsf_var_in_holdings[:1]])
+                    if len(lsf_var_in_holdings) == 1:
+                        print(
+                            f"Found one instance of variable {lsf_var} in a non-production variant for {model} in holdings. Adding to manifest:"
+                        )
+                        print(lsf_var_in_holdings)
+                        manifest = pd.concat([manifest, lsf_var_in_holdings])
+
+    # get list of additional files from config
+    # add_to_manifest
 
     manifest.to_csv(
         manifest_tmp_fn.format(esgf_node=ESGF_NODE, suffix=suffix), index=False
