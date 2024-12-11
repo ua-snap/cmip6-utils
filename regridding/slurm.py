@@ -258,5 +258,5 @@ if __name__ == "__main__":
 
     # submit jobs
     job_ids = [submit_sbatch(fp) for fp in sbatch_fps]
-    # print job ids to parsed for prefect flow
-    print(job_ids)
+    # print job ids as " "-separated string to parsed for prefect flow
+    print(" ".join(job_ids))
