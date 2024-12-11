@@ -645,13 +645,14 @@ if __name__ == "__main__":
         ):
             no_clobbers.append(str(fp))
         else:
-            try:
-                results.append(regrid_dataset(fp, regridder, out_fp))
-            except Exception as e:
-                errs.append(str(fp))
-                print(f"\nFILE NOT REGRIDDED: {fp}\n     Errors printed below:\n")
-                print(e)
-                print("\n")
+            # try:
+            #     results.append(regrid_dataset(fp, regridder, out_fp))
+            # except Exception as e:
+            #     errs.append(str(fp))
+            #     print(f"\nFILE NOT REGRIDDED: {fp}\n     Errors printed below:\n")
+            #     print(e)
+            #     print("\n")
+            results.append(regrid_dataset(fp, regridder, out_fp))
 
     print(
         f"Regridding done, {len(results)} files regridded in {np.round((time.perf_counter() - tic) / 60, 1)}m"
