@@ -593,8 +593,13 @@ if __name__ == "__main__":
         lines = f.readlines()
     src_fps = [Path(line.replace("\n", "")) for line in lines]
 
+    # cannot open / crop if dataset is irregular in lat / lon.
+    # I think we should shift to simply regridding to the destination grid,
+    # which we should ensure has the domain we want.
+    dst_ds = xr.open_dataset(dst_fp, chunks={"time": 100})
+
     # open destination dataset for regridding to.
-    dst_ds = open_and_crop_dataset(dst_fp, lat_slice=prod_lat_slice)
+    # dst_ds = open_and_crop_dataset(dst_fp, lat_slice=prod_lat_slice)
     # do the same for one of the source datasets to configure the regridder object
     # defining an "extended" latitude slice, so that grids encoompass the entire
     #  production latitude extent before regridding (e.g. a grid will have domain [49.53, 90] instead of [50.75, 90],
