@@ -133,8 +133,8 @@ if __name__ == "__main__":
         # run the notebook
         f"cd {repo_regridding_directory}\n"
         f"papermill {qc_notebook} {output_nb} -r output_directory"
-        f"'{output_directory}' -r cmip6_directory '{cmip6_directory}'"
-        f"-r vars '{vars}' -r freqs '{freqs}' -r models '{models}' -r scenarios '{scenarios}'\n"
+        f" '{output_directory}' -r cmip6_directory '{cmip6_directory}'"
+        f" -r vars '{vars}' -r freqs '{freqs}' -r models '{models}' -r scenarios '{scenarios}'\n"
         f"jupyter nbconvert --to html {output_nb}"
     )
 
