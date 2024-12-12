@@ -4,10 +4,12 @@ Some of the code in here is adapted from scripts supplied by ESGF/LLNL (with not
 
 The general structure is retained: use a dict of {endpoint: [list, of, filepaths]} to transfer files to our endpoint. 
 """
+
 import time
 import re
 from pathlib import Path
 import subprocess
+import argparse
 import globus_sdk
 from globus_sdk.scopes import TransferScopes
 
