@@ -55,6 +55,12 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
+        "interp_method",
+        type=str,
+        help="Path to directory where regridded data should be written",
+        required=True,
+    )
+    parser.add_argument(
         "--no-clobber",
         action="store_true",
         help="Do not overwrite existing regidded files",
@@ -66,6 +72,7 @@ def parse_args():
         args.regrid_batch_fp,
         args.dst_fp,
         Path(args.out_dir),
+        args.interp_method,
         args.no_clobber,
     )
 

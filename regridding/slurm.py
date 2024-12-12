@@ -42,6 +42,7 @@ def write_sbatch_regrid(
     regrid_batch_fp,
     dst_fp,
     no_clobber,
+    interp_method,
     sbatch_head,
 ):
     """Write an sbatch script for executing the restacking script for a given group and variable, executes for a given list of years
@@ -54,6 +55,7 @@ def write_sbatch_regrid(
         regrid_batch_fp (path_like): path to the batch file containing paths of CMIP6 files to regrid
         dst_fp (path_like): path to file being used as template / reference for destination grid
         no_clobber (str): if "true", do not overwrite regridded files if they already exist
+        interp_method (str): method to use for regridding interpolation
         sbatch_head (dict): string for sbatch head script
 
     Returns:
@@ -69,6 +71,7 @@ def write_sbatch_regrid(
         f"-b {regrid_batch_fp} "
         f"-d {dst_fp} "
         f"-o {regrid_dir} "
+        f"--interp_method {interp_method} "
     )
 
     if no_clobber:
@@ -156,6 +159,12 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
+        "--interp_method",
+        type=str,
+        help="Method to use for regridding interpolation",
+        required=True,
+    )
+    parser.add_argument(
         "--freqs",
         type=str,
         help="list of frequencies (mon or day) used in generating batch files",
@@ -184,6 +193,7 @@ def parse_args():
         Path(args.regrid_script),
         Path(args.target_grid_fp),
         args.no_clobber,
+        args.interp_method,
         args.vars,
         args.freqs,
         args.models,
@@ -201,6 +211,7 @@ if __name__ == "__main__":
         regrid_script,
         target_grid_fp,
         no_clobber,
+        interp_method,
         vars,
         freqs,
         models,
