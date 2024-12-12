@@ -57,7 +57,7 @@ def parse_args():
     parser.add_argument(
         "--interp_method",
         type=str,
-        help="Path to directory where regridded data should be written",
+        help="Interpolation method to use for regridding",
     )
     parser.add_argument(
         "--no-clobber",
