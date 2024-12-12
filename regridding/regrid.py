@@ -58,7 +58,6 @@ def parse_args():
         "interp_method",
         type=str,
         help="Path to directory where regridded data should be written",
-        required=True,
     )
     parser.add_argument(
         "--no-clobber",

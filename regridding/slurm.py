@@ -153,15 +153,15 @@ def parse_args():
         help="Do not overwrite existing regidded files",
     )
     parser.add_argument(
-        "--vars",
-        type=str,
-        help="list of variables used in generating batch files",
-        required=True,
-    )
-    parser.add_argument(
         "--interp_method",
         type=str,
         help="Method to use for regridding interpolation",
+        required=True,
+    )
+    parser.add_argument(
+        "--vars",
+        type=str,
+        help="list of variables used in generating batch files",
         required=True,
     )
     parser.add_argument(
