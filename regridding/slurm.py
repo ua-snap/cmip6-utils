@@ -259,6 +259,7 @@ if __name__ == "__main__":
                             "regrid_batch_fp": fp,
                             "dst_fp": target_grid_fp,
                             "no_clobber": no_clobber,
+                            "interp_method": interp_method,
                             "sbatch_head": sbatch_head,
                         }
                         write_sbatch_regrid(**sbatch_regrid_kwargs)
