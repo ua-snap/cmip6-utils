@@ -55,7 +55,7 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
-        "interp_method",
+        "--interp_method",
         type=str,
         help="Path to directory where regridded data should be written",
     )
