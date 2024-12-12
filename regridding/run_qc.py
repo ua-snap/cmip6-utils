@@ -3,6 +3,7 @@
 import argparse
 from pathlib import Path
 import subprocess
+from slurm import submit_sbatch
 
 
 def parse_args():
@@ -85,21 +86,6 @@ def parse_args():
     )
 
 
-def submit_sbatch(sbatch_fp):
-    """Submit a script to slurm via sbatch
-
-    Args:
-        sbatch_fp (pathlib.PosixPath): path to .slurm script to submit
-
-    Returns:
-        job id for submitted job
-    """
-    out = subprocess.check_output(["sbatch", str(sbatch_fp)])
-    job_id = out.decode().replace("\n", "").split(" ")[-1]
-
-    return job_id
-
-
 if __name__ == "__main__":
 
     (
@@ -146,7 +132,9 @@ if __name__ == "__main__":
         f"conda activate {conda_env_name}\n"
         # run the notebook
         f"cd {repo_regridding_directory}\n"
-        f"papermill {qc_notebook} {output_nb} -r output_directory '{output_directory}' -r cmip6_directory '{cmip6_directory}' -r vars '{vars}' -r freqs '{freqs}' -r models '{models}' -r scenarios '{scenarios}'\n"
+        f"papermill {qc_notebook} {output_nb} -r output_directory"
+        f"'{output_directory}' -r cmip6_directory '{cmip6_directory}'"
+        f"-r vars '{vars}' -r freqs '{freqs}' -r models '{models}' -r scenarios '{scenarios}'\n"
         f"jupyter nbconvert --to html {output_nb}"
     )
 
@@ -154,4 +142,5 @@ if __name__ == "__main__":
     with open(qc_notebook_sbatch_fp, "w") as f:
         f.write(qc_sbatch_text)
 
-    submit_sbatch(qc_notebook_sbatch_fp)
+    job_id = submit_sbatch(qc_notebook_sbatch_fp)
+    print(job_id)
