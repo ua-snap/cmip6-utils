@@ -10,13 +10,13 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 from pandas.errors import OutOfBoundsDatetime
+from pyproj import Proj, Transformer
+
 from regrid import (
     generate_regrid_filepath,
     parse_output_filename_times_from_file,
     convert_units,
     parse_cmip6_fp,
-    prod_lat_slice,
-    open_and_crop_dataset,
     get_var_id,
 )
 from config import model_inst_lu, prod_scenarios
@@ -109,44 +109,324 @@ def generate_regrid_fps_from_params(models, scenarios, vars, freqs, regrid_dir):
     return regrid_fps
 
 
-def make_qc_file(output_directory):
-    """Make a qc_directory and qc_error.txt file to save results."""
-    qc_dir = output_directory.joinpath("qc")
-    qc_dir.mkdir(exist_ok=True)
-    error_file = qc_dir.joinpath("qc_error.txt")
-    with open(error_file, "w") as e:
-        pass
-    return error_file
+def get_latlon_bbox_from_file(fp):
+    """Get the lat/lon bounding box from a file.
+    Handles regridded files with either lat/lon or x/y spatial dims.
+    (Intended for use with regridded files)
+
+    Parameters
+    ----------
+    fp : path-like
+        Path to regridded file to open and check.
+
+    Returns
+    -------
+    bbox : tuple
+        bbox in lat/lon format (lon1, lat1, lon2, lat2)
+    """
+    ds = xr.open_dataset(fp)
+
+    if "lon" in ds.dims:
+        bbox = (
+            ds.lon.values[0],
+            ds.lat.values[0],
+            ds.lon.values[-1],
+            ds.lat.values[-1],
+        )
+
+    else:
+        # if the regrid file is not lat/lon,
+        # then we will need to convert all values if no lat/lon coordinates are present
+        assert "x" in ds.dims, "No valid spatial dims found in regridded file."
+        if "lon" in ds.coords:
+            # this is easy, then we can just use min/max of 2D lat/lon coords to get the bbox
+            bbox = (
+                ds.lon.values.min(),
+                ds.lat.values.min(),
+                ds.lon.values.max(),
+                ds.lat.values.max(),
+            )
+        else:
+            # otherwise, we will need to convert all values to lat/lon
+            proj_xy = Proj(ds.spatial_ref.attrs["crs_wkt"])
+            proj_latlon = Proj(proj="latlong", datum="WGS84")
+            transformer = Transformer.from_proj(proj_xy, proj_latlon)
+            xx, yy = np.meshgrid(ds["x"].values, ds["y"].values)
+            lat, lon = transformer.transform(xx, yy)
+
+            bbox = (
+                lon.values.min(),
+                lat.values.min(),
+                lon.values.max(),
+                lat.values.max(),
+            )
+
+    return bbox
 
 
-def file_min_max(fp):
-    """Get file min and max values within the Arctic latitudes."""
+def check_bbox_latlon(bbox):
+    """Check if a bounding box is in lat/lon format (only -180, 180, not 0,360).
+
+    Parameters
+    ----------
+    bbox : tuple
+        Tuple of 4 values representing the bounding box.
+
+    Raises
+    -------
+    AssertionError
+        if the bounding box is not a tuple of 4 values,
+    ValueError
+        if the bounding box is in lat/lon format but not in the correct order,
+        or if values do not even appear to be within expected range of -180 - 180
+
+    Returns
+    -------
+    bbox : tuple
+        Simply returns the bounding box if it is in correct lat/lon format.
+    """
+    assert len(bbox) == 4, "Bounding box must be a tuple of 4 values."
+
+    # then check if values make sense for latlon
+    if not (
+        -180 <= bbox[0] <= 180
+        and -180 <= bbox[2] <= 180
+        and -90 <= bbox[1] <= 90
+        and -90 <= bbox[3] <= 90
+    ):
+        if all([-180 <= c <= 180 for c in bbox]):
+            raise ValueError(
+                f"Bounding box values are consistent with lat/lon but are not in the correct order: {bbox}."
+            )
+        else:
+            raise ValueError(f"Bounding box is not in lat/lon format: {bbox}.")
+    else:
+        return bbox
+
+
+def orient_latlon_bbox(src_fp, bbox):
+    """ensure that a bbox of form (lon1, lat1, lon2, lat2) is oriented to match that of the source file.
+    Just make sure that bbox matches the orientation (increasing / decreasing) of source file lat/lon dims
+
+    Parameters
+    ----------
+    src_fp : path-like
+        Path to source file to use for orientation.
+
+    bbox : tuple
+        Tuple of 4 values representing the bounding box in (lon1, lat1, lon2, lat2) format,
+        oriented / shifted to match the lat/lon dims of src_fp.
+    """
+    with xr.open_dataset(src_fp) as ds:
+        if ds.lat[0] < ds.lat[-1]:
+            if bbox[1] > bbox[3]:
+                bbox = (bbox[0], bbox[3], bbox[2], bbox[1])
+        if ds.lon[0] < ds.lon[-1]:
+            if bbox[0] > bbox[2]:
+                bbox = (bbox[2], bbox[1], bbox[0], bbox[3])
+
+        if any(ds.lon > 180):
+            # assumes src is on 0, 360 if any value greater than 180
+            if bbox[0] < 0:
+                bbox = (bbox[0] % 360, bbox[1], bbox[2] % 360, bbox[3])
+
+    return bbox
+
+
+def get_src_bbox(src_fp, regrid_fp):
+    """Get the bounding box from a regridded file to use for subsetting a source file.
+
+    Parameters
+    ----------
+    src_fp : path-like
+        Path to source file to match bbox of regrid to.
+    regrid_fp : path-like
+        Path to regridded file.
+
+    Raises
+    -------
+    AssertionError
+        if source file does not have lat/lon dims.
+
+    Returns
+    -------
+    src_bbox : tuple
+        Tuple of 4 values representing the bounding box in (lon1, lat1, lon2, lat2) format.
+    """
+
+    # get the bounding box from the first regridded file
+    regrid_latlon_bbox = get_latlon_bbox_from_file(regrid_fp)
+    src_is_latlon = "lon" in xr.open_dataset(src_fp).dims
+
+    # check to see if both src and regrid have same spatial dims
+    assert src_is_latlon, "Source files without lat/lon dims are not yet supported."
+    src_bbox = regrid_latlon_bbox
+    src_bbox = check_bbox_latlon(src_bbox)
+    # ensure that bbox is oriented correctly
+    src_bbox = orient_latlon_bbox(src_fp, src_bbox)
+
+    return src_bbox
+
+
+def check_bbox_xy(bbox):
+    """Check if a bounding box is in x/y format.
+    That is, simply ensure four values and that x1 < x2 and y1 < y2.
+
+    Parameters
+    ----------
+    bbox : tuple
+        Tuple of 4 values representing the bounding box.
+
+    Raises
+    -------
+    AssertionError
+        if the bounding box is in not in the expected x/y format of x1, y1, x2, y2, with
+        x1 < x2 and y1 < y2.
+
+    Returns
+    -------
+    bbox : tuple
+        Simply returns the bounding box if it is in correct x/y format.
+    """
+    assert len(bbox) == 4, "Bounding box must be a tuple of 4 values."
+    assert (
+        not bbox[0] < bbox[2] and bbox[1] < bbox[3]
+    ), "Bounding box is not in correct order."
+
+    return bbox
+
+
+def subset_xy(ds, bbox):
+    """Subset a dataset with x/y dims by a bounding box.
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        Dataset to subset.
+    bbox : tuple
+        Bounding box to use for cropping the dataset.
+        Formatted as (x1, y1, x2, y2).
+
+    Raises
+    -------
+    AssertionError
+        if the dataset does not have x/y dimensions.
+
+    Returns
+    -------
+    ds : xarray.Dataset
+        Subsetted dataset.
+    """
+    x1, y1, x2, y2 = check_bbox_xy(bbox)
+
+    assert "x" in ds.dims, "Dataset does not have an x dimension."
+    assert "y" in ds.dims, "Dataset does not have a y dimension."
+
+    # we will not grant same flexibility in flipped dims for projected data
+    ds = ds.sel(x=slice(x1, x2), y=slice(y1, y2))
+
+    return ds
+
+
+def subset_latlon(ds, bbox):
+    """Subset a dataset with lat/lon dims by a bounding box.
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        Dataset to subset.
+    bbox : tuple
+        Bounding box to use for cropping the dataset.
+        Formatted as (lon1, lat1, lon2, lat2).
+
+    Raises
+    -------
+    AssertionError
+        if the dataset does not have x/y dimensions.
+
+    Returns
+    -------
+    ds : xarray.Dataset
+        Subsetted dataset.
+    """
+    assert "lon" in ds.dims, "Dataset does not have a longitude dimension."
+    assert "lat" in ds.dims, "Dataset does not have a latitude dimension."
+
+    lon1, lat1, lon2, lat2 = bbox
+
+    ds = ds.sel(lon=slice(lon1, lon2), lat=slice(lat1, lat2))
+
+    return ds
+
+
+def subset_by_bbox(ds, bbox):
+    """Subset a dataset by a bounding box.
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        Dataset to subset.
+
+    bbox : tuple
+        Bounding box to use for cropping the dataset.
+        Formatted as (x1, y1, x2, y2) or (lon1, lat1, lon2, lat2).
+
+    Raises
+    -------
+    ValueError
+        if the dataset does not have lat/lon or x/y dimensions.
+
+    Returns
+    -------
+    ds : xarray.Dataset
+        Subsetted dataset.
+    """
+    if ("lon" in ds.dims) and ("lat" in ds.dims):
+        ds = subset_latlon(ds, bbox)
+    elif ("x" in ds.dims) and ("y" in ds.dims):
+        ds = subset_xy(ds, bbox)
+    else:
+        raise ValueError("Dataset does not have lat/lon or x/y dimensions.")
+
+    return ds
+
+
+def file_min_max(fp, bbox=None):
+    """Get file min and max values.
+
+    Parameters
+    ----------
+    fp : path-like
+        Path to netcdf file to open and check.
+    bobx : tuple, optional
+        Bounding box to use for cropping the dataset.
+        Formatted as (x1, y1, x2, y2) or (lon1, lat1, lon2, lat2).
+
+    Returns
+    -------
+    dict
+        Dictionary with keys "file", "min", and "max".
+    """
     try:
         try:
             # using the h5netcdf engine because it seems faster and might help prevent pool hanging
-            src_ds = xr.open_dataset(fp, engine="h5netcdf")
+            ds = xr.open_dataset(fp, engine="h5netcdf")
         except:
             # this seems to have only failed due to some files (KACE model) being written in netCDF3 format
-            src_ds = xr.open_dataset(fp)
-
-        var_id = get_var_id(src_ds)
-
-        # handle regridded data being flipped
-        if src_ds.lat[0] > src_ds.lat[-1]:
-            lat_slicer = slice(90, 49)
-        else:
-            lat_slicer = slice(49, 90)
-
-        src_ds_slice = src_ds.sel(lat=lat_slicer)
-
-        src_ds_slice = convert_units(src_ds_slice)
-
-        src_min, src_max = float(src_ds_slice[var_id].min()), float(
-            src_ds_slice[var_id].max()
-        )
-        return {"file": str(fp), "min": src_min, "max": src_max}
+            ds = xr.open_dataset(fp)
     except:
+        # file could not be opened, return None for all
         return {"file": None, "min": None, "max": None}
+
+    var_id = get_var_id(ds)
+
+    if bbox is not None:
+        ds = subset_by_bbox(ds, bbox)
+
+    ds = convert_units(ds)
+
+    min, max = float(np.nanmin(ds[var_id])), float(np.nanmax(ds[var_id]))
+    return {"file": str(fp), "min": min, "max": max}
 
 
 def subsample_files(fps, min_qc=20, max_qc=75):
@@ -202,6 +482,7 @@ def compare_expected_to_existing_and_check_values(
 
     # using multiprocessing, populate the dicts with min/max values for all regridded files and source files
     with concurrent.futures.ProcessPoolExecutor(max_workers=10) as pool:
+        # results = list(pool.map(file_min_max, [existing_regrid_fps[0]]))  # debug
         results = list(pool.map(file_min_max, existing_regrid_fps))
 
     # populate min/max dict / store dataset errors
@@ -211,8 +492,12 @@ def compare_expected_to_existing_and_check_values(
             "max": result["max"],
         }
 
+    # assume existing regrid fps will have same extent or smaller than source files
+    #  so we can generate a bbox to subset
+    src_bbox = get_src_bbox(src_fps[0], existing_regrid_fps[0])
+
     with concurrent.futures.ProcessPoolExecutor(max_workers=10) as pool:
-        results = list(pool.map(file_min_max, src_fps))
+        results = list(pool.map(file_min_max, src_fps, [src_bbox]))
 
     # populate min/max dict
     for result in results:
@@ -255,7 +540,7 @@ def compare_expected_to_existing_and_check_values(
             else:
                 ds_errors.append(str(regrid_fp))
 
-    return ds_errors, value_errors
+    return ds_errors, value_errors, src_min_max, regrid_min_max
 
 
 def get_matching_time_filepath(fps, test_date):
@@ -318,19 +603,16 @@ def generate_cmip6_filepath_from_regrid_filename(fn, cmip6_dir):
 def plot_comparison(regrid_fp, cmip6_dir):
     """For a given regridded file, find the source file and plot side by side."""
     src_fp = generate_cmip6_filepath_from_regrid_filename(regrid_fp.name, cmip6_dir)
-    src_ds = open_and_crop_dataset(src_fp, lat_slice=prod_lat_slice)
-    # entire plotting function is inside this try block
+
     # if the dataset cannot be opened, just print a message instead of an error
     try:
         regrid_ds = xr.open_dataset(regrid_fp)
     except:
         print(f"Regridded dataset could not be opened: {regrid_fp}")
 
-    # lat axis is flipped in regrid files
-    src_lat_slice = slice(55, 75)
-    regrid_lat_slice = slice(75, 55)
-    lon_slice_src = slice(200, 240)
-    lon_slice_regrid = slice(-160, -120)
+    src_bbox = get_src_bbox(src_fp, regrid_fp)
+    src_ds = xr.open_dataset(src_fp, engine="h5netcdf")
+
     time_val = regrid_ds.time.values[0]
     var_id = src_ds.attrs["variable_id"]
     assert get_var_id(src_ds) == var_id, "Variable ID mismatch"
@@ -386,49 +668,39 @@ def plot_comparison(regrid_fp, cmip6_dir):
             # Don't need to fail. Just print a message.
             print("Expected monthly file but frequency attribute does not match.")
 
-    # ensure units are consistent with regridded dataset
+    # ensure extent and units are consistent with regridded dataset
+    src_ds = subset_by_bbox(src_ds, src_bbox)
     src_ds = convert_units(src_ds)
 
     # get a vmin and vmax from src dataset to use for both plots, if a map
     try:
         vmin = (
-            src_ds[var_id]
-            .sel(time=src_time, method=sel_method)
-            .sel(lat=src_lat_slice, lon=lon_slice_src)
+            src_ds[var_id].sel(time=src_time, method=sel_method)
+            # .sel(lat=src_lat_slice, lon=lon_slice_src)
             .values.min()
         )
         vmax = (
-            src_ds[var_id]
-            .sel(time=src_time, method=sel_method)
-            .sel(lat=src_lat_slice, lon=lon_slice_src)
+            src_ds[var_id].sel(time=src_time, method=sel_method)
+            # .sel(lat=src_lat_slice, lon=lon_slice_src)
             .values.max()
         )
     except:
         print("Error getting vmin and vmax values from source data.")
 
     try:  # maps
-        src_ds[var_id].sel(time=src_time, method=sel_method).sel(
-            lat=src_lat_slice, lon=lon_slice_src
-        ).plot(ax=axes[0], vmin=vmin, vmax=vmax)
+        src_ds[var_id].sel(time=src_time, method=sel_method).plot(
+            ax=axes[0], vmin=vmin, vmax=vmax
+        )
         axes[0].set_title(f"Source dataset (timestamp: {src_time})")
-        regrid_ds[var_id].sel(time=time_val).sel(
-            lat=regrid_lat_slice,
-            lon=lon_slice_regrid,
-            # explitictly set the x axis to be the standard longitude for regridded data
-            #  because grid is (confusingly) oriented time, lon, lat for rasdaman
-        ).plot(ax=axes[1], vmin=vmin, vmax=vmax, x="lon")
+        regrid_ds[var_id].sel(time=time_val).plot(ax=axes[1], vmin=vmin, vmax=vmax)
         axes[1].set_title(f"Regridded dataset (timestamp: {time_val})")
         axes[1].set_xlabel("longitude [standard]")
         plt.show()
 
     except:  # histograms
-        src_ds[var_id].sel(time=src_time, method=sel_method).sel(
-            lat=src_lat_slice, lon=lon_slice_src
-        ).plot(ax=axes[0])
+        src_ds[var_id].sel(time=src_time, method=sel_method).plot(ax=axes[0])
         axes[0].set_title(f"Source dataset (timestamp: {src_time})")
-        regrid_ds[var_id].sel(time=time_val).sel(
-            lat=regrid_lat_slice, lon=lon_slice_regrid
-        ).plot(ax=axes[1])
+        regrid_ds[var_id].sel(time=time_val).plot(ax=axes[1])
         axes[1].set_title(f"Regridded dataset (timestamp: {time_val})")
 
     plt.show()
