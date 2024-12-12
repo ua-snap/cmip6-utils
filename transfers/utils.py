@@ -12,7 +12,6 @@ import subprocess
 import argparse
 import sys
 import os
-import upath
 import globus_sdk
 from globus_sdk.scopes import TransferScopes
 
