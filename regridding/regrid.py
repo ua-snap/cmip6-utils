@@ -70,12 +70,13 @@ def parse_args():
     )
 
 
-def init_regridder(src_ds, dst_ds):
+def init_regridder(src_ds, dst_ds, interp_method):
     """Initialize the regridder object for a single dataset. All source files listed in the batch files should have the same grid, and so we should only need to initiate this for a single file.
 
     Args:
         src_ds (xarray.DataSet): Source dataset for initializing a regridding object. This should have the same grid as all files in the batch file being worked on.
         dst_ds (xarray.DataSet): Destination dataset for initializing a regridding object. This should be a cropped version of the pipeline's target grid dataset.
+        interp_method (str): Interpolation method to use for regridding. Options are 'bilinear', 'conservative', 'nearest_s2d', 'nearest_d2s', 'patch'
 
     Returns:
         regridder (xesmf.Regridder): a regridder object
@@ -95,7 +96,7 @@ def init_regridder(src_ds, dst_ds):
         dst_ds = dst_ds.sortby(dst_ds.lon, ascending=True)
     # initialize the regridder which now contains standard -180 to 180 longitude values
     regridder = xe.Regridder(
-        src_ds, dst_ds, "bilinear", unmapped_to_nan=True, periodic=True
+        src_ds, dst_ds, interp_method, unmapped_to_nan=True, periodic=True
     )
 
     return regridder
@@ -587,7 +588,9 @@ def regrid_dataset(fp, regridder, out_fp):
 
 if __name__ == "__main__":
     # parse args
-    regrid_batch_dir, regrid_batch_fp, dst_fp, out_dir, no_clobber = parse_args()
+    regrid_batch_dir, regrid_batch_fp, dst_fp, out_dir, interp_method, no_clobber = (
+        parse_args()
+    )
 
     # get the paths of files to regrid from the batch file
     with open(regrid_batch_fp) as f:
@@ -608,7 +611,7 @@ if __name__ == "__main__":
     src_init_ds = xr.open_dataset(src_fps[0])
 
     # use one of the source files to be regridded and the destination grid file to create a regridder object
-    regridder = init_regridder(src_init_ds, dst_ds)
+    regridder = init_regridder(src_init_ds, dst_ds, interp_method)
 
     # now iterate over files in batch file and run the regridding
     print(f"Regridding {len(src_fps)} files", flush=True)
