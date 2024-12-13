@@ -475,16 +475,17 @@ def rasdafy(ds):
     # make sure the time axis is unlimited (this means it is a "record dimension" in netCDF parlance)
     ds.encoding["unlimited_dims"] = ["time"]
 
+    # drop bnds dimension if it exists
+    for bnd_dim in ["bnds", "nbnd", "lat_bnds", "lon_bnds", "time_bnds"]:
+        ds = ds.drop_dims(bnd_dim, errors="ignore")
+
     # make sure the latitude dim is in decreasing order
     if "lat" in ds.dims:
         if ds.lat.values[0] < ds.lat.values[-1]:
             ds = ds.sel(lat=slice(None, None, -1))
-        # make sure the dims are ordered (time, lon, lat)
-        ds = ds.transpose("time", "lon", "lat")
 
-    # drop bnds dimension if it exists
-    for bnd_dim in ["bnds", "nbnd", "lat_bnds", "lon_bnds", "time_bnds"]:
-        ds = ds.drop_dims(bnd_dim, errors="ignore")
+    # make sure the dims are ordered (time, lon, lat)
+    ds = ds.transpose("time", "lon", "lat")
 
     ds = convert_units(ds)
 
