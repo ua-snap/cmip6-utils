@@ -216,6 +216,13 @@ def orient_latlon_bbox(src_fp, bbox):
     bbox : tuple
         Tuple of 4 values representing the bounding box in (lon1, lat1, lon2, lat2) format,
         oriented / shifted to match the lat/lon dims of src_fp.
+
+
+    Returns
+    -------
+    bbox : tuple
+        Tuple of 4 values representing the bounding box in (lon1, lat1, lon2, lat2) format,
+        oriented / shifted to match the lat/lon dims of src_fp.
     """
     with xr.open_dataset(src_fp) as ds:
         if ds.lat[0] < ds.lat[-1]:
@@ -228,7 +235,7 @@ def orient_latlon_bbox(src_fp, bbox):
         if any(ds.lon > 180):
             # assumes src is on 0, 360 if any value greater than 180
             if bbox[0] < 0:
-                bbox = (bbox[0] % 360, bbox[1], bbox[2] % 360, bbox[3])
+                bbox = (bbox[0] + 180, bbox[1], bbox[2] + 180, bbox[3])
 
     return bbox
 
@@ -388,6 +395,8 @@ def subset_by_bbox(ds, bbox):
     else:
         raise ValueError("Dataset does not have lat/lon or x/y dimensions.")
 
+    if any([len(ds[dim]) == 0 for dim in ds.dims]):
+        print("One of dims in ds is 0!")
     return ds
 
 
@@ -424,8 +433,10 @@ def file_min_max(fp, bbox=None):
         ds = subset_by_bbox(ds, bbox)
 
     ds = convert_units(ds)
-
-    min, max = float(np.nanmin(ds[var_id])), float(np.nanmax(ds[var_id]))
+    try:
+        min, max = float(np.nanmin(ds[var_id])), float(np.nanmax(ds[var_id]))
+    except:
+        print(f"Error getting min/max values from {ds[var_id]}")
     return {"file": str(fp), "min": min, "max": max}
 
 
