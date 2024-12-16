@@ -66,8 +66,13 @@ def get_grid(fp):
             grid_di[f"{var_id}_max"] = None
             grid_di[f"{var_id}_size"] = None
             grid_di[f"{var_id}_step"] = None
-    ts_min = ds.time.values.min()
-    ts_max = ds.time.values.max()
+    # try to get min and max time values
+    # for fixed frequency variables (like fx, Ofx, and orog), this will fail and we just assign a placeholder value
+    try:
+        ts_min = ds.time.values.min()
+        ts_max = ds.time.values.max()
+    except:
+        ts_min = ts_max = np.datetime64("1950-01-01")
 
     # trying to help multiprocessing not hang, not ideal of course
     ds.close()

@@ -1,0 +1,26 @@
+Please go to this URL and login:
+
+https://auth.globus.org/v2/oauth2/authorize?client_id=a316babe-5447-43b0-a82e-4fc86c91b71a&redirect_uri=https%3A%2F%2Fauth.globus.org%2Fv2%2Fweb%2Fauth-code&scope=urn%3Aglobus%3Aauth%3Ascope%3Atransfer.api.globus.org%3Aall&state=_default&response_type=code&code_challenge=uMTdZ57hslj0mHcO0YpYzIlg0iYU6VsXLf9cuD3uCDw&code_challenge_method=S256&access_type=online
+
+Please enter the code here: Log in successful. Running the audit now.
+           model    scenario                                           variants
+0       E3SM-1-0  historical  [r1i1p1f1, r2i1p1f1, r3i1p1f1, r4i1p1f1, r5i1p...
+1       E3SM-1-1  historical                                         [r1i1p1f1]
+2       E3SM-2-0  historical  [r10i1p1f1, r11i1p1f1, r12i1p1f1, r13i1p1f1, r...
+3   E3SM-1-1-ECA  historical                                         [r1i1p1f1]
+4            NaN         NaN                                                NaN
+5            NaN         NaN                                                NaN
+6            NaN         NaN                                                NaN
+7       E3SM-1-0      ssp585  [r1i1p1f1, r2i1p1f1, r3i1p1f1, r4i1p1f1, r5i1p...
+8            NaN         NaN                                                NaN
+9       E3SM-1-1      ssp245  [r10i1p1f1, r1i1p1f1, r2i1p1f1, r3i1p1f1, r4i1...
+10           NaN         NaN                                                NaN
+11      E3SM-1-1      ssp585                                         [r1i1p1f1]
+12           NaN         NaN                                                NaN
+13           NaN         NaN                                                NaN
+14      E3SM-2-0      ssp370  [r10i1p1f1, r11i1p1f1, r12i1p1f1, r13i1p1f1, r...
+15           NaN         NaN                                                NaN
+16           NaN         NaN                                                NaN
+17           NaN         NaN                                                NaN
+18           NaN         NaN                                                NaN
+19  E3SM-1-1-ECA      ssp585                                         [r1i1p1f1]

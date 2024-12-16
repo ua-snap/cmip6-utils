@@ -3052,6 +3052,77 @@ E3SM-1-1,ssp245,r6i1p1f1,Eday,hfss,,,,
 E3SM-1-1,ssp245,r7i1p1f1,Eday,hfss,,,,
 E3SM-1-1,ssp245,r8i1p1f1,Eday,hfss,,,,
 E3SM-1-1,ssp245,r9i1p1f1,Eday,hfss,,,,
+E3SM-1-1,ssp585,r1i1p1f1,Amon,tas,gr,v20201117,1.0,['tas_Amon_E3SM-1-1_ssp585_r1i1p1f1_gr_201501-210012.nc']
+E3SM-1-1,ssp585,r1i1p1f1,day,tas,,,,
+E3SM-1-1,ssp585,r1i1p1f1,Amon,ts,gr,v20201117,1.0,['ts_Amon_E3SM-1-1_ssp585_r1i1p1f1_gr_201501-210012.nc']
+E3SM-1-1,ssp585,r1i1p1f1,day,ts,,,,
+E3SM-1-1,ssp585,r1i1p1f1,Amon,tasmax,,,,
+E3SM-1-1,ssp585,r1i1p1f1,day,tasmax,,,,
+E3SM-1-1,ssp585,r1i1p1f1,Amon,tasmin,,,,
+E3SM-1-1,ssp585,r1i1p1f1,day,tasmin,,,,
+E3SM-1-1,ssp585,r1i1p1f1,Amon,pr,gr,v20201117,1.0,['pr_Amon_E3SM-1-1_ssp585_r1i1p1f1_gr_201501-210012.nc']
+E3SM-1-1,ssp585,r1i1p1f1,day,pr,,,,
+E3SM-1-1,ssp585,r1i1p1f1,Amon,psl,gr,v20201117,1.0,['psl_Amon_E3SM-1-1_ssp585_r1i1p1f1_gr_201501-210012.nc']
+E3SM-1-1,ssp585,r1i1p1f1,day,psl,,,,
+E3SM-1-1,ssp585,r1i1p1f1,Amon,huss,gr,v20201117,1.0,['huss_Amon_E3SM-1-1_ssp585_r1i1p1f1_gr_201501-210012.nc']
+E3SM-1-1,ssp585,r1i1p1f1,day,huss,,,,
+E3SM-1-1,ssp585,r1i1p1f1,Amon,uas,,,,
+E3SM-1-1,ssp585,r1i1p1f1,day,uas,,,,
+E3SM-1-1,ssp585,r1i1p1f1,Amon,vas,,,,
+E3SM-1-1,ssp585,r1i1p1f1,day,vas,,,,
+E3SM-1-1,ssp585,r1i1p1f1,Amon,ta,gr,v20220214,4.0,"['ta_Amon_E3SM-1-1_ssp585_r1i1p1f1_gr_201501-203912.nc', 'ta_Amon_E3SM-1-1_ssp585_r1i1p1f1_gr_204001-206412.nc', 'ta_Amon_E3SM-1-1_ssp585_r1i1p1f1_gr_206501-208912.nc', 'ta_Amon_E3SM-1-1_ssp585_r1i1p1f1_gr_209001-210012.nc']"
+E3SM-1-1,ssp585,r1i1p1f1,day,ta,,,,
+E3SM-1-1,ssp585,r1i1p1f1,Amon,ua,gr,v20220214,4.0,"['ua_Amon_E3SM-1-1_ssp585_r1i1p1f1_gr_201501-203912.nc', 'ua_Amon_E3SM-1-1_ssp585_r1i1p1f1_gr_204001-206412.nc', 'ua_Amon_E3SM-1-1_ssp585_r1i1p1f1_gr_206501-208912.nc', 'ua_Amon_E3SM-1-1_ssp585_r1i1p1f1_gr_209001-210012.nc']"
+E3SM-1-1,ssp585,r1i1p1f1,day,ua,,,,
+E3SM-1-1,ssp585,r1i1p1f1,Amon,va,gr,v20220214,4.0,"['va_Amon_E3SM-1-1_ssp585_r1i1p1f1_gr_201501-203912.nc', 'va_Amon_E3SM-1-1_ssp585_r1i1p1f1_gr_204001-206412.nc', 'va_Amon_E3SM-1-1_ssp585_r1i1p1f1_gr_206501-208912.nc', 'va_Amon_E3SM-1-1_ssp585_r1i1p1f1_gr_209001-210012.nc']"
+E3SM-1-1,ssp585,r1i1p1f1,day,va,,,,
+E3SM-1-1,ssp585,r1i1p1f1,Amon,sfcWind,gr,v20201117,1.0,['sfcWind_Amon_E3SM-1-1_ssp585_r1i1p1f1_gr_201501-210012.nc']
+E3SM-1-1,ssp585,r1i1p1f1,day,sfcWind,,,,
+E3SM-1-1,ssp585,r1i1p1f1,Amon,sfcWindmax,,,,
+E3SM-1-1,ssp585,r1i1p1f1,day,sfcWindmax,,,,
+E3SM-1-1,ssp585,r1i1p1f1,Amon,hus,gr,v20220214,4.0,"['hus_Amon_E3SM-1-1_ssp585_r1i1p1f1_gr_201501-203912.nc', 'hus_Amon_E3SM-1-1_ssp585_r1i1p1f1_gr_204001-206412.nc', 'hus_Amon_E3SM-1-1_ssp585_r1i1p1f1_gr_206501-208912.nc', 'hus_Amon_E3SM-1-1_ssp585_r1i1p1f1_gr_209001-210012.nc']"
+E3SM-1-1,ssp585,r1i1p1f1,day,hus,,,,
+E3SM-1-1,ssp585,r1i1p1f1,Amon,evspsbl,gr,v20201117,1.0,['evspsbl_Amon_E3SM-1-1_ssp585_r1i1p1f1_gr_201501-210012.nc']
+E3SM-1-1,ssp585,r1i1p1f1,Eday,evspsbl,,,,
+E3SM-1-1,ssp585,r1i1p1f1,Lmon,mrro,gr,v20201117,1.0,['mrro_Lmon_E3SM-1-1_ssp585_r1i1p1f1_gr_201501-210012.nc']
+E3SM-1-1,ssp585,r1i1p1f1,day,mrro,,,,
+E3SM-1-1,ssp585,r1i1p1f1,Lmon,mrsos,gr,v20201117,1.0,['mrsos_Lmon_E3SM-1-1_ssp585_r1i1p1f1_gr_201501-210012.nc']
+E3SM-1-1,ssp585,r1i1p1f1,day,mrsos,,,,
+E3SM-1-1,ssp585,r1i1p1f1,Emon,mrsol,,,,
+E3SM-1-1,ssp585,r1i1p1f1,Eday,mrsol,,,,
+E3SM-1-1,ssp585,r1i1p1f1,Amon,prsn,gr,v20201117,1.0,['prsn_Amon_E3SM-1-1_ssp585_r1i1p1f1_gr_201501-210012.nc']
+E3SM-1-1,ssp585,r1i1p1f1,Omon,prsn,,,,
+E3SM-1-1,ssp585,r1i1p1f1,day,prsn,,,,
+E3SM-1-1,ssp585,r1i1p1f1,LImon,snd,,,,
+E3SM-1-1,ssp585,r1i1p1f1,Eday,snd,,,,
+E3SM-1-1,ssp585,r1i1p1f1,LImon,snw,,,,
+E3SM-1-1,ssp585,r1i1p1f1,day,snw,,,,
+E3SM-1-1,ssp585,r1i1p1f1,Amon,rlds,gr,v20201117,1.0,['rlds_Amon_E3SM-1-1_ssp585_r1i1p1f1_gr_201501-210012.nc']
+E3SM-1-1,ssp585,r1i1p1f1,day,rlds,,,,
+E3SM-1-1,ssp585,r1i1p1f1,Amon,rsds,gr,v20201117,1.0,['rsds_Amon_E3SM-1-1_ssp585_r1i1p1f1_gr_201501-210012.nc']
+E3SM-1-1,ssp585,r1i1p1f1,day,rsds,,,,
+E3SM-1-1,ssp585,r1i1p1f1,Emon,rls,,,,
+E3SM-1-1,ssp585,r1i1p1f1,day,rls,,,,
+E3SM-1-1,ssp585,r1i1p1f1,Emon,rss,,,,
+E3SM-1-1,ssp585,r1i1p1f1,day,rss,,,,
+E3SM-1-1,ssp585,r1i1p1f1,fx,orog,gr,v20201117,1.0,['orog_fx_E3SM-1-1_ssp585_r1i1p1f1_gr.nc']
+E3SM-1-1,ssp585,r1i1p1f1,fx,sftlf,,,,
+E3SM-1-1,ssp585,r1i1p1f1,Ofx,sftof,,,,
+E3SM-1-1,ssp585,r1i1p1f1,Amon,clt,gr,v20201117,1.0,['clt_Amon_E3SM-1-1_ssp585_r1i1p1f1_gr_201501-210012.nc']
+E3SM-1-1,ssp585,r1i1p1f1,day,clt,,,,
+E3SM-1-1,ssp585,r1i1p1f1,Eday,clt,,,,
+E3SM-1-1,ssp585,r1i1p1f1,Omon,tos,gr,v20201201,18.0,"['tos_Omon_E3SM-1-1_ssp585_r1i1p1f1_gr_201501-201912.nc', 'tos_Omon_E3SM-1-1_ssp585_r1i1p1f1_gr_202001-202412.nc', 'tos_Omon_E3SM-1-1_ssp585_r1i1p1f1_gr_202501-202912.nc', 'tos_Omon_E3SM-1-1_ssp585_r1i1p1f1_gr_203001-203412.nc', 'tos_Omon_E3SM-1-1_ssp585_r1i1p1f1_gr_203501-203912.nc', 'tos_Omon_E3SM-1-1_ssp585_r1i1p1f1_gr_204001-204412.nc', 'tos_Omon_E3SM-1-1_ssp585_r1i1p1f1_gr_204501-204912.nc', 'tos_Omon_E3SM-1-1_ssp585_r1i1p1f1_gr_205001-205412.nc', 'tos_Omon_E3SM-1-1_ssp585_r1i1p1f1_gr_205501-205912.nc', 'tos_Omon_E3SM-1-1_ssp585_r1i1p1f1_gr_206001-206412.nc', 'tos_Omon_E3SM-1-1_ssp585_r1i1p1f1_gr_206501-206912.nc', 'tos_Omon_E3SM-1-1_ssp585_r1i1p1f1_gr_207001-207412.nc', 'tos_Omon_E3SM-1-1_ssp585_r1i1p1f1_gr_207501-207912.nc', 'tos_Omon_E3SM-1-1_ssp585_r1i1p1f1_gr_208001-208412.nc', 'tos_Omon_E3SM-1-1_ssp585_r1i1p1f1_gr_208501-208912.nc', 'tos_Omon_E3SM-1-1_ssp585_r1i1p1f1_gr_209001-209412.nc', 'tos_Omon_E3SM-1-1_ssp585_r1i1p1f1_gr_209501-209912.nc', 'tos_Omon_E3SM-1-1_ssp585_r1i1p1f1_gr_210001-210012.nc']"
+E3SM-1-1,ssp585,r1i1p1f1,Oday,tos,,,,
+E3SM-1-1,ssp585,r1i1p1f1,SImon,siconc,gr,v20201117,1.0,['siconc_SImon_E3SM-1-1_ssp585_r1i1p1f1_gr_201501-210012.nc']
+E3SM-1-1,ssp585,r1i1p1f1,SIday,siconc,,,,
+E3SM-1-1,ssp585,r1i1p1f1,SImon,sithick,gr,v20201117,1.0,['sithick_SImon_E3SM-1-1_ssp585_r1i1p1f1_gr_201501-210012.nc']
+E3SM-1-1,ssp585,r1i1p1f1,SIday,sithick,,,,
+E3SM-1-1,ssp585,r1i1p1f1,Amon,hfls,gr,v20201117,1.0,['hfls_Amon_E3SM-1-1_ssp585_r1i1p1f1_gr_201501-210012.nc']
+E3SM-1-1,ssp585,r1i1p1f1,day,hfls,,,,
+E3SM-1-1,ssp585,r1i1p1f1,Eday,hfls,,,,
+E3SM-1-1,ssp585,r1i1p1f1,Amon,hfss,gr,v20201117,1.0,['hfss_Amon_E3SM-1-1_ssp585_r1i1p1f1_gr_201501-210012.nc']
+E3SM-1-1,ssp585,r1i1p1f1,day,hfss,,,,
+E3SM-1-1,ssp585,r1i1p1f1,Eday,hfss,,,,
 E3SM-2-0,ssp370,r10i1p1f1,Amon,tas,gr,v20230906,2.0,"['tas_Amon_E3SM-2-0_ssp370_r10i1p1f1_gr_201501-206412.nc', 'tas_Amon_E3SM-2-0_ssp370_r10i1p1f1_gr_206501-210012.nc']"
 E3SM-2-0,ssp370,r11i1p1f1,Amon,tas,gr,v20230910,2.0,"['tas_Amon_E3SM-2-0_ssp370_r11i1p1f1_gr_201501-206412.nc', 'tas_Amon_E3SM-2-0_ssp370_r11i1p1f1_gr_206501-210012.nc']"
 E3SM-2-0,ssp370,r12i1p1f1,Amon,tas,gr,v20230913,2.0,"['tas_Amon_E3SM-2-0_ssp370_r12i1p1f1_gr_201501-206412.nc', 'tas_Amon_E3SM-2-0_ssp370_r12i1p1f1_gr_206501-210012.nc']"

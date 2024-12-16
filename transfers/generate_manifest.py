@@ -15,6 +15,10 @@ from datetime import datetime
 import sys
 import pandas as pd
 from config import *
+from pathlib import Path
+
+# ignore pandas set with copy warning during messages about land/sea fraction variables
+pd.options.mode.chained_assignment = None
 
 
 def arguments(argv):
@@ -140,7 +144,6 @@ if __name__ == "__main__":
     # group batch files by variable name and
     for var_id in variable_lut:
         for t_id in variable_lut[var_id]["table_ids"]:
-            transfer_paths = []
             # holdings table is created from production scenarios only, so all scenarios in here should be included
             # iterate over model so that we can subset by the correct variant to be mirrored:
             for model in models:
@@ -168,6 +171,96 @@ if __name__ == "__main__":
     manifest = manifest.query(
         "filename != 'psl_day_CESM2-WACCM_historical_r1i1p1f1_gn_18500101-20150101.nc'"
     )
+
+    # check if any model in the manifest does not have land or sea fraction variables present
+    # if a model is missing one or both of those variables, query the holdings again for the first instance of that model and variable and add it to the manifest
+    # this is to ensure that the land and ocean fraction variables are included in the manifest, regardless of the model variant or grid type
+    # also prints a message for each model that is missing one or both of those variables
+
+    lsf_vars = ["sftlf", "sftof"]
+
+    for lsf_var in lsf_vars:
+        for model in models:
+            query_str = f"model == '{model}' & variable == '{lsf_var}'"
+            lsf_var_in_manifest = manifest.query(
+                f"model == '{model}' & variable == '{lsf_var}'"
+            )
+            if lsf_var_in_manifest.empty:
+                print(
+                    f"Could not find variable {lsf_var} for {model} in manifest. Searching non-production variants in holdings..."
+                )
+                lsf_var_in_holdings = holdings.query(query_str)
+                if lsf_var_in_holdings.empty:
+                    print(
+                        f"Could not find variable {lsf_var} for {model} among all variants and grids in holdings."
+                    )
+                else:
+                    # reset index and
+                    # convert filename column from list to first element of that list
+                    lsf_var_in_holdings.reset_index(drop=True, inplace=True)
+                    lsf_var_in_holdings["filename"] = lsf_var_in_holdings[
+                        "filenames"
+                    ].apply(lambda x: x[0])
+
+                    # drop the filenames and n_files columns
+                    lsf_var_in_holdings.drop(
+                        ["filenames", "n_files"], axis=1, inplace=True
+                    )
+
+                    if len(lsf_var_in_holdings) > 1:
+                        print(
+                            f"Found multiple instances of variable {lsf_var} in non-production variants for {model} in holdings. Adding first available to manifest:"
+                        )
+
+                        print(lsf_var_in_holdings[:1])
+                        manifest = pd.concat([manifest, lsf_var_in_holdings[:1]])
+                    if len(lsf_var_in_holdings) == 1:
+                        print(
+                            f"Found one instance of variable {lsf_var} in a non-production variant for {model} in holdings. Adding to manifest:"
+                        )
+                        print(lsf_var_in_holdings)
+                        manifest = pd.concat([manifest, lsf_var_in_holdings])
+
+    # get list of additional files from config and add to the manifest
+    to_add = []
+    for filepath in add_to_manifest:
+        # extract the components from the filepath
+        model = Path(filepath).parts[8]
+        scenario = Path(filepath).parts[9]
+        variant = Path(filepath).parts[10]
+        table_id = Path(filepath).parts[11]
+        variable = Path(filepath).parts[12]
+        grid_type = Path(filepath).parts[13]
+        version = Path(filepath).parts[14]
+        start_year = None
+        start_month = None
+        start_day = None
+        end_year = None
+        end_month = None
+        end_day = None
+        filename = f"{variable}_{table_id}_{model}_{scenario}_{variant}_{grid_type}.nc"
+        # create a new row for the manifest
+        row = pd.DataFrame(
+            {
+                "model": [model],
+                "scenario": [scenario],
+                "variant": [variant],
+                "table_id": [table_id],
+                "variable": [variable],
+                "grid_type": [grid_type],
+                "version": [version],
+                "start_year": [start_year],
+                "start_month": [start_month],
+                "start_day": [start_day],
+                "end_year": [end_year],
+                "end_month": [end_month],
+                "end_day": [end_day],
+                "filename": [filename],
+            }
+        )
+        to_add.append(row)
+    # add the additional files to the manifest
+    manifest = pd.concat([manifest] + to_add)
 
     manifest.to_csv(
         manifest_tmp_fn.format(esgf_node=ESGF_NODE, suffix=suffix), index=False
