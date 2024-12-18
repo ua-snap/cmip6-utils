@@ -303,7 +303,6 @@ wrf_variables = {
         # mass_content_of_water_in_soil_layer is the most common one apparently, so we will go with that for now
         "name": "mass_content_of_water_in_soil_layer",
     },
-    "tsl": {"name": "soil_temperature"},
     # will not have the snw and siconc variables in here as we know there is no subdaily
 }
 
