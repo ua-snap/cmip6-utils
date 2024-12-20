@@ -223,6 +223,7 @@ variables = {
         "name": "surface_upward_sensible_heat_flux",
         "table_ids": ["Amon", "day", "Eday"],
     },
+    "tsl": {"name": "soil_temperature", "table_ids": ["Lmon", "Eday"]},
 }
 
 # This dict is for auditing WRF variables!
