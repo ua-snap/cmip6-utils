@@ -488,8 +488,9 @@ def rasdafy(ds):
         if ds.lat.values[0] < ds.lat.values[-1]:
             ds = ds.sel(lat=slice(None, None, -1))
 
-    # make sure the dims are ordered (time, lon, lat)
-    ds = ds.transpose("time", "lon", "lat")
+        # make sure the dims are ordered (time, lon, lat)
+        # (if present, using lat presence as a proxy for both)
+        ds = ds.transpose("time", "lon", "lat")
 
     ds = convert_units(ds)
 
