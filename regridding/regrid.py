@@ -596,7 +596,7 @@ def regrid_dataset(fp, regridder, out_fp):
     # if the variable is a fixed frequency variable, just write it as is without any time modifications
     # this should never occur because only daily and monthly frequency data should be regridded,
     # but technically possible if the prefect parameters ever include "fx", "Ofx", or "orog" frequencies
-    if any(fixed_freq_var in out_fp for fixed_freq_var in ["sftlf", "sftof"]):
+    if any(fixed_freq_var in str(out_fp) for fixed_freq_var in ["sftlf", "sftof"]):
         regrid_ds.to_netcdf(out_fp)
     else:
         out_fp = fix_time_and_write(regrid_ds, src_ds, out_fp)
