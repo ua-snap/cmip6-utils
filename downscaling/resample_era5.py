@@ -2,7 +2,7 @@
 This is done for maximum and minimum temperature and total precipitation.
 
 Example usage:
-    python resample_era5.py --era5_dir /beegfs/CMIP6/wrf_era5/04km --output_dir /beegfs/CMIP6/wrf_era5/04km_day
+    python resample_era5.py --era5_dir /beegfs/CMIP6/wrf_era5/04km --output_dir /beegfs/CMIP6/kmredilla/era5_4km_daily/
 
 """
 
@@ -134,7 +134,7 @@ def get_agg_var_lut(agg_var):
     return lut[agg_var]
 
 
-def agg_files_exist(year, agg_vars, output_dir):
+def agg_files_exist(year, agg_vars, output_dir, fn_str):
     """Check if the aggregated files already exist"""
     file_exist_accum = []
     for agg_var in agg_vars:
@@ -147,9 +147,9 @@ def agg_files_exist(year, agg_vars, output_dir):
     return all_files_exist
 
 
-def check_no_clobber(no_clobber, year, agg_vars, output_dir):
+def check_no_clobber(no_clobber, year, agg_vars, output_dir, fn_str):
     """Check if the no_clobber flag is set and if the files already exist"""
-    if no_clobber and agg_files_exist(year, agg_vars, output_dir):
+    if no_clobber and agg_files_exist(year, agg_vars, output_dir, fn_str):
         print(f"Resampled files for {year} already exist, skipping")
         return True
     else:
@@ -180,7 +180,7 @@ def resample_full_years(
 ):
     """Resample the full years of data"""
     for year in full_years:
-        if check_no_clobber(no_clobber, year, agg_vars, output_dir):
+        if check_no_clobber(no_clobber, year, agg_vars, output_dir, fn_str):
             continue
         fps = get_year_filepaths(era5_dir, year, fn_str)
         open_and_resample(fps, drop_vars, agg_vars, output_dir, year)
@@ -191,19 +191,19 @@ def resample_partial_years(
 ):
     """Resample the first and last 15 days of the data"""
     first_year = full_years[0] - 1
-    if not check_no_clobber(no_clobber, first_year, agg_vars, output_dir):
+    if not check_no_clobber(no_clobber, first_year, agg_vars, output_dir, fn_str):
         fps = get_last_15_days_flepaths(era5_dir, first_year, fn_str)
         open_and_resample(fps, drop_vars, agg_vars, output_dir, first_year)
 
     last_year = full_years[-1] + 1
-    if not check_no_clobber(no_clobber, last_year, agg_vars, output_dir):
+    if not check_no_clobber(no_clobber, last_year, agg_vars, output_dir, fn_str):
         fps = get_first_15_days_flepaths(era5_dir, last_year, fn_str)
         open_and_resample(fps, drop_vars, agg_vars, output_dir, last_year)
 
 
 def main(era5_dir, output_dir, fn_str, no_clobber):
-    # the full years we want are 1995 to 2014
-    full_years = list(range(1995, 2015))
+    # the full years we want are 1985 to 2014
+    full_years = list(range(1985, 2015))
     # want these variables at daily resolution
     agg_vars = ["t2min", "t2max", "pr"]
     # list of variables to exclude from the open_mfdataset() call
