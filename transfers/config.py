@@ -191,8 +191,16 @@ variables = {
         "name": "surface_downwelling_longwave_flux_in_air",
         "table_ids": ["Amon", "day"],
     },
+    "rlus": {
+        "name": "surface_upwelling_longwave_flux_in_air",
+        "table_ids": ["Amon", "day"],
+    },
     "rsds": {
         "name": "surface_downwelling_shortwave_flux_in_air",
+        "table_ids": ["Amon", "day"],
+    },
+    "rsus": {
+        "name": "surface_upwelling_shortwave_flux_in_air",
         "table_ids": ["Amon", "day"],
     },
     "rls": {
@@ -224,6 +232,10 @@ variables = {
         "table_ids": ["Amon", "day", "Eday"],
     },
     "tsl": {"name": "soil_temperature", "table_ids": ["Lmon", "Eday"]},
+    "mlotst": {
+        "name": "ocean_mixed_layer_thickness_defined_by_sigma_t",
+        "table_ids": ["Omon", "Eday"],
+    },
 }
 
 # This dict is for auditing WRF variables!
