@@ -37,7 +37,6 @@ def write_sbatch_regrid(
     sbatch_fp,
     sbatch_out_fp,
     regrid_script,
-    regrid_batch_dir,
     regrid_dir,
     regrid_batch_fp,
     dst_fp,
@@ -51,7 +50,6 @@ def write_sbatch_regrid(
         sbatch_fp (path_like): path to .slurm script to write sbatch commands to
         sbatch_out_fp (path_like): path to where sbatch stdout should be written
         regrid_script (path_like): path to the script to be called to run the regridding
-        regrid_dir (pathlib.PosixPath): directory to write the regridded data to
         regrid_batch_fp (path_like): path to the batch file containing paths of CMIP6 files to regrid
         dst_fp (path_like): path to file being used as template / reference for destination grid
         no_clobber (str): if "true", do not overwrite regridded files if they already exist
@@ -67,7 +65,6 @@ def write_sbatch_regrid(
     pycommands = "\n"
     pycommands += (
         f"python {regrid_script} "
-        f"-r {regrid_batch_dir} "
         f"-b {regrid_batch_fp} "
         f"-d {dst_fp} "
         f"-o {regrid_dir} "
@@ -254,7 +251,6 @@ if __name__ == "__main__":
                             "sbatch_fp": sbatch_fp,
                             "sbatch_out_fp": sbatch_out_fp,
                             "regrid_script": regrid_script,
-                            "regrid_batch_dir": regrid_batch_dir,
                             "regrid_dir": regrid_dir,
                             "regrid_batch_fp": fp,
                             "dst_fp": target_grid_fp,

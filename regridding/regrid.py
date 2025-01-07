@@ -31,13 +31,6 @@ def parse_args():
     """Parse some arguments"""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "-r",
-        dest="regrid_batch_dir",
-        type=str,
-        help="Directory containing batch files",
-        required=True,
-    )
-    parser.add_argument(
         "-b",
         dest="regrid_batch_fp",
         type=str,
@@ -79,7 +72,6 @@ def parse_args():
     args = parser.parse_args()
 
     return (
-        args.regrid_batch_dir,
         args.regrid_batch_fp,
         args.dst_fp,
         args.src_sftlf_fp,
@@ -683,7 +675,7 @@ def fix_attrs(ds):
     return ds
 
 
-def write_retry_batch_file(errs):
+def write_retry_batch_file(regrid_batch_dir, errs):
     """Append each item in a list of filepaths to a text file. Lines are appended to the file if it already exists.
     If a collection of batch files are being simultaneously processed by this regrid.py script via multiple slurm jobs,
     a single text file will be generated that lists all files that failed the regridding process and can be retried.
@@ -768,7 +760,6 @@ def regrid_dataset(fp, regridder, out_fp, src_mask=None):
 if __name__ == "__main__":
     # parse args
     (
-        regrid_batch_dir,
         regrid_batch_fp,
         dst_fp,
         src_sftlf_fp,
@@ -873,4 +864,5 @@ if __name__ == "__main__":
 
     # if any filepaths failed to regrid due to errors, add them to a "batch_retry.txt" file to be optionally retried
     if len(errs) > 0:
-        write_retry_batch_file(errs)
+        regrid_batch_dir = regrid_batch_fp.parent
+        write_retry_batch_file(regrid_batch_dir, errs)
