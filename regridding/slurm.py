@@ -43,6 +43,8 @@ def write_sbatch_regrid(
     no_clobber,
     interp_method,
     sbatch_head,
+    src_sftlf_fp=None,
+    dst_sftlf_fp=None,
 ):
     """Write an sbatch script for executing the restacking script for a given group and variable, executes for a given list of years
 
@@ -70,6 +72,10 @@ def write_sbatch_regrid(
         f"-o {regrid_dir} "
         f"--interp_method {interp_method} "
     )
+    if src_sftlf_fp is not None:
+        pycommands += f"--src_sftlf_fp {src_sftlf_fp} "
+    if dst_sftlf_fp is not None:
+        pycommands += f"--dst_sftlf_fp {dst_sftlf_fp} "
 
     if no_clobber:
         pycommands += "--no-clobber \n\n"
@@ -145,6 +151,12 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
+        "--target_sftlf_fp",
+        type=str,
+        help="Path to the target grid sftlf file, must be supplied if any variables are land/sea",
+        required=False,
+    )
+    parser.add_argument(
         "--no_clobber",
         action="store_true",
         help="Do not overwrite existing regidded files",
@@ -189,6 +201,7 @@ def parse_args():
         args.conda_env_name,
         Path(args.regrid_script),
         Path(args.target_grid_fp),
+        args.target_sftlf_fp,
         args.no_clobber,
         args.interp_method,
         args.vars,
@@ -207,6 +220,7 @@ if __name__ == "__main__":
         conda_env_name,
         regrid_script,
         target_grid_fp,
+        target_sftlf_fp,
         no_clobber,
         interp_method,
         vars,
@@ -258,6 +272,13 @@ if __name__ == "__main__":
                             "interp_method": interp_method,
                             "sbatch_head": sbatch_head,
                         }
+                        if var in landsea_variables:
+                            assert (
+                                target_sftlf_fp is not None
+                            ), "A target sftlf file must be supplied if any variables are land/sea"
+                            sbatch_regrid_kwargs["src_sftlf_fp"] = model_sftlf_lu[model]
+                            sbatch_regrid_kwargs["dst_sftlf_fp"] = target_sftlf_fp
+
                         write_sbatch_regrid(**sbatch_regrid_kwargs)
                         sbatch_fps.append(sbatch_fp)
 

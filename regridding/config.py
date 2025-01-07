@@ -14,23 +14,6 @@ prod_scenarios = [
     "ssp585",
 ]
 
-# institution model strings (<institution>_<model>, from mirrored data) that we will be regridding
-inst_models = [
-    "NOAA-GFDL_GFDL-ESM4",
-    "NIMS-KMA_KACE-1-0-G",
-    "CNRM-CERFACS_CNRM-CM6-1-HR",
-    "NCC_NorESM2-MM",
-    "AS-RCEC_TaiESM1",
-    "MOHC_HadGEM3-GC31-MM",
-    "MOHC_HadGEM3-GC31-LL",
-    "MIROC_MIROC6",
-    "EC-Earth-Consortium_EC-Earth3-Veg",
-    "NCAR_CESM2",
-    "MPI-M_MPI-ESM1-2-HR",
-    "DKRZ_MPI-ESM1-2-HR",
-    "MRI_MRI-ESM2-0",
-]
-
 model_inst_lu = {
     "ACCESS-CM2": "CSIRO-ARCCSS",
     "CESM2": "NCAR",
@@ -143,4 +126,20 @@ landsea_variables = {
     "snw": "land",
     "prsn": "land",
     "siconc": "sea",
+}
+
+# lookup for the sftlf file paths for each model, hardcoded paths for now
+model_sftlf_lu = {
+    "GFDL-ESM4": "/beegfs/CMIP6/arctic-cmip6/CMIP6/ScenarioMIP/NOAA-GFDL/GFDL-ESM4/ssp370/r1i1p1f1/fx/sftlf/gr1/v20180701/sftlf_fx_GFDL-ESM4_ssp370_r1i1p1f1_gr1.nc",
+    "CNRM-CM6-1-HR": "/beegfs/CMIP6/arctic-cmip6/CMIP6/CMIP/CNRM-CERFACS/CNRM-CM6-1-HR/historical/r1i1p1f2/fx/sftlf/gr/v20191021/sftlf_fx_CNRM-CM6-1-HR_historical_r1i1p1f2_gr.nc",
+    "NorESM2-MM": "/beegfs/CMIP6/arctic-cmip6/CMIP6/CMIP/NCC/NorESM2-MM/historical/r1i1p1f1/fx/sftlf/gn/v20191108/sftlf_fx_NorESM2-MM_historical_r1i1p1f1_gn.nc",
+    "TaiESM1": "/beegfs/CMIP6/arctic-cmip6/CMIP6/CMIP/AS-RCEC/TaiESM1/historical/r1i1p1f1/fx/sftlf/gn/v20200624/sftlf_fx_TaiESM1_historical_r1i1p1f1_gn.nc",
+    "HadGEM3-GC31-MM": "/beegfs/CMIP6/arctic-cmip6/CMIP6/CMIP/MOHC/HadGEM3-GC31-MM/piControl/r1i1p1f1/fx/sftlf/gn/v20200108/sftlf_fx_HadGEM3-GC31-MM_piControl_r1i1p1f1_gn.nc",
+    "HadGEM3-GC31-LL": "/beegfs/CMIP6/arctic-cmip6/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/piControl/r1i1p1f1/fx/sftlf/gn/v20190709/sftlf_fx_HadGEM3-GC31-LL_piControl_r1i1p1f1_gn.nc",
+    "MIROC6": "/beegfs/CMIP6/arctic-cmip6/CMIP6/CMIP/MIROC/MIROC6/historical/r1i1p1f1/fx/sftlf/gn/v20190311/sftlf_fx_MIROC6_historical_r1i1p1f1_gn.nc",
+    "EC-Earth3-Veg": "/beegfs/CMIP6/arctic-cmip6/CMIP6/CMIP/EC-Earth-Consortium/EC-Earth3-Veg/historical/r1i1p1f1/fx/sftlf/gr/v20211207/sftlf_fx_EC-Earth3-Veg_historical_r1i1p1f1_gr.nc",
+    "CESM2": "/beegfs/CMIP6/arctic-cmip6/CMIP6/CMIP/NCAR/CESM2/historical/r11i1p1f1/fx/sftlf/gn/v20190514/sftlf_fx_CESM2_historical_r11i1p1f1_gn.nc",
+    "MPI-ESM1-2-HR": "/beegfs/CMIP6/arctic-cmip6/CMIP6/CMIP/MPI-M/MPI-ESM1-2-HR/historical/r1i1p1f1/fx/sftlf/gn/v20190710/sftlf_fx_MPI-ESM1-2-HR_historical_r1i1p1f1_gn.nc",
+    "MRI-ESM2-0": "/beegfs/CMIP6/arctic-cmip6/CMIP6/CMIP/MRI/MRI-ESM2-0/historical/r1i1p1f1/fx/sftlf/gn/v20190603/sftlf_fx_MRI-ESM2-0_historical_r1i1p1f1_gn.nc",
+    # no sftlf files for E3SM models or KACE-1-0-G
 }
