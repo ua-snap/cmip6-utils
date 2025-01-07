@@ -276,7 +276,12 @@ if __name__ == "__main__":
                             assert (
                                 target_sftlf_fp is not None
                             ), "A target sftlf file must be supplied if any variables are land/sea"
-                            sbatch_regrid_kwargs["src_sftlf_fp"] = model_sftlf_lu[model]
+                            try:
+                                sbatch_regrid_kwargs["src_sftlf_fp"] = model_sftlf_lu[
+                                    model
+                                ]
+                            except KeyError:
+                                sbatch_regrid_kwargs["src_sftlf_fp"] = None
                             sbatch_regrid_kwargs["dst_sftlf_fp"] = target_sftlf_fp
 
                         write_sbatch_regrid(**sbatch_regrid_kwargs)
