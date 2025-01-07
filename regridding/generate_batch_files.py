@@ -21,7 +21,7 @@ import warnings
 warnings.filterwarnings("ignore", category=xr.SerializationWarning)
 
 
-GRID_VARS = ["lat", "lon"]
+GRID_VARS = ["lat", "lon", "x", "y"]
 max_year = 2101
 min_year = 1950
 
@@ -61,11 +61,20 @@ def get_grid(fp):
             grid_di[f"{var_id}_max"] = ds[var_id].values.max()
             grid_di[f"{var_id}_size"] = ds[var_id].values.shape[0]
             grid_di[f"{var_id}_step"] = np.diff(ds[var_id].values)[0]
+        elif var_id in ds.coords:
+            # still take min/max if it is a coordinate
+            grid_di[f"{var_id}_min"] = ds[var_id].values.min()
+            grid_di[f"{var_id}_max"] = ds[var_id].values.max()
+            # these can be none because step and size kinda only matter
+            #  for axes (not 2 or more dimensional coordinate variables)
+            grid_di[f"{var_id}_size"] = None
+            grid_di[f"{var_id}_step"] = None
         else:
             grid_di[f"{var_id}_min"] = None
             grid_di[f"{var_id}_max"] = None
             grid_di[f"{var_id}_size"] = None
             grid_di[f"{var_id}_step"] = None
+
     # try to get min and max time values
     # for fixed frequency variables (like fx, Ofx, and orog), this will fail and we just assign a placeholder value
     try:
@@ -121,17 +130,6 @@ def read_grids(fps, pool, progress=False):
         concurrent.futures.as_completed(grid_futures), total=len(grid_futures)
     ):
         grids.append(grid.result())
-
-    # using fewer cores might help prevent hanging with multiprocessing?
-    # with Pool(10) as pool:
-    #     if progress:
-    #         grids = []
-    #         for grid_di in tqdm.tqdm(
-    #             pool.imap_unordered(get_grid, fps), total=len(fps)
-    #         ):
-    #             grids.append(grid_di)
-    #     else:
-    #         grids = pool.map(get_grid, fps)
 
     return grids
 
@@ -325,7 +323,7 @@ if __name__ == "__main__":
     results_df = pd.DataFrame(grids)
 
     # here we will exclude some files.
-    # we are only going to worry about regridding those which have a latitude variable for now.
+    # we are only going to worry about regridding those which have a latitude dimension for now.
     results_df = results_df.query("~lat_min.isnull()")
     # we are also going to exclude files which cannot form a panarctic result (very few so far).
     results_df = results_df.query("lat_max > 50")
