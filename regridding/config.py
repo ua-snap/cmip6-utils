@@ -134,3 +134,13 @@ variables = {
         "table_ids": ["Amon", "day", "Eday"],
     },
 }
+
+landsea_variables = {
+    "mrro": "land",
+    "mrsos": "land",
+    "mrsol": "land",
+    "snd": "land",
+    "snw": "land",
+    "prsn": "land",
+    "siconc": "sea",
+}

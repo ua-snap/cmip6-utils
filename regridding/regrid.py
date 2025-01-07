@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import xesmf as xe
 import xarray as xr
-from config import variables
+from config import variables, landsea_variables
 from pyproj import CRS
 from xclim.core import units
 
@@ -48,6 +48,18 @@ def parse_args():
         "-d", dest="dst_fp", type=str, help="Destination grid filepath", required=True
     )
     parser.add_argument(
+        "--src_sftlf_fp",
+        type=str,
+        help="Path to sftlf file to use for land masking source",
+        required=False,
+    )
+    parser.add_argument(
+        "--dst_sftlf_fp",
+        type=str,
+        help="Path to sftlf file to use for land masking destination/target",
+        required=False,
+    )
+    parser.add_argument(
         "-o",
         dest="out_dir",
         type=str,
@@ -70,6 +82,8 @@ def parse_args():
         args.regrid_batch_dir,
         args.regrid_batch_fp,
         args.dst_fp,
+        args.src_sftlf_fp,
+        args.dst_sftlf_fp,
         Path(args.out_dir),
         args.interp_method,
         args.no_clobber,
@@ -417,6 +431,144 @@ def get_var_id(ds):
     return var_ids[0]
 
 
+def check_src_landsea(ds):
+    """Check if the source dataset is a land/sea dataset"""
+    var_id = get_var_id(ds)
+    return var_id in landsea_variables
+
+
+def regrid_sftlf(sftlf_fp, target_ds, var_id=None):
+    """Regrid some sftlf file to a target dataset
+    Not necessarily the target in the global scope of this script, but it may be.
+    This is done because some sftlf files are not on the same grid as the dataset they are needed for.
+    """
+    if var_id is None:
+        var_id = get_var_id(target_ds)
+    with xr.open_dataset(sftlf_fp) as sftlf_ds:
+        # selecting a single timeslice to drop the time dimension from target dataset
+        target_slice = target_ds[var_id].isel(time=0)
+        if target_slice.dims != sftlf_ds["sftlf"].dims:
+            print(
+                (
+                    f"Target dataset (from {target_ds.encoding['source']}) "
+                    f"and sftlf file ({sftlf_fp}) have different dimensions: "
+                    f"{target_slice.dims} and {sftlf_ds['sftlf'].dims}"
+                )
+            )
+            print(sftlf_fp)
+            print(target_ds)
+        target_regridder = xe.Regridder(
+            sftlf_ds["sftlf"],
+            target_ds[var_id],
+            method="bilinear",
+            unmapped_to_nan=True,
+        )
+        target_sftlf = target_regridder(sftlf_ds["sftlf"], keep_attrs=True)
+
+    return target_sftlf
+
+
+def regrid_sftlf_landmask(sftlf_fp, target_ds, threshold):
+    """Derive a landmask (land == 1) from an sftlf file and regrid it to a target dataset.
+    Not necessarily the target in the global scope of this script, but it may be.
+    This is done because some sftlf files are not on the same grid as the dataset they are needed for.
+    This is being included because I am not sure what is better - regridding the sftlf file or regridding the mask derived from it.
+    """
+    sftlf_ds = xr.open_dataset(sftlf_fp)
+    landmask = sftlf_ds["sftlf"] > threshold
+    var_id = get_var_id(target_ds)
+
+    target_regridder = xe.Regridder(
+        landmask,
+        target_ds[var_id],
+        method="nearest_s2d",
+        unmapped_to_nan=True,
+    )
+    target_landmask = target_regridder(landmask, keep_attrs=True)
+
+    return target_landmask
+
+
+def check_src_nanmask(src_init_ds, dst_landmask):
+    """Check if the source dataset has NaNs present representing land or sea.
+    We would expect the NaN percentage to be fairly close to that of the dst_landmask.
+    """
+    var_id = get_var_id(src_init_ds)
+    nan_perc = (
+        src_init_ds[var_id].isel(time=0).isnull().sum()
+        / src_init_ds[var_id].isel(time=0).size
+    )
+
+    # raise warning if there are NaNs and the NaN percentage is not between 0.3 and 0.4
+    # we have seen examples of "bad" nanmasks where there are many land pixels that are
+    if landsea_variables[var_id] == "sea":
+        dst_nan_perc = dst_landmask.sum() / dst_landmask.size
+    elif landsea_variables[var_id] == "land":
+        dst_nan_perc = (~dst_landmask).sum() / dst_landmask.size
+
+    good_nanmask = (dst_nan_perc - 0.1) < nan_perc < (dst_nan_perc + 0.1)
+
+    if not (good_nanmask & src_init_ds[var_id].isnull().any()):
+        print(
+            (
+                f"NaN percentage for {var_id} in source dataset ({var_id}) is {nan_perc:.2f}."
+                f"Expected to be close to {dst_nan_perc:.2f} based on the destination landmask."
+            )
+        )
+    return good_nanmask
+
+
+def prep_for_landsea(src_init_ds, dst_ds, src_sftlf_fp, dst_sftlf_fp):
+    """Prepare a land/sea dataset for regridding by adding masks to the source and target datasets.
+    Mask for the source dataset is created from an sftlf file if it is available and if it has the same dimensions as the source dataset.
+    """
+    # get the variable ID of the source dataset
+    var_id = get_var_id(src_init_ds)
+    assert check_src_landsea(
+        src_init_ds
+    ), "Variable ID of source dataset is not a land/sea variable"
+
+    # set the threshold for land/sea area percentage if derived from sftlf file
+    threshold = 0
+    # use sftlf file for destination dataset always (assumes the target grid dataset is a non-land/sea variable)
+    print(dst_sftlf_fp)
+    dst_landmask = regrid_sftlf_landmask(dst_sftlf_fp, dst_ds, threshold)
+    src_has_mask = check_src_nanmask(src_init_ds, dst_landmask)
+
+    # use a mask value of 1 for land and 0 for sea, but switch if it's a sea variable
+    mask_val, nan_val = 1, 0
+    if landsea_variables[var_id] == "sea":
+        mask_val, nan_val = nan_val, mask_val
+
+    # add mask to destination dataset
+    dst_ds["mask"] = xr.where(dst_landmask, mask_val, nan_val)
+
+    if src_has_mask:
+        print("Source dataset has NaNs representing land/sea, will use this as mask")
+        # we should always be using 0 as the null value replacement
+        #   (second argument) and 1 as the mask value (third argument)
+        #   when deriving from the source dataset NaNs
+        src_init_ds["mask"] = xr.where(src_init_ds[var_id].isel(time=0).isnull(), 0, 1)
+    else:
+        if src_sftlf_fp is None:
+            print(
+                (
+                    "Source dataset does not have NaNs representing land/sea, and no sftlf file provided for source. "
+                    "Will use sftlf file for destination dataset."
+                )
+            )
+            src_sftlf_fp = dst_sftlf_fp
+        else:
+            print(
+                "Source dataset does not have NaNs representing land/sea, will use supplied source sftlf file."
+            )
+
+        src_landmask = regrid_sftlf_landmask(src_sftlf_fp, src_init_ds, threshold)
+        src_init_ds["mask"] = xr.where(src_landmask, mask_val, nan_val)
+
+    return src_init_ds, dst_ds
+
+
 def apply_wgs84(ds):
     """Function to add spatial_ref coordinate, CRS attributes, and CRS encodings to make CF-compliant metadata for the WGS84 CRS.
     Args:
@@ -483,12 +635,17 @@ def rasdafy(ds):
     for bnd_dim in ["bnds", "nbnd", "lat_bnds", "lon_bnds", "time_bnds"]:
         ds = ds.drop_dims(bnd_dim, errors="ignore")
 
+    var_id = get_var_id(ds)
+    ds = ds.drop_dims([dim for dim in ds.dims if dim not in ["time", "lat", "lon"]])[
+        [var_id]
+    ]
+
     # make sure the latitude dim is in decreasing order
     if "lat" in ds.dims:
         if ds.lat.values[0] < ds.lat.values[-1]:
             ds = ds.sel(lat=slice(None, None, -1))
 
-        # make sure the dims are ordered (time, lon, lat)
+        # make sure the dims are ordered (time, lon, lat) for Rasdaman
         # (if present, using lat presence as a proxy for both)
         ds = ds.transpose("time", "lon", "lat")
 
@@ -568,19 +725,24 @@ def parse_output_filename_times_from_file(fp):
     return timerange_strings
 
 
-def regrid_dataset(fp, regridder, out_fp):
+def regrid_dataset(fp, regridder, out_fp, src_mask=None):
     """Regrid a dataset using a regridder object initiated using the target grid with a latitude domain of 50N and up.
 
     Args:
         fp (pathlib.Path): path to file to be regridded
         regridder (xesmf.Regridder): regridder object initialized on source dataset that has the same grid as dataset as read from fp
         out_fp (pathlib.Path): Path to output regridded file
+        src_mask (xarray.DataArray): Mask for the source dataset, if available
 
     Returns:
         out_fp (pathlib.Path): Path to output regridded file (just to return something)
     """
     # open the source dataset
     src_ds = xr.open_dataset(fp)
+
+    # add mask if not none
+    if src_mask is not None:
+        src_ds["mask"] = src_mask
 
     regrid_task = regridder(src_ds, keep_attrs=True)
     regrid_ds = regrid_task.compute()
@@ -605,9 +767,16 @@ def regrid_dataset(fp, regridder, out_fp):
 
 if __name__ == "__main__":
     # parse args
-    regrid_batch_dir, regrid_batch_fp, dst_fp, out_dir, interp_method, no_clobber = (
-        parse_args()
-    )
+    (
+        regrid_batch_dir,
+        regrid_batch_fp,
+        dst_fp,
+        src_sftlf_fp,
+        dst_sftlf_fp,
+        out_dir,
+        interp_method,
+        no_clobber,
+    ) = parse_args()
 
     # get the paths of files to regrid from the batch file
     with open(regrid_batch_fp) as f:
@@ -626,6 +795,20 @@ if __name__ == "__main__":
     #  production latitude extent before regridding (e.g. a grid will have domain [49.53, 90] instead of [50.75, 90],
     #  so this is probably always going to give just one more row of grid cells for interpolation.)
     src_init_ds = xr.open_dataset(src_fps[0])
+
+    # if sftlf_fp is provided, assume it is needed for masking
+    if src_sftlf_fp:
+        assert (
+            dst_sftlf_fp
+        ), "If source sftlf file is provided, destination sftlf file must also be provided"
+    # assume dst_sftlf_fp will ALWAYS be provided if we are dealing with masked variables
+    if dst_sftlf_fp:
+        src_init_ds, dst_ds = prep_for_landsea(
+            src_init_ds,
+            dst_ds,
+            src_sftlf_fp,
+            dst_sftlf_fp,
+        )
 
     # use one of the source files to be regridded and the destination grid file to create a regridder object
     regridder = init_regridder(src_init_ds, dst_ds, interp_method)
@@ -672,7 +855,10 @@ if __name__ == "__main__":
             #     print(f"\nFILE NOT REGRIDDED: {fp}\n     Errors printed below:\n")
             #     print(e)
             #     print("\n")
-            results.append(regrid_dataset(fp, regridder, out_fp))
+            src_mask = None
+            if "mask" in src_init_ds.data_vars:
+                src_mask = src_init_ds["mask"]
+            results.append(regrid_dataset(fp, regridder, out_fp, src_mask))
 
     print(
         f"Regridding done, {len(results)} files regridded in {np.round((time.perf_counter() - tic) / 60, 1)}m"
