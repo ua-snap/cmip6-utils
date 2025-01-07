@@ -310,6 +310,10 @@ if __name__ == "__main__":
                             )
                         )
 
+    assert (
+        len(fps) > 0
+    ), f"No files found with given parameters ({vars}; {freqs}; {models}; {scenarios})"
+
     grids = []
     # pool seems to be more likely to hang on larger batches of inputs, so we will break up into smaller batches
     # also using smaller max workers might help
