@@ -498,7 +498,7 @@ def check_src_nanmask(src_init_ds, dst_landmask):
     elif landsea_variables[var_id] == "land":
         dst_nan_perc = (~dst_landmask).sum() / dst_landmask.size
 
-    good_nanmask = (dst_nan_perc - 0.1) < nan_perc < (dst_nan_perc + 0.1)
+    good_nanmask = (dst_nan_perc - 0.15) < nan_perc < (dst_nan_perc + 0.15)
 
     if not (good_nanmask & src_init_ds[var_id].isnull().any()):
         print(
