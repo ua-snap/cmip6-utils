@@ -54,15 +54,15 @@ def get_grid(fp):
         # this seems to have only failed due to some files (KACE model) being written in netCDF3 format
         ds = xr.open_dataset(fp)
 
+    # so. much. heterogeneity.
+    # some files have "latitude"/"longitude" instead of "lat" (and lon), just rename
+    try:
+        ds = ds.rename({"latitude": "lat", "longitude": "lon"})
+    except ValueError:
+        pass
+
     grid_di = {}
     for var_id in GRID_VARS:
-        # so. much. heterogeneity.
-        # some files have "latitude"/"longitude" instead of "lat" (and lon), just rename
-        try:
-            ds.rename({"latitude": "lat", "longitude": "lon"}, inplace=True)
-        except ValueError:
-            pass
-
         if var_id in ds.dims:
             grid_di[f"{var_id}_min"] = ds[var_id].values.min()
             grid_di[f"{var_id}_max"] = ds[var_id].values.max()
@@ -72,7 +72,7 @@ def get_grid(fp):
             # still take min/max if it is a coordinate
             # additionally, some have NaN for lat/lon where there is nodata (smdh)
             grid_di[f"{var_id}_min"] = np.nanmin(ds[var_id].values)
-            grid_di[f"{var_id}_max"] = np.nanmin(ds[var_id].values)
+            grid_di[f"{var_id}_max"] = np.nanmax(ds[var_id].values)
             # these can be none because step and size kinda only matter
             #  for axes (not 2 or more dimensional coordinate variables)
             grid_di[f"{var_id}_size"] = None
@@ -329,6 +329,7 @@ if __name__ == "__main__":
             grids.extend(read_grids(batch, pool=pool, progress=progress))
 
     results_df = pd.DataFrame(grids)
+    print(results_df)
 
     # here we will exclude some files.
     # we are only going to worry about regridding those which have a latitude dimension for now.
