@@ -633,7 +633,12 @@ def plot_comparison(regrid_fp, cmip6_dir):
         # this should happen if the source file does not have lat/lon dims
         return
 
-    src_ds = xr.open_dataset(src_fp, engine="h5netcdf")
+    try:
+        # using the h5netcdf engine because it seems faster
+        src_ds = xr.open_dataset(src_fp, engine="h5netcdf")
+    except:
+        # this seems to have only failed due to some files (KACE model) being written in netCDF3 format
+        src_ds = xr.open_dataset(src_fp)
 
     time_val = regrid_ds.time.values[0]
     var_id = src_ds.attrs["variable_id"]
@@ -714,7 +719,9 @@ def plot_comparison(regrid_fp, cmip6_dir):
             ax=axes[0], vmin=vmin, vmax=vmax
         )
         axes[0].set_title(f"Source dataset (timestamp: {src_time})")
-        regrid_ds[var_id].sel(time=time_val).plot(ax=axes[1], vmin=vmin, vmax=vmax)
+        regrid_ds[var_id].sel(time=time_val).transpose("lat", "lon").plot(
+            ax=axes[1], vmin=vmin, vmax=vmax
+        )
         axes[1].set_title(f"Regridded dataset (timestamp: {time_val})")
         axes[1].set_xlabel("longitude [standard]")
         plt.show()
