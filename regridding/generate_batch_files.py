@@ -56,6 +56,13 @@ def get_grid(fp):
 
     grid_di = {}
     for var_id in GRID_VARS:
+        # so. much. heterogeneity.
+        # some files have "latitude"/"longitude" instead of "lat" (and lon), just rename
+        try:
+            ds.rename({"latitude": "lat", "longitude": "lon"}, inplace=True)
+        except ValueError:
+            pass
+
         if var_id in ds.dims:
             grid_di[f"{var_id}_min"] = ds[var_id].values.min()
             grid_di[f"{var_id}_max"] = ds[var_id].values.max()
@@ -63,8 +70,9 @@ def get_grid(fp):
             grid_di[f"{var_id}_step"] = np.diff(ds[var_id].values)[0]
         elif var_id in ds.coords:
             # still take min/max if it is a coordinate
-            grid_di[f"{var_id}_min"] = ds[var_id].values.min()
-            grid_di[f"{var_id}_max"] = ds[var_id].values.max()
+            # additionally, some have NaN for lat/lon where there is nodata (smdh)
+            grid_di[f"{var_id}_min"] = np.nanmin(ds[var_id].values)
+            grid_di[f"{var_id}_max"] = np.nanmin(ds[var_id].values)
             # these can be none because step and size kinda only matter
             #  for axes (not 2 or more dimensional coordinate variables)
             grid_di[f"{var_id}_size"] = None
