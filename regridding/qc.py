@@ -430,7 +430,13 @@ def file_min_max(fp, bbox=None):
     var_id = get_var_id(ds)
 
     if bbox is not None:
-        ds = subset_by_bbox(ds, bbox)
+        try:
+            ds = subset_by_bbox(ds, bbox)
+        except:
+            print(
+                f"Error subsetting {fp} with bbox {bbox} for min/max summary. Defaulting to full dataset."
+            )
+            ds = ds
 
     ds = convert_units(ds)
     try:
@@ -508,7 +514,7 @@ def compare_expected_to_existing_and_check_values(
     src_bbox = get_src_bbox(src_fps[0], existing_regrid_fps[0])
 
     with concurrent.futures.ProcessPoolExecutor(max_workers=10) as pool:
-        results = list(pool.map(file_min_max, src_fps, [src_bbox]))
+        results = list(pool.map(file_min_max, src_fps, [src_bbox for _ in src_fps]))
 
     # populate min/max dict
     for result in results:
@@ -621,7 +627,12 @@ def plot_comparison(regrid_fp, cmip6_dir):
     except:
         print(f"Regridded dataset could not be opened: {regrid_fp}")
 
-    src_bbox = get_src_bbox(src_fp, regrid_fp)
+    try:
+        src_bbox = get_src_bbox(src_fp, regrid_fp)
+    except AssertionError:
+        # this should happen if the source file does not have lat/lon dims
+        return
+
     src_ds = xr.open_dataset(src_fp, engine="h5netcdf")
 
     time_val = regrid_ds.time.values[0]
