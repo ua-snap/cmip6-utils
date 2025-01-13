@@ -108,7 +108,12 @@ def init_regridder(src_ds, dst_ds, interp_method):
         dst_ds = dst_ds.sortby(dst_ds.lon, ascending=True)
     # initialize the regridder which now contains standard -180 to 180 longitude values
     regridder = xe.Regridder(
-        src_ds, dst_ds, interp_method, unmapped_to_nan=True, periodic=True
+        src_ds,
+        dst_ds,
+        interp_method,
+        unmapped_to_nan=True,
+        periodic=True,
+        ignore_degenerate=True,
     )
 
     return regridder
