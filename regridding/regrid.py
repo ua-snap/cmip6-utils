@@ -604,7 +604,7 @@ def convert_units(ds):
     # make sure units are more useful
     var_id = get_var_id(ds)
 
-    if var_id in ["pr", "prsn", "prw", "prsn"]:
+    if var_id in ["pr", "prsn", "prw", "prsn", "snw"]:
         # precip
         ds[var_id] = units.convert_units_to(ds[var_id], "mm")
 
@@ -642,6 +642,10 @@ def rasdafy(ds):
         ds = ds.transpose("time", "lon", "lat")
 
     ds = convert_units(ds)
+
+    # change NaNs to -9999
+    ds[var_id] = ds[var_id].where(~xr.ufuncs.isnan(ds[var_id]), -9999)
+    ds[var_id].encoding["_FillValue"] = -9999
 
     return ds
 
