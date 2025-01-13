@@ -492,13 +492,16 @@ def check_src_nanmask(src_init_ds, dst_landmask):
     )
 
     # raise warning if there are NaNs and the NaN percentage is not between 0.3 and 0.4
-    # we have seen examples of "bad" nanmasks where there are many land pixels that are
+    # we have seen examples of "bad" nanmasks where there are many land pixels masked
+    # (e.g. mrro for KACE-1-0-G)
     if landsea_variables[var_id] == "sea":
         dst_nan_perc = dst_landmask.sum() / dst_landmask.size
     elif landsea_variables[var_id] == "land":
         dst_nan_perc = (~dst_landmask).sum() / dst_landmask.size
 
-    good_nanmask = (dst_nan_perc - 0.15) < nan_perc < (dst_nan_perc + 0.15)
+    # I know this is a pretty big range but we have seen valid-looking nanmasks
+    # with ~20% difference in coverage between expected and not
+    good_nanmask = (dst_nan_perc - 0.2) < nan_perc < (dst_nan_perc + 0.2)
 
     if not (good_nanmask & src_init_ds[var_id].isnull().any()):
         print(
