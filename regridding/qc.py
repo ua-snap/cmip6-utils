@@ -109,10 +109,10 @@ def generate_regrid_fps_from_params(models, scenarios, vars, freqs, regrid_dir):
     return regrid_fps
 
 
-def get_latlon_bbox_from_file(fp):
-    """Get the lat/lon bounding box from a file.
+def get_latlon_bbox_from_regrid_file(fp):
+    """Get the bounding box from a regridded file. Returns bbox in lat / lon format.
     Handles regridded files with either lat/lon or x/y spatial dims.
-    (Intended for use with regridded files)
+    (Intended for use with regridded files - assumes spatial_ref variable present)
 
     Parameters
     ----------
@@ -137,7 +137,9 @@ def get_latlon_bbox_from_file(fp):
     else:
         # if the regrid file is not lat/lon,
         # then we will need to convert all values if no lat/lon coordinates are present
-        assert "x" in ds.dims, "No valid spatial dims found in regridded file."
+        assert (
+            "x" in ds.dims
+        ), "No valid spatial dims (lat/lon or x/y) found in regridded file."
         if "lon" in ds.coords:
             # this is easy, then we can just use min/max of 2D lat/lon coords to get the bbox
             bbox = (
@@ -240,8 +242,79 @@ def orient_latlon_bbox(src_fp, bbox):
     return bbox
 
 
+# def transform_bbox(bbox, ds):
+#     """transform a bbox to the same coordinate system as the provided file.
+#     ds object needs to have a spatial_ref variable.
+#     """
+#     #workflow for projected data
+#     # look for lat or latitude in data_vars
+#     # get the dims that index them
+#     # otherwise, we will need to convert all values to lat/lon
+
+#     proj_xy = Proj(ds.spatial_ref.attrs["crs_wkt"])
+#     proj_latlon = Proj(proj="latlong", datum="WGS84")
+#     transformer = Transformer.from_proj(proj_xy, proj_latlon)
+#     xx, yy = np.meshgrid(ds["x"].values, ds["y"].values)
+#     lat, lon = transformer.transform(xx, yy)
+
+#     bbox = (
+#         lon.values.min(),
+#         lat.values.min(),
+#         lon.values.max(),
+#         lat.values.max(),
+#     )
+
+
+def get_varname(ds, standard_name):
+    """Get the name of a variable from a dataset based on its standard name"""
+    for var in ds.variables:
+        if "standard_name" in ds[var].attrs:
+            if ds[var].attrs["standard_name"] == standard_name:
+                varname = var
+    try:
+        _ = varname
+    except NameError:
+        raise ValueError(
+            f"No variable found in the dataset with standard name {standard_name}"
+        )
+
+    return varname
+
+
+def get_xy_bbox_from_file(fp, regrid_bbox):
+    # we are assuming that any source file to be regridded will have lat/lon coordinate variables at a minimum
+
+    lon_min, lat_min, lon_max, lat_max = regrid_bbox
+
+    ds = xr.open_dataset(fp)
+    lon_var = get_varname(ds, "longitude")
+    lat_var = get_varname(ds, "latitude")
+
+    # Find the indices where the latitude and longitude are within the bounding box
+    lat_within_bbox = (ds[lat_var] >= lat_min) & (ds[lat_var] <= lat_max)
+
+    # Handle the case where the longitude is not standard -180 to 180
+    # simply offset the min/max longitudes to match the source file
+    if ds[lon_var].min() < -180:
+        offset = ds[lon_var].min() + 180
+    elif ds[lon_var].max() > 180:
+        offset = ds[lon_var].max() - 180
+        lon_min = lon_min + offset
+        lon_max = lon_max + offset
+
+    lon_within_bbox = (ds[lon_var] >= lon_min) & (ds[lon_var] <= lon_max)
+
+    # Combine the conditions to get the bounding box
+    within_bbox = lat_within_bbox & lon_within_bbox
+
+    # Get the indices for the bounding box (j is North-South, i is East-West)
+    i_bbox, j_bbox = np.where(within_bbox)
+
+    return (j_bbox.min(), i_bbox.min(), j_bbox.max(), i_bbox.max())
+
+
 def get_src_bbox(src_fp, regrid_fp):
-    """Get the bounding box from a regridded file to use for subsetting a source file.
+    """Get the bounding box for a source file from a regridded file.
 
     Parameters
     ----------
@@ -260,17 +333,15 @@ def get_src_bbox(src_fp, regrid_fp):
     src_bbox : tuple
         Tuple of 4 values representing the bounding box in (lon1, lat1, lon2, lat2) format.
     """
+    # regrid bbox always returned in lat/lon format
+    regrid_bbox = get_latlon_bbox_from_regrid_file(regrid_fp)
 
-    # get the bounding box from the first regridded file
-    regrid_latlon_bbox = get_latlon_bbox_from_file(regrid_fp)
-    src_is_latlon = "lon" in xr.open_dataset(src_fp).dims
-
-    # check to see if both src and regrid have same spatial dims
-    assert src_is_latlon, "Source files without lat/lon dims are not yet supported."
-    src_bbox = regrid_latlon_bbox
-    src_bbox = check_bbox_latlon(src_bbox)
-    # ensure that bbox is oriented correctly
-    src_bbox = orient_latlon_bbox(src_fp, src_bbox)
+    if "lon" in xr.open_dataset(src_fp).dims:
+        # if source is lat/lon, ensure that bbox is oriented correctly and we're done
+        src_bbox = orient_latlon_bbox(src_fp, src_bbox)
+    else:
+        # otherwise we need to get the bbox from the source file
+        src_bbox = get_xy_bbox_from_file(src_fp, regrid_bbox)
 
     return src_bbox
 
@@ -326,11 +397,10 @@ def subset_xy(ds, bbox):
     """
     x1, y1, x2, y2 = check_bbox_xy(bbox)
 
-    assert "x" in ds.dims, "Dataset does not have an x dimension."
-    assert "y" in ds.dims, "Dataset does not have a y dimension."
-
-    # we will not grant same flexibility in flipped dims for projected data
-    ds = ds.sel(x=slice(x1, x2), y=slice(y1, y2))
+    # pull the last two dims as y and x
+    y_varname, x_varname = ds["siconc"].dims[1:]
+    isel_di = {y_varname: slice(y1, y2 + 1), x_varname: slice(x1, x2 + 1)}
+    ds = ds.isel(isel_di)
 
     return ds
 
