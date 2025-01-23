@@ -183,8 +183,8 @@ variables = {
     },
     "prsn": {
         "name": "snowfall_flux",
-        "table_ids": ["Amon", "Omon", "day"],
-    },  # some models use Omon for table ID
+        "table_ids": ["Amon", "day"],
+    },
     "snd": {"name": "surface_snow_thickness", "table_ids": ["LImon", "Eday"]},
     "snw": {"name": "surface_snow_amount", "table_ids": ["LImon", "day"]},
     "rlds": {
