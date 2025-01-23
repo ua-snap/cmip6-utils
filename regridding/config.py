@@ -29,11 +29,8 @@ model_inst_lu = {
     "TaiESM1": "AS-RCEC",
     "CESM2-WACCM": "NCAR",
     # Another oddity - MPI-ESM1-2-* models have different representation among the institutions, or "Institution ID".
-    # the -HR version is apparently mostly available under "DKRZ". The -LR version is mostly available under "MPI-M".
-    # There is apparently mixing, too, as the -HR version has historical data under "MPI-M", and the -LR version has
-    #  data available under "DKRZ". We will just go with the institution which has the majority for each, for now.
+    # the -HR version was run by "DKRZ" for ScenarioMIP data and MPI-M for CMIP experiment
     "MPI-ESM1-2-HR": "DKRZ",
-    "MPI-ESM1-2-LR": "MPI-M",
 }
 
 variables = {
@@ -76,8 +73,8 @@ variables = {
     },
     "prsn": {
         "name": "snowfall_flux",
-        "table_ids": ["Amon", "Omon", "day"],
-    },  # some models use Omon for table ID
+        "table_ids": ["Amon", "day"],
+    },
     "snd": {"name": "surface_snow_thickness", "table_ids": ["LImon", "Eday"]},
     "snw": {"name": "surface_snow_amount", "table_ids": ["LImon", "day"]},
     "rlds": {
