@@ -19,7 +19,10 @@ from regrid import (
     parse_cmip6_fp,
     get_var_id,
 )
-from config import model_inst_lu, prod_scenarios
+from config import prod_scenarios
+
+# doing this for weirdness e.g. two institutions for MPI-ESM1-2-HR model
+from generate_batch_files import get_institution_id
 
 
 def get_source_fps_from_batch_files(regrid_batch_dir):
@@ -128,10 +131,10 @@ def get_latlon_bbox_from_regrid_file(fp):
 
     if "lon" in ds.dims:
         bbox = (
-            ds.lon.values[0],
-            ds.lat.values[0],
-            ds.lon.values[-1],
-            ds.lat.values[-1],
+            ds.lon.values.min(),
+            ds.lat.values.min(),
+            ds.lon.values.max(),
+            ds.lat.values.max(),
         )
 
     else:
@@ -242,29 +245,6 @@ def orient_latlon_bbox(src_fp, bbox):
     return bbox
 
 
-# def transform_bbox(bbox, ds):
-#     """transform a bbox to the same coordinate system as the provided file.
-#     ds object needs to have a spatial_ref variable.
-#     """
-#     #workflow for projected data
-#     # look for lat or latitude in data_vars
-#     # get the dims that index them
-#     # otherwise, we will need to convert all values to lat/lon
-
-#     proj_xy = Proj(ds.spatial_ref.attrs["crs_wkt"])
-#     proj_latlon = Proj(proj="latlong", datum="WGS84")
-#     transformer = Transformer.from_proj(proj_xy, proj_latlon)
-#     xx, yy = np.meshgrid(ds["x"].values, ds["y"].values)
-#     lat, lon = transformer.transform(xx, yy)
-
-#     bbox = (
-#         lon.values.min(),
-#         lat.values.min(),
-#         lon.values.max(),
-#         lat.values.max(),
-#     )
-
-
 def get_varname(ds, standard_name):
     """Get the name of a variable from a dataset based on its standard name"""
     for var in ds.variables:
@@ -282,7 +262,9 @@ def get_varname(ds, standard_name):
 
 
 def get_xy_bbox_from_file(fp, regrid_bbox):
-    # we are assuming that any source file to be regridded will have lat/lon coordinate variables at a minimum
+
+    # we are assuming that any source file to be regridded will have
+    # lat/lon coordinate variables at a minimum as this is required by xESMF regridder
 
     lon_min, lat_min, lon_max, lat_max = regrid_bbox
 
@@ -290,19 +272,23 @@ def get_xy_bbox_from_file(fp, regrid_bbox):
     lon_var = get_varname(ds, "longitude")
     lat_var = get_varname(ds, "latitude")
 
-    # Find the indices where the latitude and longitude are within the bounding box
-    lat_within_bbox = (ds[lat_var] >= lat_min) & (ds[lat_var] <= lat_max)
-
     # Handle the case where the longitude is not standard -180 to 180
     # simply offset the min/max longitudes to match the source file
     if ds[lon_var].min() < -180:
         offset = ds[lon_var].min() + 180
     elif ds[lon_var].max() > 180:
-        offset = ds[lon_var].max() - 180
-        lon_min = lon_min + offset
-        lon_max = lon_max + offset
+        # example weird lon_max: 9.96920997e+36 for null value of lon coord of CESM2 siconc with no _FillValue specified
+        # so exclude everything that is outside of reasonable lon range
+        offset = ds[lon_var].where(ds[lon_var] < 360).max() - 180
+    else:
+        offset = 0
+
+    lon_min = lon_min + offset
+    lon_max = lon_max + offset
 
     lon_within_bbox = (ds[lon_var] >= lon_min) & (ds[lon_var] <= lon_max)
+    # Find the indices where the latitude and longitude are within the bounding box
+    lat_within_bbox = (ds[lat_var] >= lat_min) & (ds[lat_var] <= lat_max)
 
     # Combine the conditions to get the bounding box
     within_bbox = lat_within_bbox & lon_within_bbox
@@ -310,7 +296,14 @@ def get_xy_bbox_from_file(fp, regrid_bbox):
     # Get the indices for the bounding box (j is North-South, i is East-West)
     i_bbox, j_bbox = np.where(within_bbox)
 
-    return (j_bbox.min(), i_bbox.min(), j_bbox.max(), i_bbox.max())
+    try:
+        bbox = (j_bbox.min(), i_bbox.min(), j_bbox.max(), i_bbox.max())
+    except Exception as e:
+        print(
+            f"Error getting bbox from {fp} with {e}. lon/lat extremes: {lon_min}, {lon_max} / {lat_min}, {lat_max}"
+        )
+
+    return bbox
 
 
 def get_src_bbox(src_fp, regrid_fp):
@@ -338,7 +331,7 @@ def get_src_bbox(src_fp, regrid_fp):
 
     if "lon" in xr.open_dataset(src_fp).dims:
         # if source is lat/lon, ensure that bbox is oriented correctly and we're done
-        src_bbox = orient_latlon_bbox(src_fp, src_bbox)
+        src_bbox = orient_latlon_bbox(src_fp, regrid_bbox)
     else:
         # otherwise we need to get the bbox from the source file
         src_bbox = get_xy_bbox_from_file(src_fp, regrid_bbox)
@@ -368,7 +361,7 @@ def check_bbox_xy(bbox):
     """
     assert len(bbox) == 4, "Bounding box must be a tuple of 4 values."
     assert (
-        not bbox[0] < bbox[2] and bbox[1] < bbox[3]
+        bbox[0] < bbox[2] and bbox[1] < bbox[3]
     ), "Bounding box is not in correct order."
 
     return bbox
@@ -398,8 +391,10 @@ def subset_xy(ds, bbox):
     x1, y1, x2, y2 = check_bbox_xy(bbox)
 
     # pull the last two dims as y and x
-    y_varname, x_varname = ds["siconc"].dims[1:]
+    var_id = get_var_id(ds)
+    y_varname, x_varname = ds[var_id].dims[1:]
     isel_di = {y_varname: slice(y1, y2 + 1), x_varname: slice(x1, x2 + 1)}
+    # print(isel_di)
     ds = ds.isel(isel_di)
 
     return ds
@@ -460,13 +455,18 @@ def subset_by_bbox(ds, bbox):
     """
     if ("lon" in ds.dims) and ("lat" in ds.dims):
         ds = subset_latlon(ds, bbox)
-    elif ("x" in ds.dims) and ("y" in ds.dims):
-        ds = subset_xy(ds, bbox)
-    else:
-        raise ValueError("Dataset does not have lat/lon or x/y dimensions.")
+        if len(ds.lat) == 0:
+            print(f"Lat dim is 0! bbox: {bbox}, ds: {ds}")
 
-    if any([len(ds[dim]) == 0 for dim in ds.dims]):
-        print("One of dims in ds is 0!")
+    else:
+        ds = subset_xy(ds, bbox)
+    # elif ("x" in ds.dims) and ("y" in ds.dims):
+    #     ds = subset_xy(ds, bbox)
+    # else:
+    #     raise ValueError("Dataset does not have lat/lon or x/y dimensions.")
+
+    # if any([len(ds[dim]) == 0 for dim in ds.dims]):
+    #     print("One of dims in ds is 0!")
     return ds
 
 
@@ -502,9 +502,9 @@ def file_min_max(fp, bbox=None):
     if bbox is not None:
         try:
             ds = subset_by_bbox(ds, bbox)
-        except:
+        except Exception as e:
             print(
-                f"Error subsetting {fp} with bbox {bbox} for min/max summary. Defaulting to full dataset."
+                f"Error subsetting {fp} with bbox {bbox} for min/max summary with {e}. Defaulting to full dataset."
             )
             ds = ds
 
@@ -512,7 +512,7 @@ def file_min_max(fp, bbox=None):
     try:
         min, max = float(np.nanmin(ds[var_id])), float(np.nanmax(ds[var_id]))
     except:
-        print(f"Error getting min/max values from {ds[var_id]}")
+        print(f"Error getting min/max values from {ds[var_id]}", flush=True)
     return {"file": str(fp), "min": min, "max": max}
 
 
@@ -561,7 +561,7 @@ def compare_expected_to_existing_and_check_values(
     )
 
     # we can subsample more files here because we don't need to review them visually
-    subsample_files(existing_regrid_fps, max_qc=1000)
+    qc_regrid_fps = subsample_files(existing_regrid_fps, max_qc=1000)
 
     # create dicts of min/max values for each regridded file and each source file
     regrid_min_max = {}
@@ -570,7 +570,7 @@ def compare_expected_to_existing_and_check_values(
     # using multiprocessing, populate the dicts with min/max values for all regridded files and source files
     with concurrent.futures.ProcessPoolExecutor(max_workers=10) as pool:
         # results = list(pool.map(file_min_max, [existing_regrid_fps[0]]))  # debug
-        results = list(pool.map(file_min_max, existing_regrid_fps))
+        results = list(pool.map(file_min_max, qc_regrid_fps))
 
     # populate min/max dict / store dataset errors
     for result in results:
@@ -581,10 +581,15 @@ def compare_expected_to_existing_and_check_values(
 
     # assume existing regrid fps will have same extent or smaller than source files
     #  so we can generate a bbox to subset
-    src_bbox = get_src_bbox(src_fps[0], existing_regrid_fps[0])
+    # src_bbox = get_src_bbox(src_fps[0], existing_regrid_fps[0])
+
+    # think we need to be getting the src_bbox for each source file
+    src_bboxes = [get_src_bbox(fp, existing_regrid_fps[0]) for fp in src_fps]
 
     with concurrent.futures.ProcessPoolExecutor(max_workers=10) as pool:
-        results = list(pool.map(file_min_max, src_fps, [src_bbox for _ in src_fps]))
+        # results = list(pool.map(file_min_max, [src_fps[0]], [src_bbox]))  # debug
+
+        results = list(pool.map(file_min_max, src_fps, src_bboxes))
 
     # populate min/max dict
     for result in results:
@@ -610,7 +615,8 @@ def compare_expected_to_existing_and_check_values(
             src_min_max[str(src_fp)]["max"],
         )
         # iterate thru expected filepaths
-        for regrid_fp in expected_regrid_fps:
+        # only want those of expected that made it into qc_regrid_fps
+        for regrid_fp in [fp for fp in expected_regrid_fps if fp in qc_regrid_fps]:
             # check if in keys, if not then the file did not open in file_min_max()
             if str(regrid_fp) in regrid_min_max.keys():
                 # compare values
@@ -654,7 +660,7 @@ def get_matching_time_filepath(fps, test_date):
     # there should only be one
     assert (
         len(matching_fps) == 1
-    ), f"Test date {test_date} matched {len(matching_fps)} files (from {fps})."
+    ), f"Test date {test_date} matched {len(matching_fps)} files ({matching_fps})."
 
     return matching_fps[0]
 
@@ -667,7 +673,7 @@ def generate_cmip6_filepath_from_regrid_filename(fn, cmip6_dir):
     then testing for inclusion of regrid file start date within the date range formed by the CMIP6 file timespan.
     """
     var_id, freq, model, scenario, _, timespan = fn.split(".nc")[0].split("_")
-    institution = model_inst_lu[model]
+    institution = get_institution_id(model, scenario)
     experiment_id = "ScenarioMIP" if scenario in prod_scenarios else "CMIP"
     # Construct the original CMIP6 filepath from the filename.
     # Need to use glob because of the "grid type" filename attribute that we do not have a lookup for.
@@ -697,11 +703,7 @@ def plot_comparison(regrid_fp, cmip6_dir):
     except:
         print(f"Regridded dataset could not be opened: {regrid_fp}")
 
-    try:
-        src_bbox = get_src_bbox(src_fp, regrid_fp)
-    except AssertionError:
-        # this should happen if the source file does not have lat/lon dims
-        return
+    src_bbox = get_src_bbox(src_fp, regrid_fp)
 
     try:
         # using the h5netcdf engine because it seems faster
@@ -766,7 +768,11 @@ def plot_comparison(regrid_fp, cmip6_dir):
             print("Expected monthly file but frequency attribute does not match.")
 
     # ensure extent and units are consistent with regridded dataset
-    src_ds = subset_by_bbox(src_ds, src_bbox)
+    try:
+        src_ds = subset_by_bbox(src_ds, src_bbox)
+    except:
+        print("Failr", src_bbox)
+        exit()
     src_ds = convert_units(src_ds)
 
     # get a vmin and vmax from src dataset to use for both plots, if a map
@@ -803,3 +809,4 @@ def plot_comparison(regrid_fp, cmip6_dir):
         axes[1].set_title(f"Regridded dataset (timestamp: {time_val})")
 
     plt.show()
+
