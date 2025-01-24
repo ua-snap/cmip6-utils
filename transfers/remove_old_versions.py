@@ -1,3 +1,5 @@
+"""Script to remove old versions of CMIP6 files and empty directories from a main directory (cmip6_dir argument)"""
+
 import argparse
 from datetime import datetime
 from collections import defaultdict
@@ -69,6 +71,27 @@ def remove_old_versions(cmip6_dir):
     print(f"Old versions removed ({len(remove_paths)} removed).")
 
 
+def remove_empty_directories(cmip6_dir):
+    # Remove empty directories
+    remove_dirs = []
+    for directory in cmip6_dir.glob("**/*"):
+        if directory.is_dir() and not any(directory.iterdir()):
+            remove_dirs.append(directory)
+
+    if len(remove_dirs) > 0:
+        print("The following directories will be removed:")
+        for directory in remove_dirs:
+            print(directory)
+        confirm = input("Do you want to proceed? (yes/no): ").strip().lower()
+        if confirm != "yes":
+            print("Operation cancelled.")
+            return
+
+        for directory in remove_dirs:
+            directory.rmdir()
+
+
 if __name__ == "__main__":
     cmip6_directory = parse_args()
     remove_old_versions(cmip6_directory)
+    remove_empty_directories(cmip6_directory)
