@@ -26,7 +26,18 @@ from generate_batch_files import get_institution_id
 
 
 def get_source_fps_from_batch_files(regrid_batch_dir):
-    """Get all of the source filepaths from the batch files in the regrid batch directory."""
+    """Get all of the source filepaths from all of the batch files in the regrid batch directory.
+
+    Parameters
+    ----------
+    fp : path-like
+        Path to base regridded outputs directory.
+
+    Returns
+    -------
+    source_fps : list
+        List of source filepaths.
+    """
     source_fps = []
     for fp in regrid_batch_dir.glob("*.txt"):
         with open(fp) as f:
@@ -35,8 +46,22 @@ def get_source_fps_from_batch_files(regrid_batch_dir):
     return source_fps
 
 
-def extract_params_from_src_filepath(src_fp):
-    """Assumes this is a source CMIP6 filepath."""
+def extract_identifiers_from_src_filepath(src_fp):
+    """Extracts identifiers from a given CMIP6 source filepath.
+    This function assumes that the provided filepath follows the CMIP6 directory
+    structure and extracts relevant identifiers including model, scenario, frequency,
+    and variable.
+
+    Parameters
+    -----------
+    src_fp : str
+        The source filepath from which to extract identifiers.
+
+    Returns
+    -------
+    params : dict
+        A dictionary containing the extracted identifiers
+    """
     # .parts mapping for source: 7: model, 8: scenario, 10: frequency, 11: variable
     params = parse_cmip6_fp(src_fp)
 
@@ -56,6 +81,16 @@ def summarize_slurm_out_files(slurm_dir):
     """Read all .out files in the slurm directory, and summarize overwrite/processing errors.
     Write processing errors to the qc error file.
     Return another list with all file paths that were not processed, to be ignored from subsequent QC steps.
+
+    Parameters
+    ----------
+    slurm_dir : path-like
+        Path to the directory containing the .out files.
+
+    Returns
+    -------
+    fps_to_ignore : list
+        List of file paths to ignore because an error was encountered in processing.
     """
     overwrite_lines = []
     error_lines = []
@@ -84,7 +119,20 @@ def summarize_slurm_out_files(slurm_dir):
 
 
 def generate_expected_regrid_fps(src_fp, regrid_dir):
-    """Generate expected regrid filepaths from a source filepath."""
+    """Generate expected regrid filepaths from a source filepath.
+
+    Parameters
+    ----------
+    src_fp : str or Path
+        The source file path from which to generate the expected regrid file paths.
+    regrid_dir : str or Path
+        The directory where the regrid files are expected to be stored.
+
+    Returns
+    -------
+    list of Path
+        A list of expected regrid file paths, one for each yearly time range found in the source file path.
+    """
     # build expected base file path from the source file path
     expected_base_fp = generate_regrid_filepath(src_fp, regrid_dir)
     base_timeframe = expected_base_fp.name.split("_")[-1].split(".nc")[0]
@@ -99,8 +147,27 @@ def generate_expected_regrid_fps(src_fp, regrid_dir):
     return expected_regrid_fps
 
 
-def generate_regrid_fps_from_params(models, scenarios, vars, freqs, regrid_dir):
-    """Expecting lists of models, scenarios, vars, and freqs (as supplied to the notebook)."""
+def generate_regrid_fps_from_identifiers(models, scenarios, vars, freqs, regrid_dir):
+    """Generate regrid file paths from given identifiers supplied as ' '-seprated strings.
+
+    Parameters
+    ----------
+    models : str
+        Space-separated string of model names.
+    scenarios : str
+        Space-separated string of scenario names.
+    vars : str
+        Space-separated string of variable names.
+    freqs : str
+        Space-separated string of frequency names.
+    regrid_dir : path-like
+        Path to the directory containing the regridded files.
+
+    Returns
+    -------
+    regrid_fps : list
+        List of regrid file paths matching the given parameters.
+    """
     regrid_fps = []
     for model in models.split():
         for scenario in scenarios.split():
@@ -169,46 +236,6 @@ def get_latlon_bbox_from_regrid_file(fp):
     return bbox
 
 
-def check_bbox_latlon(bbox):
-    """Check if a bounding box is in lat/lon format (only -180, 180, not 0,360).
-
-    Parameters
-    ----------
-    bbox : tuple
-        Tuple of 4 values representing the bounding box.
-
-    Raises
-    -------
-    AssertionError
-        if the bounding box is not a tuple of 4 values,
-    ValueError
-        if the bounding box is in lat/lon format but not in the correct order,
-        or if values do not even appear to be within expected range of -180 - 180
-
-    Returns
-    -------
-    bbox : tuple
-        Simply returns the bounding box if it is in correct lat/lon format.
-    """
-    assert len(bbox) == 4, "Bounding box must be a tuple of 4 values."
-
-    # then check if values make sense for latlon
-    if not (
-        -180 <= bbox[0] <= 180
-        and -180 <= bbox[2] <= 180
-        and -90 <= bbox[1] <= 90
-        and -90 <= bbox[3] <= 90
-    ):
-        if all([-180 <= c <= 180 for c in bbox]):
-            raise ValueError(
-                f"Bounding box values are consistent with lat/lon but are not in the correct order: {bbox}."
-            )
-        else:
-            raise ValueError(f"Bounding box is not in lat/lon format: {bbox}.")
-    else:
-        return bbox
-
-
 def orient_latlon_bbox(src_fp, bbox):
     """ensure that a bbox of form (lon1, lat1, lon2, lat2) is oriented to match that of the source file.
     Just make sure that bbox matches the orientation (increasing / decreasing) of source file lat/lon dims
@@ -246,7 +273,28 @@ def orient_latlon_bbox(src_fp, bbox):
 
 
 def get_varname(ds, standard_name):
-    """Get the name of a variable from a dataset based on its standard name"""
+    """Get the name of a variable from a dataset based on its standard name.
+    This is useful for getting variable names from datasets that might use
+    different names across models (like lat and latitude).
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        The dataset containing the variables.
+    standard_name : str
+        The standard name attribute to search for.
+
+    Returns
+    -------
+    str
+        The name of the variable that matches the given standard name.
+
+    Raises
+    ------
+    ValueError
+        If no variable with the given standard name is found in the dataset.
+    """
+
     for var in ds.variables:
         if "standard_name" in ds[var].attrs:
             if ds[var].attrs["standard_name"] == standard_name:
@@ -262,10 +310,26 @@ def get_varname(ds, standard_name):
 
 
 def get_xy_bbox_from_file(fp, regrid_bbox):
+    """Get the x and y (j and i) bounding box indices from a NetCDF file based on a given regridded bounding box.
 
-    # we are assuming that any source file to be regridded will have
-    # lat/lon coordinate variables at a minimum as this is required by xESMF regridder
+    Parameters
+    -----------
+    fp : str
+        File path to a NetCDF file .
+    regrid_bbox : tuple
+        A tuple containing the bounding box coordinates (lon_min, lat_min, lon_max, lat_max).
 
+    Returns
+    --------
+    bbox : tuple
+        A tuple containing the bounding box indices (j_min, i_min, j_max, i_max).
+
+    Notes
+    ------
+    - Assumes that the source file has latitude and longitude coordinate variables as these are required by xESMF regridder.
+    - Handles cases where the longitude is not in the standard range of -180 to 180.
+    - If the bounding box cannot be determined, an error message is printed and the function returns None.
+    """
     lon_min, lat_min, lon_max, lat_max = regrid_bbox
 
     ds = xr.open_dataset(fp)
@@ -316,15 +380,11 @@ def get_src_bbox(src_fp, regrid_fp):
     regrid_fp : path-like
         Path to regridded file.
 
-    Raises
-    -------
-    AssertionError
-        if source file does not have lat/lon dims.
-
     Returns
     -------
     src_bbox : tuple
-        Tuple of 4 values representing the bounding box in (lon1, lat1, lon2, lat2) format.
+        Tuple of 4 values representing the bounding box in (x1, y1, x2, y2) format
+        ((lon1, lat1, lon2, lat2) if source has lat/lon dims).
     """
     # regrid bbox always returned in lat/lon format
     regrid_bbox = get_latlon_bbox_from_regrid_file(regrid_fp)
@@ -365,6 +425,46 @@ def check_bbox_xy(bbox):
     ), "Bounding box is not in correct order."
 
     return bbox
+
+
+def check_bbox_latlon(bbox):
+    """Check if a bounding box is in lat/lon format (only -180, 180, not 0,360).
+
+    Parameters
+    ----------
+    bbox : tuple
+        Tuple of 4 values representing the bounding box.
+
+    Raises
+    -------
+    AssertionError
+        if the bounding box is not a tuple of 4 values,
+    ValueError
+        if the bounding box is in lat/lon format but not in the correct order,
+        or if values do not even appear to be within expected range of -180 - 180
+
+    Returns
+    -------
+    bbox : tuple
+        Simply returns the bounding box if it is in correct lat/lon format.
+    """
+    assert len(bbox) == 4, "Bounding box must be a tuple of 4 values."
+
+    # then check if values make sense for latlon
+    if not (
+        -180 <= bbox[0] <= 180
+        and -180 <= bbox[2] <= 180
+        and -90 <= bbox[1] <= 90
+        and -90 <= bbox[3] <= 90
+    ):
+        if all([-180 <= c <= 180 for c in bbox]):
+            raise ValueError(
+                f"Bounding box values are consistent with lat/lon but are not in the correct order: {bbox}."
+            )
+        else:
+            raise ValueError(f"Bounding box is not in lat/lon format: {bbox}.")
+    else:
+        return bbox
 
 
 def subset_xy(ds, bbox):
@@ -443,11 +543,6 @@ def subset_by_bbox(ds, bbox):
         Bounding box to use for cropping the dataset.
         Formatted as (x1, y1, x2, y2) or (lon1, lat1, lon2, lat2).
 
-    Raises
-    -------
-    ValueError
-        if the dataset does not have lat/lon or x/y dimensions.
-
     Returns
     -------
     ds : xarray.Dataset
@@ -460,13 +555,7 @@ def subset_by_bbox(ds, bbox):
 
     else:
         ds = subset_xy(ds, bbox)
-    # elif ("x" in ds.dims) and ("y" in ds.dims):
-    #     ds = subset_xy(ds, bbox)
-    # else:
-    #     raise ValueError("Dataset does not have lat/lon or x/y dimensions.")
 
-    # if any([len(ds[dim]) == 0 for dim in ds.dims]):
-    #     print("One of dims in ds is 0!")
     return ds
 
 
@@ -517,7 +606,22 @@ def file_min_max(fp, bbox=None):
 
 
 def subsample_files(fps, min_qc=20, max_qc=75):
-    """Get a random sample of files for QC."""
+    """Get a random sample of files for QC.
+
+    Parameters
+    ----------
+    fps : list
+        A list of file paths to sample from.
+    min_qc : int, optional
+        The minimum number of files to return. Defaults to 20.
+    max_qc : int, optional
+        The maximum number of files to return. Defaults to 75.
+
+    Returns
+    -------
+    list
+        A list of file paths selected for QC.
+    """
     pct = 10
     pct_count = round(len(fps) * (pct / 100))
     if len(fps) <= min_qc:
@@ -543,6 +647,35 @@ def compare_expected_to_existing_and_check_values(
     """Iterate through model / scenario/ frequency/ variable combos, comparing data from expected file paths to existing file paths.
     If all expected files exist, check their values against source files.
     Writes error messages to qc error file, and returns a list of fps with errors for printing a summary message.
+
+    Parameters
+    ----------
+    regrid_dir : path-like
+        Path to the directory containing the regridded files.
+    regrid_batch_dir : path-like
+        Path to the directory containing the batch files used for regridding.
+    slurm_dir : path-like
+        Path to the directory containing the .out files from the regridding jobs.
+    vars : str
+        ' '-separated string of variable names.
+    freqs : str
+        ' '-separated string of frequency names.
+    models : str
+        ' '-separated string of model names.
+    scenarios : str
+        ' '-separated string of scenario names.
+    fps_to_ignore : list
+
+    Returns
+    -------
+    ds_errors : list
+        List of file paths with dataset errors.
+    value_errors : list
+        List of file paths with value errors.
+    src_min_max : dict
+        Dictionary containing the min and max values for each source file.
+    regrid_min_max : dict
+        Dictionary containing the min and max values for each regridded file.
     """
     # set up lists to collect error text
     source_files_missing_regrids = []
@@ -556,7 +689,7 @@ def compare_expected_to_existing_and_check_values(
         if fp in src_fps:
             src_fps.remove(fp)
 
-    existing_regrid_fps = generate_regrid_fps_from_params(
+    existing_regrid_fps = generate_regrid_fps_from_identifiers(
         models, scenarios, vars, freqs, regrid_dir
     )
 
@@ -578,10 +711,6 @@ def compare_expected_to_existing_and_check_values(
             "min": result["min"],
             "max": result["max"],
         }
-
-    # assume existing regrid fps will have same extent or smaller than source files
-    #  so we can generate a bbox to subset
-    # src_bbox = get_src_bbox(src_fps[0], existing_regrid_fps[0])
 
     # think we need to be getting the src_bbox for each source file
     src_bboxes = [get_src_bbox(fp, existing_regrid_fps[0]) for fp in src_fps]
@@ -637,7 +766,20 @@ def compare_expected_to_existing_and_check_values(
 
 
 def get_matching_time_filepath(fps, test_date):
-    """Find a file from a given list of raw CMIP6 filepaths that conatins the test date within the timespan in the filename."""
+    """Find a file from a given list of raw CMIP6 filepaths that conatins the test date within the timespan in the filename.
+
+    Parameters
+    ----------
+    fps : list
+        List of file paths to search.
+    test_date : datetime
+        The date to search for within the timespan of the files.
+
+    Returns
+    -------
+    Path
+        The file pat from fps that contains the test date within its timespan.
+    """
     matching_fps = []
     for fp in fps:
         start_str, end_str = fp.name.split(".nc")[0].split("_")[-1].split("-")
@@ -669,8 +811,20 @@ def generate_cmip6_filepath_from_regrid_filename(fn, cmip6_dir):
     """Get the path to the original CMIP6 filename from a regridded file name.
 
     Because the original CMIP6 filenames were split up during the processing,
-    this method finds the original filename based on matching all possible attributes,
+    this method finds the original filename based on matching all possible identifiers,
     then testing for inclusion of regrid file start date within the date range formed by the CMIP6 file timespan.
+
+    Parameters
+    ----------
+    fn : str
+        The regridded file name.
+    cmip6_dir : path-like
+        Path to the directory containing the CMIP6 files.
+
+    Returns
+    -------
+    Path
+        The path to the original CMIP6 file that we expect the regridded file was generated from.
     """
     var_id, freq, model, scenario, _, timespan = fn.split(".nc")[0].split("_")
     institution = get_institution_id(model, scenario)
@@ -694,7 +848,20 @@ def generate_cmip6_filepath_from_regrid_filename(fn, cmip6_dir):
 
 
 def plot_comparison(regrid_fp, cmip6_dir):
-    """For a given regridded file, find the source file and plot side by side."""
+    """For a given regridded file, find the source file and plot side by side.
+
+    Parameters
+    ----------
+    regrid_fp : path-like
+        Path to the regridded file to plot.
+    cmip6_dir : path-like
+        Path to the directory containing the CMIP6 files.
+
+    Raises
+    ------
+    AssertionError
+        If the variable ID in the source and regridded files do not match.
+    """
     src_fp = generate_cmip6_filepath_from_regrid_filename(regrid_fp.name, cmip6_dir)
 
     # if the dataset cannot be opened, just print a message instead of an error
