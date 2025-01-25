@@ -768,24 +768,20 @@ def plot_comparison(regrid_fp, cmip6_dir):
             print("Expected monthly file but frequency attribute does not match.")
 
     # ensure extent and units are consistent with regridded dataset
-    try:
-        src_ds = subset_by_bbox(src_ds, src_bbox)
-    except:
-        print("Failr", src_bbox)
-        exit()
+    src_ds = subset_by_bbox(src_ds, src_bbox)
     src_ds = convert_units(src_ds)
 
     # get a vmin and vmax from src dataset to use for both plots, if a map
     try:
-        vmin = (
+        vmin = np.nanmin(
             src_ds[var_id].sel(time=src_time, method=sel_method)
             # .sel(lat=src_lat_slice, lon=lon_slice_src)
-            .values.min()
+            .values
         )
-        vmax = (
+        vmax = np.nanmax(
             src_ds[var_id].sel(time=src_time, method=sel_method)
             # .sel(lat=src_lat_slice, lon=lon_slice_src)
-            .values.max()
+            .values
         )
     except:
         print("Error getting vmin and vmax values from source data.")
@@ -809,4 +805,3 @@ def plot_comparison(regrid_fp, cmip6_dir):
         axes[1].set_title(f"Regridded dataset (timestamp: {time_val})")
 
     plt.show()
-
