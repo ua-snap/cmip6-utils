@@ -121,7 +121,6 @@ landsea_variables = {
     "mrsol": "land",
     "snd": "land",
     "snw": "land",
-    "prsn": "land",
     "siconc": "sea",
 }
 
