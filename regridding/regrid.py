@@ -6,6 +6,7 @@ Note - this script first crops the dataset to the panarctic domain of 50N and up
 import argparse
 import random
 import time
+import warnings
 from datetime import datetime
 from pathlib import Path
 import cftime
@@ -13,22 +14,36 @@ import numpy as np
 import pandas as pd
 import xesmf as xe
 import xarray as xr
-from config import variables, landsea_variables
 from pyproj import CRS
 from xclim.core import units
 
-# ignore serializationWarnings from xarray for datasets with multiple FillValues
-import warnings
+# project
+from config import variables, landsea_variables
 
+# ignore serializationWarnings from xarray for datasets with multiple FillValues
 warnings.filterwarnings("ignore", category=xr.SerializationWarning)
 
 
-# define the production latitude domain slice
-prod_lat_slice = slice(50, 90)
-
-
 def parse_args():
-    """Parse some arguments"""
+    """Parse some command line arguments
+
+    Returns
+    -------
+    regrid_batch_fp : str
+        Batch file containing filepaths to be regridded
+    dst_fp : str
+        Destination grid filepath
+    src_sftlf_fp : str
+        Path to sftlf file to use for land masking source
+    dst_sftlf_fp : str
+        Path to sftlf file to use for land masking destination/target
+    out_dir : pathlib.Path
+        Path to directory where regridded data should be written
+    interp_method : str
+        Interpolation method to use for regridding
+    no_clobber : bool
+        Do not overwrite existing regidded files
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "-b",
@@ -83,12 +98,20 @@ def parse_args():
 
 
 def init_regridder(src_ds, dst_ds, interp_method):
-    """Initialize the regridder object for a single dataset. All source files listed in the batch files should have the same grid, and so we should only need to initiate this for a single file.
+    """Initialize the regridder object for a single dataset.
+    All source files listed in the batch files should have the same grid,
+    and so we should only need to initiate this for a single file.
 
-    Args:
-        src_ds (xarray.DataSet): Source dataset for initializing a regridding object. This should have the same grid as all files in the batch file being worked on.
-        dst_ds (xarray.DataSet): Destination dataset for initializing a regridding object. This should be a cropped version of the pipeline's target grid dataset.
-        interp_method (str): Interpolation method to use for regridding. Options are 'bilinear', 'conservative', 'nearest_s2d', 'nearest_d2s', 'patch'
+    Parameters
+    ----------
+    src_ds : xarray.Dataset
+        Source dataset for initializing a regridding object.
+        This should have the same grid as all files in the batch file being worked on.
+    dst_ds : xarray.Dataset
+        Destination dataset for initializing a regridding object.
+    interp_method : str
+        Interpolation method to use for regridding.
+        Options are 'bilinear', 'conservative', 'nearest_s2d', 'nearest_d2s', 'patch'
 
     Returns:
         regridder (xesmf.Regridder): a regridder object
@@ -120,13 +143,17 @@ def init_regridder(src_ds, dst_ds, interp_method):
 
 
 def parse_cmip6_fp(fp):
-    """Pull some data attributes from an ESGF CMIP6 filepath.
+    """Pull some data attributes/identifiers from a CMIP6 filepath.
 
-    Args:
-        fp (pathlib.Path): CMIP6 path mirrored from ESGF
+    Parameters
+    ----------
+    fp : pathlib.Path
+        CMIP6 path mirrored from ESGF
 
-    Returns:
-        attr_di (dict): dict of modeling-relevant attributes of the filepath and filename
+    Returns
+    -------
+    attr_di : dict
+        dict of modeling-relevant attributes of the filepath and filename
     """
     model, scenario, variant, frequency, variable_id, grid_type = fp.parts[-8:-2]
     timeframe = fp.name.split("_")[-1].split(".nc")[0]
@@ -145,14 +172,19 @@ def parse_cmip6_fp(fp):
 
 
 def generate_regrid_filepath(fp, out_dir):
-    """Generates the name for a regridded file using info parsed from source filepath
+    """Generates the name for a regridded file using info parsed from source filepath.
 
-    Args:
-        fp (str): CMIP6 filepath to generate name for
-        out_dir (pathlib.Path): path to the root of the output directory for regridded files
+    Parameters
+    ----------
+    fp : str
+        CMIP6 filepath to generate name for
+    out_dir : pathlib.Path
+        path to the root of the output directory for regridded files
 
-    Returns:
-        new_fn (pathlib.Path): new filename string
+    Returns
+    -------
+    regrid_fp : pathlib.Path
+        path for a regridded file that would be generated from the input CMIP6 filepath
     """
     fp_attrs = parse_cmip6_fp(fp)
 
@@ -169,7 +201,18 @@ def generate_regrid_filepath(fp, out_dir):
 
 
 def fix_hour_in_time_dim(ds):
-    """Fix the hour in a time dimension"""
+    """Fix the hour in a time dimension. Some datasets have hours that are not 12:00:00.
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        Dataset to fix the time dimension of
+
+    Returns
+    -------
+    ds : xarray.Dataset
+        Dataset with time dimension fixed to 12:00:00
+    """
     if np.any(ds.time.dt.hour != 12):
         new_ts = pd.to_datetime(
             [
@@ -184,29 +227,19 @@ def fix_hour_in_time_dim(ds):
     return ds
 
 
-def open_and_crop_dataset(fp, lat_slice):
-    """Open the connection to a dataset and crop it to a panarctic domain of 50N and up.
-
-    Args:
-        fp (pathlib.Path): path to file to be opened as xarray.Dataset and cropped to a panarctic extent
-        lat_slice (slice): slice object for cropping latitude dimension of dataset to
-
-    Returns:
-        src_ds (xarray.Dataset): xarray Dataset (chunked with Dask) cropped to a panarctic domain
-    """
-    # we are cropping the dataset using the .sel method as we do not need to regrid the entire grid,
-    #  only the part that will eventually wind up in the dataset.
-    try:
-        src_ds = xr.open_dataset(fp, chunks={"time": 100}).sel(lat=lat_slice)
-    # if the file does not have a time dimension, do not chunk
-    except:
-        src_ds = xr.open_dataset(fp).sel(lat=lat_slice)
-
-    return src_ds
-
-
 def generate_random_date_indices(year):
-    """Get the random date indices for a given year (only using year to have consistent seed)"""
+    """Get the random date indices for a given year (only using year to have consistent seed).
+
+    Parameters
+    ----------
+    year : int
+        Year to generate random date indices for
+
+    Returns
+    -------
+    ridx_list : list
+        List of random date indices for the given year
+    """
     random.seed(year)
     ridx_list = []
     for i in range(5):
@@ -218,10 +251,24 @@ def generate_random_date_indices(year):
     return ridx_list
 
 
-def dayfreq_360day_to_noleap(out_ds):
-    """convert a 360 day calendar time axis on a daily dataset to noleap numpy.datetime64 by selecting random dates (from different chunks of the year, following the method in https://doi.org/10.31223/X5M081) to insert a new slice as the mean between two adjacent time slices"""
-    ts = out_ds.time.values
-    var_id = out_ds.attrs["variable_id"]
+def dayfreq_360day_to_noleap(ds):
+    """convert a 360 day calendar time axis on a daily dataset to noleap numpy.datetime64
+    by selecting random dates (from different chunks of the year, following the method in
+    https://doi.org/10.31223/X5M081) to insert a new slice as the mean between two adjacent
+    time slices.
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        Dataset to convert the time axis of
+
+    Returns
+    -------
+    out_ds : xarray.Dataset
+        Dataset with time axis converted from 360-day to noleap
+    """
+    ts = ds.time.values
+    var_id = ds.attrs["variable_id"]
     start_year = ts[0].year
     end_year = ts[-1].year
 
@@ -229,7 +276,7 @@ def dayfreq_360day_to_noleap(out_ds):
     # iterate over years, compute the dates to do this for
     year_da_list = []
     for year in range(start_year, end_year + 1):
-        year_da = out_ds[var_id].sel(time=slice(f"{year}-01-01", f"{year}-12-30"))
+        year_da = ds[var_id].sel(time=slice(f"{year}-01-01", f"{year}-12-30"))
         sub_das = []
         prev_idx = 0
         ridx_list = generate_random_date_indices(year)
@@ -266,31 +313,54 @@ def dayfreq_360day_to_noleap(out_ds):
         year_da_list.append(year_noleap_da)
 
     new_noleap_da = xr.concat(year_da_list, dim="time")
-    new_out_ds = new_noleap_da.to_dataset()
-    new_out_ds.attrs = out_ds.attrs
-    new_out_ds.time.encoding = out_ds.time.encoding
-    new_out_ds.time.encoding["calendar"] = "noleap"
+    out_ds = new_noleap_da.to_dataset()
+    out_ds.attrs = ds.attrs
+    out_ds.time.encoding = ds.time.encoding
+    out_ds.time.encoding["calendar"] = "noleap"
     out_ds.time.encoding["units"] = "days since 1950-01-01 00:00:00"
-    new_out_ds.time.attrs = out_ds.time.attrs
+    out_ds.time.attrs = ds.time.attrs
 
-    return new_out_ds
+    return out_ds
 
 
-def dayfreq_gregorian_to_noleap(out_ds):
-    """Convert gregorian calendar time axis to noleap"""
-    new_out_ds = out_ds.sel(
-        time=~((out_ds.time.dt.day == 29) & (out_ds.time.dt.month == 2))
-    )
-    new_out_ds.time.encoding["calendar"] = "noleap"
+def dayfreq_gregorian_to_noleap(ds):
+    """Convert gregorian calendar time axis to noleap.
+    (Pretty sure there is an xarray function to do this.)
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        Dataset to convert the time axis of
+
+    Returns
+    -------
+    out_ds : xarray.Dataset
+        Dataset with time axis converted from gregorian to noleap
+    """
+    out_ds = ds.sel(time=~((ds.time.dt.day == 29) & (ds.time.dt.month == 2)))
+    out_ds.time.encoding["calendar"] = "noleap"
     out_ds.time.encoding["units"] = "days since 1950-01-01 00:00:00"
     # Run this function just to ensure consistent hour values
-    new_out_ds = fix_hour_in_time_dim(new_out_ds)
+    out_ds = fix_hour_in_time_dim(out_ds)
 
-    return new_out_ds
+    return out_ds
 
 
 def generate_single_year_filename(original_fp, year_ds):
-    """Generate a filename for a single year's worth of data"""
+    """Generate a filename for a single year's worth of data. Used for splitting regridded data by year.
+
+    Parameters
+    ----------
+    original_fp : pathlib.Path
+        Original (regridded) filepath to generate a new filepath from
+    year_ds : xarray.Dataset
+        Dataset for a single year to generate a filename for
+
+    Returns
+    -------
+    out_fp : pathlib.Path
+        Path for writing a single year's worth of regridded data corresponding to year_ds
+    """
     # take everything preceding the original daterange component of filename
     nodate_fn_str = "_".join(original_fp.name.split(".nc")[0].split("_")[:-1])
     time_bnds = [year_ds.time.values[i] for i in [0, -1]]
@@ -309,7 +379,21 @@ def generate_single_year_filename(original_fp, year_ds):
 
 
 def Amonfreq_fix_time(out_ds, src_ds):
-    """Fix the time dimension of a regridded monthly dataset to ensure that the day of month used is 15 and not 14 or 16."""
+    """Fix the time dimension of a regridded monthly dataset to ensure that the
+    day of month used is 15 and not 14 or 16.
+
+    Parameters
+    ----------
+    out_ds : xarray.Dataset
+        Dataset to fix the time dimension of
+    src_ds : xarray.Dataset
+        Source dataset used to create out_ds. For passing attributes
+
+    Returns
+    -------
+    out_ds : xarray.Dataset
+        Dataset with time dimension fixed to 15th of the
+    """
     if type(out_ds.time.values[0]) in [
         cftime._cftime.Datetime360Day,
     ]:
@@ -339,7 +423,18 @@ def Amonfreq_fix_time(out_ds, src_ds):
 
 
 def get_time_res_days(ds):
-    """Get the temporal resolution of a dataset in days from the time variable directly."""
+    """Get the temporal resolution of a dataset in days from the time variable directly.
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        Dataset to get the temporal resolution of
+
+    Returns
+    -------
+    res_days : int
+        Temporal resolution of the dataset in days
+    """
     if type(ds.time.values[0]) in [
         cftime._cftime.Datetime360Day,
         cftime._cftime.DatetimeNoLeap,
@@ -357,17 +452,55 @@ def get_time_res_days(ds):
 
 
 def check_is_dayfreq(ds):
-    """Function to make sure a "day" frequency dataset is actually daily. Some are mis-labelled."""
+    """Function to make sure a "day" frequency dataset is actually daily. Some are mis-labelled.
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        Dataset to check the frequency of
+
+    Returns
+    -------
+    is_dayfreq : bool
+        Whether the dataset is actually daily
+    """
     return get_time_res_days(ds) == 1
 
 
 def check_is_monfreq(ds):
-    """Function to make sure a "monthly" frequency dataset is actually monthly. Some are mis-labelled."""
+    """Function to make sure a "monthly" frequency dataset is actually monthly. Some are mis-labelled.
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        Dataset to check the frequency of
+
+    Returns
+    -------
+    is_dayfreq : bool
+        Whether the dataset is actually monthly
+    """
     return get_time_res_days(ds) in [28, 29, 30, 31]
 
 
 def fix_time_and_write(out_ds, src_ds, out_fp):
-    """Fix the time dimension of a regridded dataset if needed; write dataset, splitting by appropriate time chunks if needed."""
+    """Fix the time dimension of a regridded dataset if needed;
+    write dataset, splitting by appropriate time chunks if needed.
+
+    Parameters
+    ----------
+    out_ds : xarray.Dataset
+        Dataset to fix the time dimension of
+    src_ds : xarray.Dataset
+        Source dataset used to create out_ds (for fixing time axis)
+    out_fp : pathlib.Path
+        Filepath to write the dataset to
+
+    Returns
+    -------
+    out_fps : list
+        List of filepaths written to
+    """
     out_fps = []
     if check_is_dayfreq(out_ds):
         # make sure we assign correct daily frequency type
@@ -419,7 +552,18 @@ def fix_time_and_write(out_ds, src_ds, out_fp):
 
 
 def get_var_id(ds):
-    """Get the variable ID from a dataset"""
+    """Get the CMIP6 variable ID from a dataset.
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        Dataset to get the variable ID from
+
+    Returns
+    -------
+    var_id : str
+        Variable ID of the dataset
+    """
     # assumes we only have one data variable
     var_ids = [var_id for var_id in list(ds.data_vars) if var_id in variables]
     assert len(var_ids) != 0, "No variable ID found in Dataset."
@@ -429,40 +573,20 @@ def get_var_id(ds):
 
 
 def check_src_landsea(ds):
-    """Check if the source dataset is a land/sea dataset"""
+    """Check if the source dataset is a land/sea dataset.
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        Dataset to check if it is a land/sea dataset
+
+    Returns
+    -------
+    is_landsea : bool
+        Whether the dataset is a land/sea dataset
+    """
     var_id = get_var_id(ds)
     return var_id in landsea_variables
-
-
-def regrid_sftlf(sftlf_fp, target_ds, var_id=None):
-    """Regrid some sftlf file to a target dataset
-    Not necessarily the target in the global scope of this script, but it may be.
-    This is done because some sftlf files are not on the same grid as the dataset they are needed for.
-    """
-    if var_id is None:
-        var_id = get_var_id(target_ds)
-    with xr.open_dataset(sftlf_fp) as sftlf_ds:
-        # selecting a single timeslice to drop the time dimension from target dataset
-        target_slice = target_ds[var_id].isel(time=0)
-        if target_slice.dims != sftlf_ds["sftlf"].dims:
-            print(
-                (
-                    f"Target dataset (from {target_ds.encoding['source']}) "
-                    f"and sftlf file ({sftlf_fp}) have different dimensions: "
-                    f"{target_slice.dims} and {sftlf_ds['sftlf'].dims}"
-                )
-            )
-            print(sftlf_fp)
-            print(target_ds)
-        target_regridder = xe.Regridder(
-            sftlf_ds["sftlf"],
-            target_ds[var_id],
-            method="bilinear",
-            unmapped_to_nan=True,
-        )
-        target_sftlf = target_regridder(sftlf_ds["sftlf"], keep_attrs=True)
-
-    return target_sftlf
 
 
 def regrid_sftlf_landmask(sftlf_fp, target_ds, threshold):
@@ -470,6 +594,20 @@ def regrid_sftlf_landmask(sftlf_fp, target_ds, threshold):
     Not necessarily the target in the global scope of this script, but it may be.
     This is done because some sftlf files are not on the same grid as the dataset they are needed for.
     This is being included because I am not sure what is better - regridding the sftlf file or regridding the mask derived from it.
+
+    Parameters
+    ----------
+    sftlf_fp : str
+        Path to sftlf file to derive landmask from
+    target_ds : xarray.Dataset
+        Dataset to regrid the landmask to
+    threshold : float
+        Threshold for land/sea mask (0-100)
+
+    Returns
+    -------
+    target_landmask : xarray.DataArray
+        Landmask regridded to the target dataset
     """
     sftlf_ds = xr.open_dataset(sftlf_fp)
     landmask = sftlf_ds["sftlf"] > threshold
@@ -489,6 +627,18 @@ def regrid_sftlf_landmask(sftlf_fp, target_ds, threshold):
 def check_src_nanmask(src_init_ds, dst_landmask):
     """Check if the source dataset has NaNs present representing land or sea.
     We would expect the NaN percentage to be fairly close to that of the dst_landmask.
+
+    Parameters
+    ----------
+    src_init_ds : xarray.Dataset
+        Source dataset to check for NaNs representing land/sea
+    dst_landmask : xarray.DataArray
+        Landmask for the destination dataset
+
+    Returns
+    -------
+    good_nanmask : bool
+        Whether the NaN mask for the source dataset is good
     """
     var_id = get_var_id(src_init_ds)
     nan_perc = (
@@ -520,7 +670,24 @@ def check_src_nanmask(src_init_ds, dst_landmask):
 
 def prep_for_landsea(src_init_ds, dst_ds, src_sftlf_fp, dst_sftlf_fp):
     """Prepare a land/sea dataset for regridding by adding masks to the source and target datasets.
-    Mask for the source dataset is created from an sftlf file if it is available and if it has the same dimensions as the source dataset.
+    Mask for the source dataset is created from an sftlf file if it is available and if it has
+    the same dimensions as the source dataset.
+
+    Parameters
+    ----------
+    src_init_ds : xarray.Dataset
+        Source dataset to add a mask to
+    dst_ds : xarray.Dataset
+        Destination dataset to add a mask to
+    src_sftlf_fp : str
+        Path to sftlf file for the source dataset
+    dst_sftlf_fp : str
+        Path to sftlf file for the destination dataset
+
+    Returns
+    -------
+    src_init_ds, dst_ds : tuple[xarray.Dataset, xarray.Dataset]
+        Source and destination datasets with mask added
     """
     # get the variable ID of the source dataset
     var_id = get_var_id(src_init_ds)
@@ -571,13 +738,17 @@ def prep_for_landsea(src_init_ds, dst_ds, src_sftlf_fp, dst_sftlf_fp):
 
 def apply_wgs84(ds):
     """Function to add spatial_ref coordinate, CRS attributes, and CRS encodings to make CF-compliant metadata for the WGS84 CRS.
-    Args:
-    ds(xarray.Dataset): the regridded dataset with -180 to 180 longitude scale
 
-    Returns:
-    ds (xarray.Dataset): the dataset with WGS84 CRS info added, or the original dataset if additions were not successful
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        Regridded dataset to add WGS84 CRS info to. Should be on -180 to 180 longitude scale.
+
+    Returns
+    -------
+    ds : xarray.Dataset
+        Dataset with WGS84 CRS info added
     """
-
     try:
         # Try to access an existing spatial_ref coordinate.
         # If this doesn't raise an exception, the dataset probably has CRS info and should be returned as-is.
@@ -608,11 +779,22 @@ def apply_wgs84(ds):
 
 
 def convert_units(ds):
-    """Convert units of a dataset to more useful units."""
+    """Convert units of a dataset to more useful units. Hardcoded in this function for now.
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        Dataset to convert the units of
+
+    Returns
+    -------
+    ds : xarray.Dataset
+        Dataset with units converted to more useful units
+    """
     # make sure units are more useful
     var_id = get_var_id(ds)
 
-    if var_id in ["pr", "prsn", "prw", "prsn", "snw"]:
+    if var_id in ["pr", "prsn", "snw"]:
         # precip
         ds[var_id] = units.convert_units_to(ds[var_id], "mm")
 
@@ -625,8 +807,19 @@ def convert_units(ds):
 
 def rasdafy(ds):
     """Apply some tweaks to the data that make things better for Rasdaman ingestion.
-    We want to make sure the axes are ordered (time, lon, lat), that the time axis is "unlimited", and that the latitutde axis is in decreasing order.
+    We want to make sure the axes are ordered (time, lon, lat), that the time axis is "unlimited",
+    and that the latitutde axis is in decreasing order.
     We will also make units are more useful (e.g. mm precip instead of kg m-2 s-1).
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        Dataset to prepare for Rasdaman ingestion
+
+    Returns
+    -------
+    ds : xarray.Dataset
+        Dataset prepared for Rasdaman ingestion
     """
     # make sure the time axis is unlimited (this means it is a "record dimension" in netCDF parlance)
     ds.encoding["unlimited_dims"] = ["time"]
@@ -651,15 +844,22 @@ def rasdafy(ds):
 
     ds = convert_units(ds)
 
-    # change NaNs to -9999
-    ds[var_id] = ds[var_id].where(~xr.ufuncs.isnan(ds[var_id]), -9999)
-    ds[var_id].encoding["_FillValue"] = -9999
-
     return ds
 
 
 def fix_attrs(ds):
-    """Fix some attributes of the dataset to make"""
+    """Fix some attributes of the dataset to make
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        Dataset to fix the attributes of
+
+    Returns
+    -------
+    ds : xarray.Dataset
+        Dataset with attributes fixed
+    """
     # make sure longitude min and max attributes are set correctly
     ds["lon"].attrs["valid_max"] = 180
     ds["lon"].attrs["valid_min"] = -180
@@ -691,6 +891,14 @@ def write_retry_batch_file(regrid_batch_dir, errs):
     """Append each item in a list of filepaths to a text file. Lines are appended to the file if it already exists.
     If a collection of batch files are being simultaneously processed by this regrid.py script via multiple slurm jobs,
     a single text file will be generated that lists all files that failed the regridding process and can be retried.
+
+    Parameters
+    ----------
+    regrid_batch_dir : str
+        Directory containing the regridding batch files
+
+    errs : list
+        List of filepaths that failed the regridding process
     """
     retry_fn = Path(regrid_batch_dir).joinpath("batch_retry.txt")
     with open(retry_fn, "a") as f:
@@ -704,7 +912,18 @@ def parse_output_filename_times_from_file(fp):
     Originally this function relied only on the timeframe string in the filenames.
     But that is not gauranteed to be correct so this function was refactored to rely on the time variable.
 
-    Returns a list of strings representing times that should be used in all the output files of a given source file, since they are saved by year.
+    Returns a list of strings representing times that should be used in all the output
+    files of a given source file, since they are saved by year.
+
+    Parameters
+    ----------
+    fp : pathlib.Path
+        Path to file to parse the time range from
+
+    Returns
+    -------
+    timerange_strings : list
+        List of strings representing the time range of the dataset in the file
     """
     with xr.open_dataset(fp) as ds:
         if check_is_dayfreq(ds):
@@ -730,16 +949,24 @@ def parse_output_filename_times_from_file(fp):
 
 
 def regrid_dataset(fp, regridder, out_fp, src_mask=None):
-    """Regrid a dataset using a regridder object initiated using the target grid with a latitude domain of 50N and up.
+    """Regrid a dataset using a regridder object initiated using the target grid with
+    a latitude domain of 50N and up.
 
-    Args:
-        fp (pathlib.Path): path to file to be regridded
-        regridder (xesmf.Regridder): regridder object initialized on source dataset that has the same grid as dataset as read from fp
-        out_fp (pathlib.Path): Path to output regridded file
-        src_mask (xarray.DataArray): Mask for the source dataset, if available
+    Parameters
+    ----------
+    fp : pathlib.Path
+        Path to file to be regridded
+    regridder : xesmf.Regridder
+        Regridder object initialized on source dataset that has the same grid as dataset as read from fp
+    out_fp : pathlib.Path
+        Path to write regridded file to
+    src_mask : xarray.DataArray
+        Mask for the source dataset, if available
 
-    Returns:
-        out_fp (pathlib.Path): Path to output regridded file (just to return something)
+    Returns
+    -------
+    out_fp : pathlib.Path
+        Path to output regridded file
     """
     # open the source dataset
     src_ds = xr.open_dataset(fp)
@@ -754,7 +981,8 @@ def regrid_dataset(fp, regridder, out_fp, src_mask=None):
     regrid_ds = fix_attrs(regrid_ds)
 
     # add CRS info
-    regrid_ds = apply_wgs84(regrid_ds)
+    if "lon" in regrid_ds.dims:
+        regrid_ds = apply_wgs84(regrid_ds)
 
     # rasdafy the dataset
     regrid_ds = rasdafy(regrid_ds)
@@ -766,6 +994,7 @@ def regrid_dataset(fp, regridder, out_fp, src_mask=None):
         regrid_ds.to_netcdf(out_fp)
     else:
         out_fp = fix_time_and_write(regrid_ds, src_ds, out_fp)
+
     return out_fp
 
 
@@ -791,12 +1020,7 @@ if __name__ == "__main__":
     # which we should ensure has the domain we want.
     dst_ds = xr.open_dataset(dst_fp, chunks={"time": 100})
 
-    # open destination dataset for regridding to.
-    # dst_ds = open_and_crop_dataset(dst_fp, lat_slice=prod_lat_slice)
-    # do the same for one of the source datasets to configure the regridder object
-    # defining an "extended" latitude slice, so that grids encoompass the entire
-    #  production latitude extent before regridding (e.g. a grid will have domain [49.53, 90] instead of [50.75, 90],
-    #  so this is probably always going to give just one more row of grid cells for interpolation.)
+    # open first source file for initializing regridder
     src_init_ds = xr.open_dataset(src_fps[0])
 
     # if sftlf_fp is provided, assume it is needed for masking
@@ -851,17 +1075,15 @@ if __name__ == "__main__":
         ):
             no_clobbers.append(str(fp))
         else:
-            # try:
-            #     results.append(regrid_dataset(fp, regridder, out_fp))
-            # except Exception as e:
-            #     errs.append(str(fp))
-            #     print(f"\nFILE NOT REGRIDDED: {fp}\n     Errors printed below:\n")
-            #     print(e)
-            #     print("\n")
             src_mask = None
             if "mask" in src_init_ds.data_vars:
                 src_mask = src_init_ds["mask"]
-            results.append(regrid_dataset(fp, regridder, out_fp, src_mask))
+            try:
+                results.append(regrid_dataset(fp, regridder, out_fp, src_mask))
+            except Exception as e:
+                errs.append(str(fp))
+                print(f"\nFILE NOT REGRIDDED: {fp}\n     Errors printed below:\n")
+                print(e, "\n")
 
     print(
         f"Regridding done, {len(results)} files regridded in {np.round((time.perf_counter() - tic) / 60, 1)}m"

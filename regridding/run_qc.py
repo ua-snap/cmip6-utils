@@ -2,12 +2,35 @@
 
 import argparse
 from pathlib import Path
-import subprocess
 from slurm import submit_sbatch
 
 
 def parse_args():
-    """Parse some arguments"""
+    """Parse some command line arguments.
+
+    Returns
+    -------
+    output_directory : pathlib.Path
+        Path to directory where regridded files are written
+    cmip6_directory : pathlib.Path
+        Path to directory where CMIP6 files are stored
+    repo_regridding_directory : pathlib.Path
+        Path to regridding directory in cmip6-utils repo
+    conda_init_script : pathlib.Path
+        Path to script that initiates conda
+    conda_env_name : str
+        Name of conda environment to activate
+    qc_notebook : pathlib.Path
+        Path to regridding QC notebook
+    vars : str
+        List of variables to generate batch files for
+    freqs : str
+        List of frequencies to use for generating batch files
+    models : str
+        List of models to use for generating batch files
+    scenarios : str
+        List of scenarios to use for generating batch files
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--output_directory",
@@ -77,7 +100,7 @@ def parse_args():
         Path(args.cmip6_directory),
         Path(args.repo_regridding_directory),
         Path(args.conda_init_script),
-        Path(args.conda_env_name),
+        args.conda_env_name,
         Path(args.qc_notebook),
         args.vars,
         args.freqs,

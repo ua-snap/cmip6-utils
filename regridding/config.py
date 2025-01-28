@@ -1,6 +1,7 @@
 """Lookup tables for CMIP6 regridding. 
 Since we are providing our config via Prefect, these were copied from the transfers/config.py file
-to avoid using system environment variables."""
+to avoid using system environment variables.
+"""
 
 # batch file naming template
 batch_tmp_fn = "batch_{model}_{scenario}_{frequency}_{var_id}_{grid_name}_{count}.txt"

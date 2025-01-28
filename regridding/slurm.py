@@ -7,13 +7,19 @@ from config import *
 
 
 def make_sbatch_head(conda_init_script, conda_env_name):
-    """Make a string of SBATCH commands that can be written into a .slurm script
+    """Make a string of SBATCH commands that can be written into a .slurm script.
 
-    Args:
-        conda_init_script (path_like): path to a script that contains commands for initializing the shells on the compute nodes to use conda activate
+    Parameters
+    ----------
+    conda_init_script : pathlib.Path
+        path to a script that contains commands for initializing the shells on the compute nodes to use conda activate
+    conda_env_name : str
+        name of the conda environment to activate
 
-    Returns:
-        sbatch_head (str): string of SBATCH commands ready to be used as parameter in sbatch-writing functions. The following gaps are left for filling with .format:
+    Returns
+    -------
+    str
+        string of SBATCH commands ready to be used as parameter in sbatch-writing functions. The following gaps are left for filling with .format:
             - output slurm filename
     """
     sbatch_head = (
@@ -46,23 +52,37 @@ def write_sbatch_regrid(
     src_sftlf_fp=None,
     dst_sftlf_fp=None,
 ):
-    """Write an sbatch script for executing the restacking script for a given group and variable, executes for a given list of years
+    """Write an sbatch script for executing the restacking script for a given group and variable.
+    Executes for a given list of years.
 
-    Args:
-        sbatch_fp (path_like): path to .slurm script to write sbatch commands to
-        sbatch_out_fp (path_like): path to where sbatch stdout should be written
-        regrid_script (path_like): path to the script to be called to run the regridding
-        regrid_batch_fp (path_like): path to the batch file containing paths of CMIP6 files to regrid
-        dst_fp (path_like): path to file being used as template / reference for destination grid
-        no_clobber (str): if "true", do not overwrite regridded files if they already exist
-        interp_method (str): method to use for regridding interpolation
-        sbatch_head (dict): string for sbatch head script
+    Parameters
+    ----------
+    sbatch_fp : pathlib.Path
+        path to .slurm script to write sbatch commands to
+    sbatch_out_fp : pathlib.Path
+        path to where sbatch stdout should be written
+    regrid_script : pathlib.Path
+        path to the script to be called to run the regridding
+    regrid_dir : pathlib.Path
+        path to directory where regridded files are written
+    regrid_batch_fp : pathlib.Path
+        path to the batch file containing paths of CMIP6 files to regrid
+    dst_fp : pathlib.Path
+        path to file being used as template / reference for destination grid
+    no_clobber : bool
+        if True, do not overwrite regridded files if they already exist
+    interp_method : str
+        method to use for regridding interpolation
+    sbatch_head : dict
+        string for sbatch head script
+    src_sftlf_fp : pathlib.Path
+        path to the source grid sftlf file
+    dst_sftlf_fp : pathlib.Path
+        path to the destination grid sftlf file
 
-    Returns:
-        None, writes the commands to sbatch_fp
-
-    Notes:
-        since these jobs seem to take on the order of 5 minutes or less, seems better to just run through all years once a node is secured for a job, instead of making a single job for every year / variable combination
+    Note - since these jobs seem to take on the order of 5 minutes or less,
+    seems better to just run through all years once a node is secured for a job,
+    instead of making a single job for every year / variable combination.
     """
     pycommands = "\n"
     pycommands += (
@@ -91,12 +111,16 @@ def write_sbatch_regrid(
 
 
 def submit_sbatch(sbatch_fp):
-    """Submit a script to slurm via sbatch
+    """Submit a script to slurm via sbatch.
 
-    Args:
-        sbatch_fp (pathlib.PosixPath): path to .slurm script to submit
+    Parameters
+    ----------
+    sbatch_fp : pathlib.PosixPath
+        path to .slurm script to submit
 
-    Returns:
+    Returns
+    -------
+    str
         job id for submitted job
     """
     out = subprocess.check_output(["sbatch", str(sbatch_fp)])
@@ -106,7 +130,39 @@ def submit_sbatch(sbatch_fp):
 
 
 def parse_args():
-    """Parse some arguments"""
+    """Parse some command line arguments.
+
+    Returns
+    -------
+    slurm_dir : pathlib.Path
+        path to directory where slurm files are written
+    regrid_dir : pathlib.Path
+        path to directory where regridded files are written
+    regrid_batch_dir : pathlib.Path
+        path to directory where batch files are stored
+    conda_init_script : pathlib.Path
+        path to conda init script
+    conda_env_name : str
+        name of conda environment to activate
+    regrid_script : pathlib.Path
+        path to main worker regrid.py script for processing
+    target_grid_fp : pathlib.Path
+        path to file used as the regridding target
+    target_sftlf_fp : str
+        path to the target grid sftlf file, must be supplied if any variables are land/sea
+    no_clobber : bool
+        do not overwrite existing regidded files
+    interp_method : str
+        method to use for regridding interpolation
+    vars : str
+        List of variables to generate batch files for
+    freqs : str
+        List of frequencies to use for generating batch files
+    models : str
+        List of models to use for generating batch files
+    scenarios : str
+        List of scenarios to use for generating batch files
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--slurm_dir",
@@ -247,7 +303,8 @@ if __name__ == "__main__":
             for model in models.split():
                 for scenario in scenarios.split():
                     # find the batch file for this model, scenario, variable, and frequency
-                    # now that they are split up by model and scenario as well, most will only be one single file, but it's not garuanteed
+                    # now that they are split up by model and scenario as well,
+                    # most will only be one single file, but it's not garuanteed
                     for fp in regrid_batch_dir.glob(
                         f"batch_{model}*{scenario}*{freq}*{var}*.txt"
                     ):
