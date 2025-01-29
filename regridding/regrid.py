@@ -6,6 +6,7 @@ Note - this script first crops the dataset to the panarctic domain of 50N and up
 import argparse
 import random
 import time
+import traceback
 import warnings
 from datetime import datetime
 from pathlib import Path
@@ -80,6 +81,11 @@ def parse_args():
         help="Interpolation method to use for regridding",
     )
     parser.add_argument(
+        "--rasdafy",
+        action="store_true",
+        help="Do some Rasdaman-specific tweaks to the data",
+    )
+    parser.add_argument(
         "--no-clobber",
         action="store_true",
         help="Do not overwrite existing regidded files",
@@ -87,12 +93,13 @@ def parse_args():
     args = parser.parse_args()
 
     return (
-        args.regrid_batch_fp,
+        Path(args.regrid_batch_fp),
         args.dst_fp,
         args.src_sftlf_fp,
         args.dst_sftlf_fp,
         Path(args.out_dir),
         args.interp_method,
+        args.rasdafy,
         args.no_clobber,
     )
 
@@ -317,7 +324,7 @@ def dayfreq_360day_to_noleap(ds):
     out_ds.attrs = ds.attrs
     out_ds.time.encoding = ds.time.encoding
     out_ds.time.encoding["calendar"] = "noleap"
-    out_ds.time.encoding["units"] = "days since 1950-01-01 00:00:00"
+    out_ds.time.encoding["units"] = "days since 1950-01-01"
     out_ds.time.attrs = ds.time.attrs
 
     return out_ds
@@ -338,8 +345,8 @@ def dayfreq_gregorian_to_noleap(ds):
         Dataset with time axis converted from gregorian to noleap
     """
     out_ds = ds.sel(time=~((ds.time.dt.day == 29) & (ds.time.dt.month == 2)))
+    del out_ds.time.encoding["dtype"]  # let this be assigned?
     out_ds.time.encoding["calendar"] = "noleap"
-    out_ds.time.encoding["units"] = "days since 1950-01-01 00:00:00"
     # Run this function just to ensure consistent hour values
     out_ds = fix_hour_in_time_dim(out_ds)
 
@@ -416,7 +423,7 @@ def Amonfreq_fix_time(out_ds, src_ds):
     out_ds = out_ds.assign_coords(time=new_times)
     out_ds.time.encoding = src_ds.time.encoding
     out_ds.time.encoding["calendar"] = "noleap"
-    out_ds.time.encoding["units"] = "days since 1950-01-01 00:00:00"
+    out_ds.time.encoding["units"] = "days since 1950-01-01"
     out_ds.time.attrs = src_ds.time.attrs
 
     return out_ds
@@ -501,7 +508,6 @@ def fix_time_and_write(out_ds, src_ds, out_fp):
     out_fps : list
         List of filepaths written to
     """
-    out_fps = []
     if check_is_dayfreq(out_ds):
         # make sure we assign correct daily frequency type
         out_ds.attrs["frequency"] = [
@@ -509,14 +515,12 @@ def fix_time_and_write(out_ds, src_ds, out_fp):
         ][0]
         if isinstance(out_ds.time.values[0], cftime._cftime.Datetime360Day):
             out_ds = dayfreq_360day_to_noleap(out_ds)
-        # elif isinstance(out_ds.time.values[0], cftime._cftime.DatetimeNoLeap):
-        #     out_ds = dayfreq_360day_to_noleap(out_ds)
         elif isinstance(out_ds.time.values[0], np.datetime64):
             out_ds = dayfreq_gregorian_to_noleap(out_ds)
         else:
-            # some variations of this calendar are called 365_day.
-            #  Just ensure they are all the exact same: "noleap"
-            out_ds.time.encoding["calendar"] = "noleap"
+            assert isinstance(
+                out_ds.time.values[0], cftime._cftime.DatetimeNoLeap
+            ), f"Unrecognized time type: {type(out_ds.time.values[0])}"
 
     elif check_is_monfreq(out_ds):
         # make sure we assign correct monthly frequency type
@@ -524,6 +528,17 @@ def fix_time_and_write(out_ds, src_ds, out_fp):
             s for s in variables[out_ds.attrs["variable_id"]]["table_ids"] if "mon" in s
         ][0]
         out_ds = Amonfreq_fix_time(out_ds, src_ds)
+
+    # make sure the time axis is unlimited (this means it is a "record dimension" in netCDF parlance)
+    out_ds.encoding["unlimited_dims"] = ["time"]
+    # just ensuring we have a consistent time units value
+    out_ds.time.encoding["units"] = "days since 1950-01-01"
+    # some variations of this calendar are called 365_day.
+    # We will ensure they are all "noleap" for consistency.
+    out_ds.time.encoding["calendar"] = "noleap"
+    # also ensure time axis encoding dtype is removed,
+    # sometimes the incorrect dtype is assigned? perhaps at regridding?
+    del out_ds.time.encoding["dtype"]
 
     # make sure bnds variables are out, we probably don't need for this dataset
     # just makes things simpler.
@@ -533,6 +548,7 @@ def fix_time_and_write(out_ds, src_ds, out_fp):
             out_ds = out_ds.drop_vars(bnd_var)
 
     # write out everything (monthly and daily freqs) by year
+    out_fps = []
     for year, year_ds in out_ds.groupby("time.year"):
         if year_ds.time.shape[0] == 1:
             # skip weird files where first time value is last day of a year
@@ -543,6 +559,7 @@ def fix_time_and_write(out_ds, src_ds, out_fp):
         year_out_fp = generate_single_year_filename(out_fp, year_ds)
         # Make sure we are writing the time dimension as noleap
         assert year_ds.time.encoding["calendar"] == "noleap"
+
         year_ds.to_netcdf(year_out_fp)
         out_fps.append(year_out_fp)
 
@@ -698,7 +715,6 @@ def prep_for_landsea(src_init_ds, dst_ds, src_sftlf_fp, dst_sftlf_fp):
     # set the threshold for land/sea area percentage if derived from sftlf file
     threshold = 0
     # use sftlf file for destination dataset always (assumes the target grid dataset is a non-land/sea variable)
-    print(dst_sftlf_fp)
     dst_landmask = regrid_sftlf_landmask(dst_sftlf_fp, dst_ds, threshold)
     src_has_mask = check_src_nanmask(src_init_ds, dst_landmask)
 
@@ -821,9 +837,6 @@ def rasdafy(ds):
     ds : xarray.Dataset
         Dataset prepared for Rasdaman ingestion
     """
-    # make sure the time axis is unlimited (this means it is a "record dimension" in netCDF parlance)
-    ds.encoding["unlimited_dims"] = ["time"]
-
     # drop bnds dimension if it exists
     for bnd_dim in ["bnds", "nbnd", "lat_bnds", "lon_bnds", "time_bnds"]:
         ds = ds.drop_dims(bnd_dim, errors="ignore")
@@ -861,8 +874,9 @@ def fix_attrs(ds):
         Dataset with attributes fixed
     """
     # make sure longitude min and max attributes are set correctly
-    ds["lon"].attrs["valid_max"] = 180
-    ds["lon"].attrs["valid_min"] = -180
+    if "lon" in ds.dims:
+        ds["lon"].attrs["valid_max"] = 180
+        ds["lon"].attrs["valid_min"] = -180
 
     # fix interpolation method attributes (could be remnants from GCM that don't match)
     var_id = get_var_id(ds)
@@ -948,7 +962,7 @@ def parse_output_filename_times_from_file(fp):
     return timerange_strings
 
 
-def regrid_dataset(fp, regridder, out_fp, src_mask=None):
+def regrid_dataset(fp, regridder, out_fp, src_mask=None, rasdafy=False):
     """Regrid a dataset using a regridder object initiated using the target grid with
     a latitude domain of 50N and up.
 
@@ -962,6 +976,8 @@ def regrid_dataset(fp, regridder, out_fp, src_mask=None):
         Path to write regridded file to
     src_mask : xarray.DataArray
         Mask for the source dataset, if available
+    rasdafy : bool
+        Whether to apply some tweaks to the dataset to make it better for Rasdaman ingestion
 
     Returns
     -------
@@ -985,7 +1001,8 @@ def regrid_dataset(fp, regridder, out_fp, src_mask=None):
         regrid_ds = apply_wgs84(regrid_ds)
 
     # rasdafy the dataset
-    regrid_ds = rasdafy(regrid_ds)
+    if rasdafy:
+        regrid_ds = rasdafy(regrid_ds)
 
     # if the variable is a fixed frequency variable, just write it as is without any time modifications
     # this should never occur because only daily and monthly frequency data should be regridded,
@@ -1007,6 +1024,7 @@ if __name__ == "__main__":
         dst_sftlf_fp,
         out_dir,
         interp_method,
+        rasdafy,
         no_clobber,
     ) = parse_args()
 
@@ -1079,11 +1097,11 @@ if __name__ == "__main__":
             if "mask" in src_init_ds.data_vars:
                 src_mask = src_init_ds["mask"]
             try:
-                results.append(regrid_dataset(fp, regridder, out_fp, src_mask))
+                results.append(regrid_dataset(fp, regridder, out_fp, src_mask, rasdafy))
             except Exception as e:
                 errs.append(str(fp))
                 print(f"\nFILE NOT REGRIDDED: {fp}\n     Errors printed below:\n")
-                print(e, "\n")
+                traceback.print_exc()
 
     print(
         f"Regridding done, {len(results)} files regridded in {np.round((time.perf_counter() - tic) / 60, 1)}m"
