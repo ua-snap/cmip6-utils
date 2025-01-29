@@ -446,7 +446,7 @@ if __name__ == "__main__":
     _ = [fp.unlink() for fp in regrid_batch_dir.glob("*.txt")]
 
     for name, group_df in results_df.groupby(
-        ["model", "scenario", "var_id", "frequency"]
+        ["model", "scenario", "variable_id", "frequency"]
     ):
         # make sure that there are not multiple grids within one model/scenario at this point
         model, scenario, var_id, frequency = name
