@@ -11,6 +11,7 @@ import pandas as pd
 import xarray as xr
 from pandas.errors import OutOfBoundsDatetime
 from pyproj import Proj, Transformer
+from xclim.core import units
 
 from regrid import (
     generate_regrid_filepath,
@@ -265,9 +266,10 @@ def orient_latlon_bbox(src_fp, bbox):
                 bbox = (bbox[2], bbox[1], bbox[0], bbox[3])
 
         if any(ds.lon > 180):
+            print(f"Source file has longitudes greater than 180. Current bbox: {bbox}")
             # assumes src is on 0, 360 if any value greater than 180
             if bbox[0] < 0:
-                bbox = (bbox[0] + 180, bbox[1], bbox[2] + 180, bbox[3])
+                bbox = ((bbox[0] + 360) % 360, bbox[1], (bbox[2] + 360) % 360, bbox[3])
 
     return bbox
 
@@ -936,7 +938,9 @@ def plot_comparison(regrid_fp, cmip6_dir):
 
     # ensure extent and units are consistent with regridded dataset
     src_ds = subset_by_bbox(src_ds, src_bbox)
-    src_ds = convert_units(src_ds)
+    src_ds[var_id] = units.convert_units_to(
+        src_ds[var_id], regrid_ds[var_id].attrs["units"]
+    )
 
     # get a vmin and vmax from src dataset to use for both plots, if a map
     try:
@@ -958,9 +962,10 @@ def plot_comparison(regrid_fp, cmip6_dir):
             ax=axes[0], vmin=vmin, vmax=vmax
         )
         axes[0].set_title(f"Source dataset (timestamp: {src_time})")
-        regrid_ds[var_id].sel(time=time_val).transpose("lat", "lon").plot(
-            ax=axes[1], vmin=vmin, vmax=vmax
+        regrid_ds = (
+            regrid_ds.tranpose("lat", "lon") if "lat" in regrid_ds.dims else regrid_ds
         )
+        regrid_ds[var_id].sel(time=time_val).plot(ax=axes[1], vmin=vmin, vmax=vmax)
         axes[1].set_title(f"Regridded dataset (timestamp: {time_val})")
         axes[1].set_xlabel("longitude [standard]")
         plt.show()
