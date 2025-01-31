@@ -279,6 +279,15 @@ def dayfreq_360day_to_noleap(ds):
     start_year = ts[0].year
     end_year = ts[-1].year
 
+    # okay if there are coordinates indexed by time that are NOT time, just be like "no"
+    # this happens with e.g. a grid mapping variable, such as spatial_ref, created
+    # by rioxrarray. These do not need to be indexed by time and, the regridding may convert
+    # them to an actual coordinate instead of a data variable.
+    # taking mean over the time dim below causes issues.
+    assert all(
+        ["time" not in ds.coords[coord].dims for coord in ds.coords if coord != "time"]
+    ), "Non-time coordinates indexed by time detected. Check for time-indexed grid mapping variable in target dataset"
+
     # we will split, compute means, and combine on the random dates selected
     # iterate over years, compute the dates to do this for
     year_da_list = []
@@ -490,9 +499,8 @@ def check_is_monfreq(ds):
     return get_time_res_days(ds) in [28, 29, 30, 31]
 
 
-def fix_time_and_write(out_ds, src_ds, out_fp):
+def fix_time(out_ds, src_ds):
     """Fix the time dimension of a regridded dataset if needed;
-    write dataset, splitting by appropriate time chunks if needed.
 
     Parameters
     ----------
@@ -500,8 +508,6 @@ def fix_time_and_write(out_ds, src_ds, out_fp):
         Dataset to fix the time dimension of
     src_ds : xarray.Dataset
         Source dataset used to create out_ds (for fixing time axis)
-    out_fp : pathlib.Path
-        Filepath to write the dataset to
 
     Returns
     -------
@@ -547,6 +553,24 @@ def fix_time_and_write(out_ds, src_ds, out_fp):
         if bnd_var in out_ds:
             out_ds = out_ds.drop_vars(bnd_var)
 
+    return out_ds
+
+
+def write_regridded_files(out_ds, out_fp):
+    """Write a regridded dataset to files for each year.
+
+    Parameters
+    ----------
+    out_ds : xarray.Dataset
+        Dataset to write to a file
+    out_fp : pathlib.Path
+        Filepath to write the dataset to
+
+    Returns
+    -------
+    out_fp : pathlib.Path
+        Filepath written to
+    """
     # write out everything (monthly and daily freqs) by year
     out_fps = []
     for year, year_ds in out_ds.groupby("time.year"):
@@ -565,7 +589,7 @@ def fix_time_and_write(out_ds, src_ds, out_fp):
 
     [print(f"{fp} done") for fp in out_fps]
 
-    return out_fps
+    return out_fp
 
 
 def get_var_id(ds):
@@ -986,6 +1010,9 @@ def regrid_dataset(fp, regridder, out_fp, src_mask=None, rasdafy=False):
     """
     # open the source dataset
     src_ds = xr.open_dataset(fp)
+    # imposing this restriction will help with datasets that have just tons of
+    # daily data in a single file, far more than we need e.g. back to 1850
+    src_ds = src_ds.sel(time=slice("1950", "2100"))
 
     # add mask if not none
     if src_mask is not None:
@@ -994,7 +1021,11 @@ def regrid_dataset(fp, regridder, out_fp, src_mask=None, rasdafy=False):
     regrid_task = regridder(src_ds, keep_attrs=True)
     regrid_ds = regrid_task.compute()
 
-    regrid_ds = fix_attrs(regrid_ds)
+    # if the variable is a fixed frequency variable, just write it as is without any time modifications
+    # this should never occur because only daily and monthly frequency data should be regridded,
+    # but technically possible if the prefect parameters ever include "fx", "Ofx", or "orog" frequencies
+    if not any(fixed_freq_var in str(out_fp) for fixed_freq_var in ["sftlf", "sftof"]):
+        out_ds = fix_time(regrid_ds, src_ds)
 
     # add CRS info
     if "lon" in regrid_ds.dims:
@@ -1004,13 +1035,10 @@ def regrid_dataset(fp, regridder, out_fp, src_mask=None, rasdafy=False):
     if rasdafy:
         regrid_ds = rasdafy(regrid_ds)
 
-    # if the variable is a fixed frequency variable, just write it as is without any time modifications
-    # this should never occur because only daily and monthly frequency data should be regridded,
-    # but technically possible if the prefect parameters ever include "fx", "Ofx", or "orog" frequencies
-    if any(fixed_freq_var in str(out_fp) for fixed_freq_var in ["sftlf", "sftof"]):
-        regrid_ds.to_netcdf(out_fp)
-    else:
-        out_fp = fix_time_and_write(regrid_ds, src_ds, out_fp)
+    # fix attributes
+    regrid_ds = fix_attrs(regrid_ds)
+    # write
+    out_fp = write_regridded_files(out_ds, out_fp)
 
     return out_fp
 
