@@ -5,9 +5,7 @@ Usage:
 """
 
 import argparse
-import datetime
 import multiprocessing as mp
-from itertools import product
 from pathlib import Path
 import numpy as np
 import xarray as xr
@@ -156,7 +154,8 @@ if __name__ == "__main__":
                 # do the adapt frequency thingy for precipitation data
                 train_kwargs.update(adapt_freq_thresh="1 mm d-1")
 
-            dqm = sdba.DetrendedQuantileMapping.train(**train_kwargs)
+            # dqm = sdba.DetrendedQuantileMapping.train(**train_kwargs)
+            dqm = sdba.QuantileDeltaMapping.train(**train_kwargs)
 
             # Create the detrending object
             det = LoessDetrend(
