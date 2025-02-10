@@ -847,7 +847,7 @@ def convert_units(ds):
     return ds
 
 
-def rasdafy(ds):
+def rasdafy_dataset(ds):
     """Apply some tweaks to the data that make things better for Rasdaman ingestion.
     We want to make sure the axes are ordered (time, lon, lat), that the time axis is "unlimited",
     and that the latitutde axis is in decreasing order.
@@ -1035,7 +1035,7 @@ def regrid_dataset(fp, regridder, out_fp, src_mask=None, rasdafy=False):
 
     # rasdafy the dataset
     if rasdafy:
-        regrid_ds = rasdafy(regrid_ds)
+        regrid_ds = rasdafy_dataset(regrid_ds)
 
     # fix attributes
     regrid_ds = fix_attrs(regrid_ds)
