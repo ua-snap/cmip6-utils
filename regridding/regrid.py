@@ -44,6 +44,8 @@ def parse_args():
         Interpolation method to use for regridding
     no_clobber : bool
         Do not overwrite existing regidded files
+    rasdafy : bool
+        Do some Rasdaman-specific tweaks to the data
     """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(

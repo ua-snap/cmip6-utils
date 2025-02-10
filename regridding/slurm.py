@@ -48,6 +48,7 @@ def write_sbatch_regrid(
     dst_fp,
     no_clobber,
     interp_method,
+    rasdafy,
     sbatch_head,
     src_sftlf_fp=None,
     dst_sftlf_fp=None,
@@ -73,6 +74,8 @@ def write_sbatch_regrid(
         if True, do not overwrite regridded files if they already exist
     interp_method : str
         method to use for regridding interpolation
+    rasdafy : bool
+        Do some Rasdaman-specific tweaks to the data
     sbatch_head : dict
         string for sbatch head script
     src_sftlf_fp : pathlib.Path
@@ -96,6 +99,9 @@ def write_sbatch_regrid(
         pycommands += f"--src_sftlf_fp {src_sftlf_fp} "
     if dst_sftlf_fp is not None:
         pycommands += f"--dst_sftlf_fp {dst_sftlf_fp} "
+
+    if rasdafy:
+        pycommands += "--rasdafy "
 
     if no_clobber:
         pycommands += "--no-clobber \n\n"
@@ -224,6 +230,11 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
+        "--rasdafy",
+        action="store_true",
+        help="Do some Rasdaman-specific tweaks to the data",
+    )
+    parser.add_argument(
         "--vars",
         type=str,
         help="list of variables used in generating batch files",
@@ -260,6 +271,7 @@ def parse_args():
         args.target_sftlf_fp,
         args.no_clobber,
         args.interp_method,
+        args.rasdafy,
         args.vars,
         args.freqs,
         args.models,
@@ -279,6 +291,7 @@ if __name__ == "__main__":
         target_sftlf_fp,
         no_clobber,
         interp_method,
+        rasdafy,
         vars,
         freqs,
         models,
@@ -328,6 +341,7 @@ if __name__ == "__main__":
                             "no_clobber": no_clobber,
                             "interp_method": interp_method,
                             "sbatch_head": sbatch_head,
+                            "rasdafy": rasdafy,
                         }
                         if var in landsea_variables:
                             assert (
