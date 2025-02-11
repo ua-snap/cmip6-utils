@@ -269,7 +269,11 @@ def orient_latlon_bbox(src_fp, bbox):
             print(f"Source file has longitudes greater than 180. Current bbox: {bbox}")
             # assumes src is on 0, 360 if any value greater than 180
             if bbox[0] < 0:
-                bbox = ((bbox[0] + 360) % 360, bbox[1], (bbox[2] + 360) % 360, bbox[3])
+                # bbox = ((bbox[0] + 360) % 360, bbox[1], (bbox[2] + 360) % 360, bbox[3])
+                bbox = ((bbox[0] + 180), bbox[1], (bbox[2] + 180), bbox[3])
+
+            print(f"Updated bbox: {bbox}")
+            print(f"Source longitudes: {ds.lon.values[0]} - {ds.lon.values[-1]}")
 
     return bbox
 
@@ -636,6 +640,33 @@ def subsample_files(fps, min_qc=20, max_qc=75):
     return qc_files
 
 
+def buffer_src_min_max(min, max):
+    """Add a buffer to min and max values, as regridded data can be slightly larger or
+    smaller due to certain interpolations methods (e.g. bilinear).
+
+    Parameters
+    ----------
+    min : float
+        The minimum value.
+    max : float
+        The maximum value.
+
+    Returns
+    -------
+    min : float
+        The minimum value with buffer added.
+    max : float
+        The maximum value with buffer added.
+    """
+    # 5% buffer
+    buffer = 0.05
+    min_max_range = max - min
+    min = min - (min_max_range * buffer)
+    max = max + (min_max_range * buffer)
+
+    return min, max
+
+
 def compare_expected_to_existing_and_check_values(
     regrid_dir,
     regrid_batch_dir,
@@ -745,6 +776,9 @@ def compare_expected_to_existing_and_check_values(
             src_min_max[str(src_fp)]["min"],
             src_min_max[str(src_fp)]["max"],
         )
+
+        src_min, src_max = buffer_src_min_max(src_min, src_max)
+
         # iterate thru expected filepaths
         # only want those of expected that made it into qc_regrid_fps
         for regrid_fp in [fp for fp in expected_regrid_fps if fp in qc_regrid_fps]:
