@@ -266,14 +266,17 @@ def orient_latlon_bbox(src_fp, bbox):
                 bbox = (bbox[2], bbox[1], bbox[0], bbox[3])
 
         if any(ds.lon > 180):
-            print(f"Source file has longitudes greater than 180. Current bbox: {bbox}")
             # assumes src is on 0, 360 if any value greater than 180
             if bbox[0] < 0:
-                # bbox = ((bbox[0] + 360) % 360, bbox[1], (bbox[2] + 360) % 360, bbox[3])
-                bbox = ((bbox[0] + 180), bbox[1], (bbox[2] + 180), bbox[3])
-
-            print(f"Updated bbox: {bbox}")
-            print(f"Source longitudes: {ds.lon.values[0]} - {ds.lon.values[-1]}")
+                if bbox[2] < 0:
+                    # if both west and east bounds of bbox are negative, simple modulus is fine
+                    bbox = ((bbox[0] % 360), bbox[1], (bbox[2] % 360), bbox[3])
+                else:
+                    # but if east bound is positive, then this can technically only be captured
+                    # with two bounding boxes on the 0,360 domain.
+                    bbox1 = (0, bbox[1], bbox[2], bbox[3])
+                    bbox2 = ((bbox[0] % 360), bbox[1], 359.9, bbox[3])
+                    bbox = [bbox1, bbox2]
 
     return bbox
 
@@ -537,6 +540,14 @@ def subset_latlon(ds, bbox):
     return ds
 
 
+def subset_latlon_multiple(ds, bboxes):
+    ds_list = []
+    for bbox in bboxes:
+        ds_list.append(subset_latlon(ds, bbox))
+
+    return xr.concat(ds_list, dim="lon")
+
+
 def subset_by_bbox(ds, bbox):
     """Subset a dataset by a bounding box.
 
@@ -555,7 +566,10 @@ def subset_by_bbox(ds, bbox):
         Subsetted dataset.
     """
     if ("lon" in ds.dims) and ("lat" in ds.dims):
-        ds = subset_latlon(ds, bbox)
+        if isinstance(bbox, list):
+            ds = subset_latlon_multiple(ds, bbox)
+        else:
+            ds = subset_latlon(ds, bbox)
         if len(ds.lat) == 0:
             print(f"Lat dim is 0! bbox: {bbox}, ds: {ds}")
 
