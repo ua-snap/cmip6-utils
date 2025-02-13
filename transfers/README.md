@@ -13,7 +13,7 @@ These requested data cover an historical to end-of-century time period, with the
 The goals of this pipeline are to:
 1. Identify the target data by comparing our requested data with the current holdings in ESGF using an audit.
 2. Transfer that target data to the ACDN.
-3. Testing that we have successfully identified and transferred the target data.
+3. Test that we have successfully identified and transferred the target data.
 
 This pipeline will transfer all target data using the native ESGF directory structure:
 
@@ -21,8 +21,7 @@ This pipeline will transfer all target data using the native ESGF directory stru
 <root>/<activity>/<institution>/<model>/<scenario>/<variant>/<frequency>/<variable>/<grid type>/<version>/
 ```
 
-For the ACDN, the `<root>` folder is `/beegfs/CMIP6/arctic-cmip6/CMIP6/` directory on Chinook, which corresponds to the "UAF Arctic CMIP6" collection in Globus. On the LLNL's ESGF node, `<root>` is `/css03_data/CMIP6/`.
-
+For the ACDN, the `<root>` folder is `/beegfs/CMIP6/arctic-cmip6/CMIP6/` directory on Chinook, which corresponds to the "UAF Arctic CMIP6" collection in Globus. On the LLNL's ESGF node, `<root>` is `/css03_data/CMIP6/`, except for E3SM ScenarioMIP data where `<root>` is  `user_pub_work/CMIP6`.
 ## Pipeline
 
 ### Components
@@ -34,6 +33,7 @@ Below is a list of the components in the pipeline and a short description of eac
 * `conda_init.sh`: a shell script for initializing conda in a blank shell that does not read the typical `.bashrc`, as is the case with new slurm jobs.
 * `config.py`: sets some constant variables such as the main list of models, scenarios, variables, and frequencies to transfer to ACDN.
 * `esgf_holdings.py`: script to run an audit which will generate a table of CMIP6 holdings on a given ESGF node using models, scenarios, variables, and frequencies provided in `config.py`.
+* `esgf_holdings_e3sm.py`: script to run an audit for E3SM data, which is partially located on a different ESGF node directory.
 * `generate_batch_files.py`: script to generate the batch files of \<source> \<destination> filepaths for transferring files.
 * `generate_manifest.py`: script for generating the manifest tables of files we wish to transfer to ACDN.
 * `holdings_summary_wrf`: notebook exposing summary tables of data availability based on the audit results tables (for subdaily variables used in WRF only)
@@ -81,13 +81,15 @@ Email address to send failed slurm job notifications to.
 export SLURM_EMAIL=kmredilla@alaska.edu
 ```
 
-4. Use the `esgf_holdings.py` to create tables detailing availability of requested data combinations on a particular ESGF node. Requested data combinations used in this script are sourced from `config.py`. This script creates lists of the available filenames for all requested data. The script will print statements about any empty folders encountered, and any HTTP errors encountered. To save these outputs for review, `tee` the output to a file. To list available data on the LLNL node, run it as a script like so:
+4. Use the `esgf_holdings.py` and `esgf_holdings_e3sm.py` scripts to create tables detailing availability of requested data combinations on a particular ESGF node. Requested data combinations used in this script are sourced from `config.py`. This script creates lists of the available filenames for all requested data. The script will print statements about any empty folders encountered, and any HTTP errors encountered. To save these outputs for review, `tee` the output to a file. To list available data on the LLNL node, run the scripts like so:
 
 ```
 python esgf_holdings.py --node llnl --ncpus 24 | tee esgf_holdings_output.txt
+python esgf_holdings_e3sm.py --node llnl --ncpus 24 | tee esgf_holdings_e3sm_output.txt
+
 ```
 
-To do the same for the variables we want at non-standard freqeuncies for future WRF runs, add the `--wrf` flag:
+To do the same for the variables we want at non-standard freqeuncies for future WRF runs, add the `--wrf` flag (not available in `esgf_holdings_e3sm.py`):
 
 ```
 python esgf_holdings.py --node llnl --wrf --ncpus 24 | tee esgf_holdings_wrf_output.txt
