@@ -685,6 +685,7 @@ def compare_expected_to_existing_and_check_values(
     regrid_dir,
     regrid_batch_dir,
     slurm_dir,
+    cmip6_dir,
     vars,
     freqs,
     models,
@@ -703,6 +704,8 @@ def compare_expected_to_existing_and_check_values(
         Path to the directory containing the batch files used for regridding.
     slurm_dir : path-like
         Path to the directory containing the .out files from the regridding jobs.
+    cmip6_dir : path-like
+        Path to the directory containing the CMIP6 files.
     vars : str
         ' '-separated string of variable names.
     freqs : str
@@ -758,6 +761,16 @@ def compare_expected_to_existing_and_check_values(
             "min": result["min"],
             "max": result["max"],
         }
+
+    # only need the source files for which there are regridded files being QC'd
+    src_fps = list(
+        set(
+            [
+                generate_cmip6_filepath_from_regrid_filename(fp.name, cmip6_dir)
+                for fp in qc_regrid_fps
+            ]
+        )
+    )
 
     # think we need to be getting the src_bbox for each source file
     src_bboxes = [get_src_bbox(fp, existing_regrid_fps[0]) for fp in src_fps]
@@ -992,36 +1005,28 @@ def plot_comparison(regrid_fp, cmip6_dir):
 
     # get a vmin and vmax from src dataset to use for both plots, if a map
     try:
-        vmin = np.nanmin(
-            src_ds[var_id].sel(time=src_time, method=sel_method)
-            # .sel(lat=src_lat_slice, lon=lon_slice_src)
-            .values
-        )
-        vmax = np.nanmax(
-            src_ds[var_id].sel(time=src_time, method=sel_method)
-            # .sel(lat=src_lat_slice, lon=lon_slice_src)
-            .values
-        )
+        vmin = np.nanmin(src_ds[var_id].sel(time=src_time, method=sel_method).values)
+        vmax = np.nanmax(src_ds[var_id].sel(time=src_time, method=sel_method).values)
     except:
         print("Error getting vmin and vmax values from source data.")
 
-    try:  # maps
-        src_ds[var_id].sel(time=src_time, method=sel_method).plot(
-            ax=axes[0], vmin=vmin, vmax=vmax
-        )
+    src_plot_da = src_ds[var_id].sel(time=src_time, method=sel_method)
+    regrid_plot_da = regrid_ds[var_id].sel(time=time_val)
+    # if regrid is "rasdafied" then dim order will be time, lon, lat
+    regrid_x = "lon" if "lon" in regrid_plot_da.dims else "x"
+
+    if len(src_plot_da.dims) == 2:
+        src_plot_da.plot(ax=axes[0], vmin=vmin, vmax=vmax)
         axes[0].set_title(f"Source dataset (timestamp: {src_time})")
-        regrid_ds = (
-            regrid_ds.tranpose("lat", "lon") if "lat" in regrid_ds.dims else regrid_ds
-        )
-        regrid_ds[var_id].sel(time=time_val).plot(ax=axes[1], vmin=vmin, vmax=vmax)
+        regrid_plot_da.plot(x=regrid_x, ax=axes[1], vmin=vmin, vmax=vmax)
         axes[1].set_title(f"Regridded dataset (timestamp: {time_val})")
-        axes[1].set_xlabel("longitude [standard]")
         plt.show()
 
-    except:  # histograms
-        src_ds[var_id].sel(time=src_time, method=sel_method).plot(ax=axes[0])
+    else:
+        # plot histograms if not a 2d dataarray
+        src_plot_da.plot(ax=axes[0])
         axes[0].set_title(f"Source dataset (timestamp: {src_time})")
-        regrid_ds[var_id].sel(time=time_val).plot(ax=axes[1])
+        regrid_plot_da.sel(time=time_val).plot(ax=axes[1])
         axes[1].set_title(f"Regridded dataset (timestamp: {time_val})")
 
     plt.show()
