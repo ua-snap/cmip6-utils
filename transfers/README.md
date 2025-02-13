@@ -13,7 +13,7 @@ These requested data cover an historical to end-of-century time period, with the
 The goals of this pipeline are to:
 1. Identify the target data by comparing our requested data with the current holdings in ESGF using an audit.
 2. Transfer that target data to the ACDN.
-3. Testi that we have successfully identified and transferred the target data.
+3. Test that we have successfully identified and transferred the target data.
 
 This pipeline will transfer all target data using the native ESGF directory structure:
 
