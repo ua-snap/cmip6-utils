@@ -1,6 +1,8 @@
 # Regrid CMIP6 on ACDN
 
-This directory is used for regridding the CMIP6 data mirrored on the ACDN to a common grid. The target grid is the NCAR CESM2 grid, which is also shared by a number of the other chosen models.
+This directory is used for regridding the CMIP6 data mirrored on the Arctic Climate Data Node. This pipeline will regrid the specified set of models, scenarios, variables, and frequencies (e.g. temporal resolutions) to the grid of some specified file (referred to as the target grid file). This includes cropping the extent of regridded outputs to match the extent of the target file if it is of a larger extent.
+
+Note - this pipeline was previously used for a single fixed grid - that used by the NCAR CESM2 model, which is also shared by a few of the other chosen models (TaiESM1, NorESM2-MM).
 
 This pipeline also crops these datasets to a pan-arctic domain of 50N - 90N. 
 
