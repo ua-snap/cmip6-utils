@@ -3,7 +3,7 @@
 This script is used to generate the batch_files/batch_<ESGF node>_(day|Amon)_<variable ID>.txt files that contain the filepaths (<source filepath (on ESGF node)> <destination filepath (on ACDN)>) to transfer to the Arctic Climate Data Node.
 
 Sample usage: 
-    python generate_batch_files.py --node llnl
+    python generate_batch_files.py
 """
 
 import argparse
@@ -15,33 +15,47 @@ from config import *
 def arguments(argv):
     """Parse some args"""
     parser = argparse.ArgumentParser()
-    parser.add_argument("--node", type=str, help="ESGF node to query", required=True)
+    parser.add_argument(
+        "--wrf",
+        action="store_true",
+        help="Whether or not to generate the batch files for the WRF variables, at sub-daily resolutions.",
+    )
     args = parser.parse_args()
-    esgf_node = args.node
+    do_wrf = args.wrf
 
-    return esgf_node
+    return do_wrf
 
 
-def generate_transfer_paths(row, freq):
+def generate_transfer_paths(row, table_id):
     """Generate the paths for transferring between LLNL ESGF node and ACDN
 
     Args:
         row (pandas.core.series.Series): a single row series from pandas.DataFrame.iterrows() on dataframe of desired data filenames
-        freq (str): temporal frequency to generate transfer paths for, should be either "day", or "Amon"
+        table_id (str): table ID to generate transfer paths for
 
     Returns:
         transfer_tpl (tuple): has format (<remote path>, <target path>) for the file in row["filename"]
     """
-    activity = "CMIP" if row["scenario"] == "historical" else "ScenarioMIP"
+    activity = (
+        "CMIP"
+        if row["scenario"] == "historical" or row["scenario"] == "piControl"
+        else "ScenarioMIP"
+    )
     model = row["model"]
-    institution = model_inst_lu[model]
+    if isinstance(model_inst_lu[model], list):
+        # if more than one inst for the model, choose the first if historical and second if scenario
+        institution = (
+            model_inst_lu[model][0] if activity == "CMIP" else model_inst_lu[model][1]
+        )
+    else:
+        institution = model_inst_lu[model]
     group_path = Path().joinpath(
         activity,
         institution,
         model,
         row["scenario"],
         row["variant"],
-        freq,
+        table_id,
         row["variable"],
         row["grid_type"],
         row["version"],
@@ -54,10 +68,10 @@ def generate_transfer_paths(row, freq):
     return transfer_tpl
 
 
-def write_batch_file(freq, var_id, transfer_paths):
+def write_batch_file(table_id, var_id, transfer_paths):
     """Write the batch file for a particular variable and scenario group"""
     batch_file = batch_dir.joinpath(
-        batch_tmp_fn.format(esgf_node=ESGF_NODE, freq=freq, var_id=var_id)
+        batch_tmp_fn.format(esgf_node="llnl", table_id=table_id, var_id=var_id)
     )
     with open(batch_file, "w") as f:
         for paths in transfer_paths:
@@ -66,20 +80,24 @@ def write_batch_file(freq, var_id, transfer_paths):
 
 if __name__ == "__main__":
     # this script only runs for a single ESGF node
-    ESGF_NODE = arguments(sys.argv)
+    do_wrf = arguments(sys.argv)
 
     # use the manifest file for generating batch files
+    suffix = "_wrf" if do_wrf else ""
     manifest = pd.read_csv(
-        manifest_tmp_fn.format(esgf_node=ESGF_NODE),
+        manifest_tmp_fn.format(esgf_node="llnl", suffix=suffix),
     )
 
     # group batch files by variable name and
     for var_id, var_df in manifest.groupby("variable"):
-        for freq, freq_df in var_df.groupby("frequency"):
+        for table_id, freq_df in var_df.groupby("table_id"):
+
             transfer_paths = []
             for i, row in freq_df.iterrows():
-                transfer_paths.append(generate_transfer_paths(row, freq))
+                # we are just skipping E3SM models here for now since there are permissions issues
+                if row["model"] not in e3sm_models_of_interest:
+                    transfer_paths.append(generate_transfer_paths(row, table_id))
 
             # only write batch file if transfer paths were found
             if transfer_paths != []:
-                write_batch_file(freq, var_id, transfer_paths)
+                write_batch_file(table_id, var_id, transfer_paths)
