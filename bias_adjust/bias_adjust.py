@@ -113,6 +113,11 @@ def drop_height(ds):
     except ValueError:
         ds = ds
 
+    try:
+        ds = ds.drop_vars("spatial_ref")
+    except ValueError:
+        ds = ds
+
     return ds
 
 
