@@ -1,8 +1,8 @@
 # this should be referenced in downscaling module
-sim_ref_var_lu = {"tasmax": "t2max", "dtr": "dtr", "pr": "tp"}
+sim_ref_var_lu = {"tasmax": "t2max", "tasmin": "t2min", "dtr": "dtr", "pr": "tp"}
 
 # lookup for "kind" arg of DQM training function
-varid_adj_kind_lu = {"tasmax": "+", "dtr": "*", "pr": "*"}
+varid_adj_kind_lu = {"tasmax": "+", "tasmin": "+", "dtr": "*", "pr": "*"}
 
 jitter_under_lu = {"pr": "0.01 mm d-1", "dtr": "1e-4 K"}
 
