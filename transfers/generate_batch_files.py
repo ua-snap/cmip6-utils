@@ -36,7 +36,11 @@ def generate_transfer_paths(row, table_id):
     Returns:
         transfer_tpl (tuple): has format (<remote path>, <target path>) for the file in row["filename"]
     """
-    activity = "CMIP" if row["scenario"] == "historical" else "ScenarioMIP"
+    activity = (
+        "CMIP"
+        if row["scenario"] == "historical" or row["scenario"] == "piControl"
+        else "ScenarioMIP"
+    )
     model = row["model"]
     if isinstance(model_inst_lu[model], list):
         # if more than one inst for the model, choose the first if historical and second if scenario
@@ -87,10 +91,6 @@ if __name__ == "__main__":
     # group batch files by variable name and
     for var_id, var_df in manifest.groupby("variable"):
         for table_id, freq_df in var_df.groupby("table_id"):
-
-            # skipping fx variables for now
-            if table_id in ["fx", "Ofx"]:
-                continue
 
             transfer_paths = []
             for i, row in freq_df.iterrows():

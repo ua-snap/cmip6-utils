@@ -183,16 +183,24 @@ variables = {
     },
     "prsn": {
         "name": "snowfall_flux",
-        "table_ids": ["Amon", "Omon", "day"],
-    },  # some models use Omon for table ID
+        "table_ids": ["Amon", "day"],
+    },
     "snd": {"name": "surface_snow_thickness", "table_ids": ["LImon", "Eday"]},
     "snw": {"name": "surface_snow_amount", "table_ids": ["LImon", "day"]},
     "rlds": {
         "name": "surface_downwelling_longwave_flux_in_air",
         "table_ids": ["Amon", "day"],
     },
+    "rlus": {
+        "name": "surface_upwelling_longwave_flux_in_air",
+        "table_ids": ["Amon", "day"],
+    },
     "rsds": {
         "name": "surface_downwelling_shortwave_flux_in_air",
+        "table_ids": ["Amon", "day"],
+    },
+    "rsus": {
+        "name": "surface_upwelling_shortwave_flux_in_air",
         "table_ids": ["Amon", "day"],
     },
     "rls": {
@@ -222,6 +230,11 @@ variables = {
     "hfss": {
         "name": "surface_upward_sensible_heat_flux",
         "table_ids": ["Amon", "day", "Eday"],
+    },
+    "tsl": {"name": "soil_temperature", "table_ids": ["Lmon", "Eday"]},
+    "mlotst": {
+        "name": "ocean_mixed_layer_thickness_defined_by_sigma_t",
+        "table_ids": ["Omon", "Eday"],
     },
 }
 
@@ -302,7 +315,6 @@ wrf_variables = {
         # mass_content_of_water_in_soil_layer is the most common one apparently, so we will go with that for now
         "name": "mass_content_of_water_in_soil_layer",
     },
-    "tsl": {"name": "soil_temperature"},
     # will not have the snw and siconc variables in here as we know there is no subdaily
 }
 
@@ -312,3 +324,18 @@ globus_esgf_endpoints = {
         "prefix": "/css03_data/CMIP6",
     }
 }
+
+# these are full filepaths of specific files we want to add to the manifest;
+# these do not get captured by our current audit workflow and so are hardcoded here
+# since these are all under the css03_data/CMIP6 directory, we can use the llnl_ep endpoint
+# adding the directory components directly to the manifest should be fine
+add_to_manifest = [
+    # sftlf
+    # these are the only two models that have additional sftlf data available on the LLNL ESGF node; KACE-1-0-G has no sftlf data, and MRI-ESM2-0 directories are empty (probably not accessible without DoD permissions)
+    "http://aims3.llnl.gov/thredds/dodsC/css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/piControl/r1i1p1f1/fx/sftlf/gn/v20190709/sftlf_fx_HadGEM3-GC31-LL_piControl_r1i1p1f1_gn.nc",
+    "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-MM/piControl/r1i1p1f1/fx/sftlf/gn/v20200108/sftlf_fx_HadGEM3-GC31-MM_piControl_r1i1p1f1_gn.nc",
+    # sftof
+    # these are the only two models that have additional sftof data available on the LLNL ESGF node; CNRM-CM6-1-HR, GFDL-ESM4, KACE-1-0-G, TaiESM1, E3SM-1-1 and E3SM-2-0 have no sftof data, and MRI-ESM2-0 directories are empty (probably not accessible without DoD permissions)
+    "http://aims3.llnl.gov/thredds/dodsC/css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-LL/piControl/r1i1p1f1/Ofx/sftof/gn/v20190709/sftof_Ofx_HadGEM3-GC31-LL_piControl_r1i1p1f1_gn.nc",
+    "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/CMIP/MOHC/HadGEM3-GC31-MM/piControl/r1i1p1f1/Ofx/sftof/gn/v20200108/sftof_Ofx_HadGEM3-GC31-MM_piControl_r1i1p1f1_gn.nc",
+]
