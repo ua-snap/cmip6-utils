@@ -1,7 +1,7 @@
 """Script to train a quantile mapping adjustment for a given model. Uses fixed historical reference years for training.
 
 Usage:
-    python train_qm.py --var_id tasmax --model GFDL-ESM4 --input_dir /import/beegfs/CMIP6/kmredilla/cmip6_4km_3338/regrid --reference_dir /beegfs/CMIP6/kmredilla/downscaling/era5_3338 --train_dir /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted/trained
+    python train_qm.py --method qdm --var_id tasmax --model GFDL-ESM4 --input_dir /import/beegfs/CMIP6/kmredilla/cmip6_4km_3338/regrid --reference_dir /beegfs/CMIP6/kmredilla/downscaling/era5_3338 --train_dir /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted/trained
 """
 
 import argparse
@@ -24,6 +24,12 @@ from luts import sim_ref_var_lu, varid_adj_kind_lu, jitter_under_lu
 def parse_args():
     """Parse some arguments"""
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--method",
+        type=str,
+        help="Quantile Mapping method to use",
+        required=True,
+    )
     parser.add_argument(
         "--var_id",
         type=str,
@@ -54,6 +60,7 @@ def parse_args():
     args = parser.parse_args()
 
     return (
+        args.method,
         args.var_id,
         args.model,
         Path(args.input_dir),
@@ -62,8 +69,16 @@ def parse_args():
     )
 
 
+def validate_qm_method(method):
+    """Validate the quantile mapping method. Not sure if others are on the table or not."""
+    if method.lower() != "qdm":
+        raise ValueError(f"Method {method} not recognized. Only 'qdm' is supported.")
+    return method
+
+
 if __name__ == "__main__":
     (
+        method,
         var_id,
         model,
         input_dir,
@@ -156,12 +171,15 @@ if __name__ == "__main__":
                 train_kwargs.update(adapt_freq_thresh="1 mm d-1")
 
             # dqm = sdba.DetrendedQuantileMapping.train(**train_kwargs)
-            qdm = sdba.QuantileDeltaMapping.train(**train_kwargs)
+            if method == "qdm":
+                qm_train = sdba.QuantileDeltaMapping.train(**train_kwargs)
 
             train_dir.mkdir(exist_ok=True)
             train_fp = train_dir.joinpath(
-                train_tmp_fn.format(var_id=var_id, model=model, scenario=scenario)
+                train_tmp_fn.format(
+                    method=method, var_id=var_id, model=model, scenario=scenario
+                )
             )
 
             print(f"Writing QDM object to {train_fp}")
-            qdm.ds.to_netcdf(train_fp)
+            qm_train.ds.to_netcdf(train_fp)
