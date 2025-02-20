@@ -1,7 +1,7 @@
-"""Script to adjust historical data for a given model. Will simply omit the ScenarioMIP years and shift the overlapping historical years back. 
+"""Script to train a quantile mapping adjustment for a given model. Uses fixed historical reference years for training.
 
 Usage:
-    python bias_adjust_historical.py --var_id tasmax --model GFDL-ESM4 --input_dir /import/beegfs/CMIP6/kmredilla/cmip6_4km_3338/regrid --reference_dir /beegfs/CMIP6/kmredilla/downscaling/era5_3338 --adj_dir /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted/netcdf
+    python train_qm.py --var_id tasmax --model GFDL-ESM4 --input_dir /import/beegfs/CMIP6/kmredilla/cmip6_4km_3338/regrid --reference_dir /beegfs/CMIP6/kmredilla/downscaling/era5_3338 --train_dir /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted/trained
 """
 
 import argparse
@@ -14,12 +14,10 @@ from dask.distributed import Client
 from xclim import sdba
 from xclim.sdba.detrending import LoessDetrend
 from bias_adjust import (
-    generate_adjusted_filepaths,
     generate_cmip6_fp,
-    add_global_attrs,
     drop_height,
 )
-from config import ref_tmp_fn, cmip6_tmp_fn
+from config import ref_tmp_fn, train_tmp_fn
 from luts import sim_ref_var_lu, varid_adj_kind_lu, jitter_under_lu
 
 
@@ -49,7 +47,7 @@ def parse_args():
         help="Path to directory of reference data with filepath structure <variable ID>/<files>",
     )
     parser.add_argument(
-        "--adj_dir",
+        "--train_dir",
         type=str,
         help="Path to adjusted data output directory, for data only",
     )
@@ -60,7 +58,7 @@ def parse_args():
         args.model,
         Path(args.input_dir),
         Path(args.reference_dir),
-        Path(args.adj_dir),
+        Path(args.train_dir),
     )
 
 
@@ -70,7 +68,7 @@ if __name__ == "__main__":
         model,
         input_dir,
         reference_dir,
-        adj_dir,
+        train_dir,
     ) = parse_args()
 
     scenario = "historical"
@@ -160,41 +158,10 @@ if __name__ == "__main__":
             # dqm = sdba.DetrendedQuantileMapping.train(**train_kwargs)
             qdm = sdba.QuantileDeltaMapping.train(**train_kwargs)
 
-            trained_dir = adj_dir.parent.joinpath("trained")
-            trained_dir.mkdir(exist_ok=True)
-            trained_fp = trained_dir.joinpath(f"qdm_{var_id}_{model}_{scenario}.nc")
-            print(f"Writing QDM object to {trained_fp}")
-            qdm.ds.to_netcdf(trained_fp)
-
-            # Create the detrending object
-            det = LoessDetrend(
-                group="time.dayofyear", d=0, niter=1, f=0.2, weights="tricube"
+            train_dir.mkdir(exist_ok=True)
+            train_fp = train_dir.joinpath(
+                train_tmp_fn.format(var_id=var_id, model=model, scenario=scenario)
             )
 
-            scen = (
-                # dqm.adjust(sim, extrapolation="constant", interp="nearest", detrend=det)
-                qdm.adjust(hist, extrapolation="constant", interp="nearest")
-            )
-            # doing the computation here seems to help with performance
-            scen.load()
-
-    adj_years = hist_years
-    # now write the adjusted data to disk by year
-    for year in adj_years:
-        adj_fp = generate_adjusted_filepaths(
-            adj_dir, [var_id], [model], [scenario], [year]
-        )[0]
-        # ensure dir exists before writing
-        adj_fp.parent.mkdir(exist_ok=True, parents=True)
-        # re-naming back to var_id and ensuring dataset has same dim ordering as
-        #  underlying data array (although this might not matter much)
-        out_ds = scen.sel(time=str(year)).to_dataset(name=var_id)[
-            ["time", "lat", "lon", var_id]
-        ]
-        # get the source CMIP6 data file used for the attributes
-        src_fp = generate_cmip6_fp(input_dir, model, scenario, var_id, year)
-        out_ds = add_global_attrs(out_ds, src_fp)
-        out_ds.to_netcdf(adj_fp)
-
-        print(year, "done", end=", ")
-print()
+            print(f"Writing QDM object to {train_fp}")
+            qdm.ds.to_netcdf(train_fp)
