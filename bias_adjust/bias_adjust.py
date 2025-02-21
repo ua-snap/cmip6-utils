@@ -1,7 +1,7 @@
 """Script for bias adjusting a given model and scenario. Uses a pre-trained quantile mapping adjustment object.
 
 Usage:
-    python bias_adjust.py --train_fp /import/beegfs/CMIP6/kmredilla/bias_adjust/trained/qdm_pr_GFDL-ESM4_ssp585.nc --var_id pr --model GFDL-ESM4 --scenario ssp585 --input_dir /import/beegfs/CMIP6/kmredilla/cmip6_regridding/regrid --adj_dir /import/beegfs/CMIP6/kmredilla/bias_adjust/adjusted
+    python bias_adjust.py --train_fp /import/beegfs/CMIP6/kmredilla/bias_adjust/trained/qdm_pr_GFDL-ESM4_ssp585.nc --var_id pr --model GFDL-ESM4 --scenario ssp585 --sim_dir /import/beegfs/CMIP6/kmredilla/cmip6_regridding/regrid --adj_dir /import/beegfs/CMIP6/kmredilla/bias_adjust/adjusted
 """
 
 import argparse
@@ -187,11 +187,6 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
-        "--sim_dir",
-        type=str,
-        help="Path to directory of simulated data files to be adjusted, with filepath structure <model>/<scenario>/day/<variable ID>/<files>",
-    )
-    parser.add_argument(
         "--sim_start_year",
         type=str,
         help="Starting year of simulated data to be adjusted",
@@ -202,6 +197,11 @@ def parse_args():
         type=str,
         help="Ending year of simulated data to be adjusted",
         required=True,
+    )
+    parser.add_argument(
+        "--sim_dir",
+        type=str,
+        help="Path to directory of simulated data files to be adjusted, with filepath structure <model>/<scenario>/day/<variable ID>/<files>",
     )
     parser.add_argument(
         "--reference_dir",
@@ -220,9 +220,9 @@ def parse_args():
         args.var_id,
         args.model,
         args.scenario,
-        Path(args.sim_dir),
         sim_start_year,
         sim_end_year,
+        Path(args.sim_dir),
         Path(args.reference_dir),
         Path(args.adj_dir),
     )
@@ -234,9 +234,9 @@ if __name__ == "__main__":
         var_id,
         model,
         scenario,
-        sim_dir,
         sim_start_year,
         sim_end_year,
+        sim_dir,
         reference_dir,
         adj_dir,
     ) = parse_args()
@@ -244,7 +244,7 @@ if __name__ == "__main__":
     train_fp = validate_train_fp(train_fp, model, scenario, var_id)
 
     sim_fps = get_sim_fps(
-        input_dir, model, scenario, var_id, sim_start_year, sim_end_year
+        sim_dir, model, scenario, var_id, sim_start_year, sim_end_year
     )
 
     # get all remaining projected files

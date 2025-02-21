@@ -1,7 +1,7 @@
 """Script to train a quantile mapping adjustment for a given model. Uses fixed historical reference years for training.
 
 Usage:
-    python train_qm.py --method qdm --var_id tasmax --model GFDL-ESM4 --input_dir /import/beegfs/CMIP6/kmredilla/cmip6_4km_3338/regrid --reference_dir /beegfs/CMIP6/kmredilla/downscaling/era5_3338 --train_dir /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted/trained
+    python train_qm.py --method qdm --var_id tasmax --model GFDL-ESM4 --start_year 1984 --end_year 2014 --input_dir /import/beegfs/CMIP6/kmredilla/cmip6_4km_3338/regrid --reference_dir /beegfs/CMIP6/kmredilla/downscaling/era5_3338 --train_dir /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted/trained
 """
 
 import argparse
@@ -43,6 +43,18 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
+        "--start_year",
+        type=str,
+        help="Starting year of historical simulation and reference data to train on",
+        required=True,
+    )
+    parser.add_argument(
+        "--end_year",
+        type=str,
+        help="Ending year of historical simulated and reference data to train on",
+        required=True,
+    )
+    parser.add_argument(
         "--input_dir",
         type=str,
         help="Path to directory of simulated data files to be adjusted, with filepath structure <model>/<scenario>/day/<variable ID>/<files>",
@@ -63,6 +75,8 @@ def parse_args():
         args.method,
         args.var_id,
         args.model,
+        args.start_year,
+        args.end_year,
         Path(args.input_dir),
         Path(args.reference_dir),
         Path(args.train_dir),
@@ -81,6 +95,8 @@ if __name__ == "__main__":
         method,
         var_id,
         model,
+        start_year,
+        end_year,
         input_dir,
         reference_dir,
         train_dir,
@@ -89,30 +105,17 @@ if __name__ == "__main__":
     scenario = "historical"
 
     # get reference files
+    # assume we will have the same start and end years for both reference and historical data
     ref_var_id = sim_ref_var_lu[var_id]
-    # We will call the "hist" years those which are the same as the reference years
-    #  which we will be using for training.
-    ref_start_year = 1984
-    ref_end_year = 2014
-    ref_years = list(range(ref_start_year, ref_end_year + 1))
+    ref_years = list(range(start_year, end_year + 1))
     ref_fps = [
         reference_dir.joinpath(ref_tmp_fn.format(ref_var_id=ref_var_id, year=year))
         for year in ref_years
     ]
-
     # get the modeled historical file we will be training with (hist_ref)
     hist_ref_fps = [
         generate_cmip6_fp(input_dir, model, scenario, var_id, year)
         for year in ref_years
-    ]
-
-    # get modeled historical files that we will be adjusting
-    hist_start_year = 1984
-    hist_end_year = 2014
-    hist_years = list(range(hist_start_year, hist_end_year + 1))
-    hist_fps = [
-        generate_cmip6_fp(input_dir, model, scenario, var_id, year)
-        for year in hist_years
     ]
 
     kind = varid_adj_kind_lu[var_id]
