@@ -137,24 +137,17 @@ def add_global_attrs(ds, src_fp):
     return ds
 
 
-def drop_height(ds):
-    """Function to drop the height variable from an xarray.Dataset if present.
+def drop_non_coord_vars(ds):
+    """Function to drop all coordinates from xarray dataset which are not coordinate variables, i.e. which are not solely indexed by a dimension of the same name
 
     Args:
-        ds (xarray.Dataset): dataset to drop variable from if present
+        ds (xarray.Dataset): dataset to drop non-coordinate-variables from
 
     Returns:
-        ds (xarray.Dataset): dataset with no height variable
+        ds (xarray.Dataset): dataset with only dimension coordinates
     """
-    try:
-        ds = ds.drop_vars("height")
-    except ValueError:
-        ds = ds
-
-    try:
-        ds = ds.drop_vars("spatial_ref")
-    except ValueError:
-        ds = ds
+    coords_to_drop = [coord for coord in ds.coords if ds[coord].dims != (coord,)]
+    ds = ds.drop_vars(coords_to_drop)
 
     return ds
 
@@ -275,7 +268,7 @@ if __name__ == "__main__":
             # not adjusting historical, no need for now
             # need to rechunk this one too, same reason as for training data
             sim_ds = xr.open_mfdataset(sim_fps)
-            sim_ds = drop_height(sim_ds)
+            sim_ds = drop_non_coord_vars(sim_ds)
             sim = sim_ds[var_id]
             sim.data = sim.data.rechunk({0: -1, 1: 15, 2: 15})
 
