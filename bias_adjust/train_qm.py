@@ -1,24 +1,65 @@
 """Script to train a quantile mapping adjustment for a given model. Uses fixed historical reference years for training.
 
 Usage:
-    python train_qm.py --method qdm --var_id tasmax --model GFDL-ESM4 --start_year 1984 --end_year 2014 --input_dir /import/beegfs/CMIP6/kmredilla/cmip6_4km_3338/regrid --reference_dir /beegfs/CMIP6/kmredilla/downscaling/era5_3338 --train_dir /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted/trained
+    python train_qm.py --method qdm --var_id tasmax --model GFDL-ESM4 --start_year 1984 --end_year 2014 --hist_dir /import/beegfs/CMIP6/kmredilla/cmip6_4km_3338/regrid --reference_dir /beegfs/CMIP6/kmredilla/downscaling/era5_3338 --train_dir /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted/trained
 """
 
 import argparse
-import multiprocessing as mp
 from pathlib import Path
-import numpy as np
 import xarray as xr
 import dask
 from dask.distributed import Client
 from xclim import sdba
-from xclim.sdba.detrending import LoessDetrend
 from bias_adjust import (
     generate_cmip6_fp,
     drop_height,
 )
 from config import ref_tmp_fn, train_tmp_fn
 from luts import sim_ref_var_lu, varid_adj_kind_lu, jitter_under_lu
+
+
+def validate_args(args):
+    """Validate the supplied command line args."""
+    if args.method.lower() != "qdm":
+        raise ValueError(f"Method {method} not recognized. Only 'qdm' is supported.")
+
+    args.hist_dir = Path(args.hist_dir)
+    args.reference_dir = Path(args.reference_dir)
+    args.train_dir = Path(args.train_dir)
+    if not args.hist_dir.exists():
+        raise FileNotFoundError(f"Directory {args.hist_dir} not found.")
+    if not any(args.hist_dir.glob("*/" * 4 + "*.nc")):
+        raise FileNotFoundError(
+            f"No .nc files found in the expected directory structure under {args.hist_dir}"
+        )
+    if not args.reference_dir.glob("*.nc"):
+        raise FileNotFoundError(
+            f"No .nc files found in the reference data directory, {args.reference_dir}"
+        )
+    if not args.train_dir.parent.exists():
+        raise FileNotFoundError(
+            (
+                f"Parent directory of requested training outputs directory, {args.train_dir.parent},"
+                " does not exist, and needs to for this script to run."
+            )
+        )
+
+    try:
+        args.start_year = int(args.start_year)
+    except ValueError:
+        raise ValueError(f"start_year must be an integer, got {args.start_year}")
+    try:
+        args.end_year = int(args.end_year)
+    except ValueError:
+        raise ValueError(f"end_year must be an integer, got {args.end_year}")
+    if not (1950 <= args.start_year < args.end_year <= 2014):
+        raise ValueError(
+            (
+                f"start_year and end_year must be between 1950 and 2014, with start_year < end_year."
+                f" got {args.start_year} and {args.end_year}"
+            )
+        )
+    return args
 
 
 def parse_args():
@@ -55,14 +96,14 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
-        "--input_dir",
+        "--hist_dir",
         type=str,
         help="Path to directory of simulated data files to be adjusted, with filepath structure <model>/<scenario>/day/<variable ID>/<files>",
     )
     parser.add_argument(
         "--reference_dir",
         type=str,
-        help="Path to directory of reference data with filepath structure <variable ID>/<files>",
+        help="Path to directory of reference data with flat file structure containing all variables and years",
     )
     parser.add_argument(
         "--train_dir",
@@ -71,23 +112,18 @@ def parse_args():
     )
     args = parser.parse_args()
 
+    args = validate_args(args)
+
     return (
         args.method,
         args.var_id,
         args.model,
         args.start_year,
         args.end_year,
-        Path(args.input_dir),
-        Path(args.reference_dir),
-        Path(args.train_dir),
+        args.hist_dir,
+        args.reference_dir,
+        args.train_dir,
     )
-
-
-def validate_qm_method(method):
-    """Validate the quantile mapping method. Not sure if others are on the table or not."""
-    if method.lower() != "qdm":
-        raise ValueError(f"Method {method} not recognized. Only 'qdm' is supported.")
-    return method
 
 
 if __name__ == "__main__":
@@ -97,7 +133,7 @@ if __name__ == "__main__":
         model,
         start_year,
         end_year,
-        input_dir,
+        hist_dir,
         reference_dir,
         train_dir,
     ) = parse_args()
@@ -114,8 +150,7 @@ if __name__ == "__main__":
     ]
     # get the modeled historical file we will be training with (hist_ref)
     hist_ref_fps = [
-        generate_cmip6_fp(input_dir, model, scenario, var_id, year)
-        for year in ref_years
+        generate_cmip6_fp(hist_dir, model, scenario, var_id, year) for year in ref_years
     ]
 
     kind = varid_adj_kind_lu[var_id]
