@@ -1,7 +1,7 @@
 """Script for bias adjusting a given model and scenario. Uses a pre-trained quantile mapping adjustment object.
 
 Usage:
-    python bias_adjust.py --train_fp /import/beegfs/CMIP6/kmredilla/bias_adjust/trained/qdm_pr_GFDL-ESM4_ssp585.nc --var_id pr --model GFDL-ESM4 --scenario ssp585 --sim_dir /import/beegfs/CMIP6/kmredilla/cmip6_regridding/regrid --adj_dir /import/beegfs/CMIP6/kmredilla/bias_adjust/adjusted
+    python bias_adjust.py --train_path /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted_test/trained/tasmax_GFDL-ESM4_trained.zarr --sim_path /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted_test/optimized_inputs/tasmax_day_GFDL-ESM4_ssp245.zarr --adj_dir /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted_test/adjusted
 """
 
 import argparse
@@ -147,7 +147,9 @@ def drop_non_coord_vars(ds):
         ds (xarray.Dataset): dataset with only dimension coordinates
     """
     coords_to_drop = [coord for coord in ds.coords if ds[coord].dims != (coord,)]
-    ds = ds.drop_vars(coords_to_drop)
+    # some datasets have a variables such as spatial_ref that are indexed by time and should be dropped.
+    vars_to_drop = [var for var in ds.data_vars if len(ds[var].dims) < 3]
+    ds = ds.drop_vars(coords_to_drop + vars_to_drop)
 
     return ds
 
