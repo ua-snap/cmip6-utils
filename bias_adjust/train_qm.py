@@ -1,7 +1,6 @@
 """Script to train a quantile mapping adjustment for a given model. Uses fixed historical reference years for training.
 
 Usage:
-    python train_qm.py --method qdm --var_id tasmax --model GFDL-ESM4 --start_year 1984 --end_year 2014 --hist_dir /import/beegfs/CMIP6/kmredilla/cmip6_4km_3338/regrid --reference_dir /beegfs/CMIP6/kmredilla/downscaling/era5_3338 --train_dir /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted/trained
     python train_qm.py --method qdm --sim_path /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted_test/optimized_inputs/tasmax_day_GFDL-ESM4_historical.zarr --ref_path /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted_test/optimized_inputs/era5_t2max.zarr
 """
 
@@ -20,10 +19,6 @@ from luts import sim_ref_var_lu, varid_adj_kind_lu, jitter_under_lu
 
 def validate_args(args):
     """Validate the supplied command line args."""
-    if args.method.lower() != "qdm":
-        raise ValueError(
-            f"Method {args.method} not recognized. Only 'qdm' is supported."
-        )
 
     args.sim_path = Path(args.sim_path)
     args.ref_path = Path(args.ref_path)
@@ -45,12 +40,6 @@ def parse_args():
     """Parse some arguments"""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--method",
-        type=str,
-        help="Quantile Mapping method to use",
-        required=True,
-    )
-    parser.add_argument(
         "--sim_path",
         type=str,
         help="path to zarr store of historical simulation data",
@@ -70,7 +59,7 @@ def parse_args():
     args = validate_args(args)
 
     return (
-        args.method,
+        # args.method,
         args.sim_path,
         args.ref_path,
         args.train_path,
@@ -87,7 +76,7 @@ def get_var_id(ds):
 
 if __name__ == "__main__":
     (
-        method,
+        # method,
         sim_path,
         ref_path,
         train_path,
@@ -134,9 +123,7 @@ if __name__ == "__main__":
                 # do the adapt frequency thingy for precipitation data
                 train_kwargs.update(adapt_freq_thresh="1 mm d-1")
 
-            # dqm = sdba.DetrendedQuantileMapping.train(**train_kwargs)
-            if method == "qdm":
-                qm_train = sdba.QuantileDeltaMapping.train(**train_kwargs)
+            qm_train = sdba.DetrendedQuantileMapping.train(**train_kwargs)
 
             print(f"Writing QDM object to {train_path}")
             if train_path.exists():
