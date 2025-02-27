@@ -2,8 +2,7 @@
 This is done for maximum, mean, and minimum temperature, and total precipitation.
 
 Example usage:
-    python resample_era5.py --era5_dir /beegfs/CMIP6/wrf_era5/04km --output_dir /beegfs/CMIP6/kmredilla/daily_era5_4km --geo_file /beegfs/CMIP6/wrf_era5/geo_em.d02.nc
-
+    python resample_era5.py --era5_dir /beegfs/CMIP6/wrf_era5/04km --output_dir /beegfs/CMIP6/kmredilla/daily_era5_4km --geo_file /beegfs/CMIP6/wrf_era5/geo_em.d02.nc --year 1995 --fn_str era5_wrf_dscale_4km_{date}.nc --no_clobber
 """
 
 import argparse
@@ -112,6 +111,7 @@ def resample(era5_ds, agg_var):
         .to_dataset(name=agg_var)
         .rename({"Time": "time"})
     )
+    agg_ds[agg_var].attrs["units"] = era5_ds[var_id].attrs["units"]
 
     era5_ds.close()
     del era5_ds
@@ -183,12 +183,10 @@ def open_resample_regrid(
     era5_ds = open_dataset(fps, drop_vars)
     era5_ds.load()
     print("Dataset opened and read into memory.")
-    # era5_ds = concatenate_datasets(fps, drop_vars)
     for agg_var in agg_vars:
         agg_ds = resample(era5_ds, agg_var)
-        # agg_ds.load()
         print("Dataset resampled.")
-        regrid_ds = regrid(agg_ds, grid_kwargs)
+        regrid_ds = regrid(agg_ds, agg_var, grid_kwargs)
         print("Dataset regridded, writing.")
         out_fp = write_data(regrid_ds, output_dir, agg_var, year)
         print(year, agg_var, f"done, written to {out_fp}")
@@ -258,7 +256,7 @@ def get_grid_info(tmp_file, geo_file):
     return {"x": x, "y": y, "wrf_crs": wrf_crs}
 
 
-def regrid(ds, grid_kwargs):
+def regrid(ds, var_id, grid_kwargs):
     """Regrid ERA5 data to EPSG:3338"""
     x, y, wrf_crs = [grid_kwargs[k] for k in ["x", "y", "wrf_crs"]]
 
@@ -270,7 +268,11 @@ def regrid(ds, grid_kwargs):
         .rio.write_crs(wrf_crs)
     )
 
-    return ds_proj.rio.reproject("EPSG:3338")
+    ds_3338 = ds_proj.rio.reproject("EPSG:3338")
+    # make sure units is not lost here
+    ds_3338[var_id].attrs["units"] = ds[var_id].attrs["units"]
+
+    return ds_3338
 
 
 def main(era5_dir, output_dir, geo_file, year, fn_str, no_clobber):
