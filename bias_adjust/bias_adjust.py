@@ -21,7 +21,7 @@ import xarray as xr
 import dask
 from dask.distributed import Client
 from xclim import sdba
-from xclim.sdba.detrending import LoessDetrend
+from xclim.sdba.detrending import NoDetrend, LoessDetrend, MeanDetrend, PolyDetrend
 from config import ref_tmp_fn, cmip6_tmp_fn, train_tmp_fn
 from luts import sim_ref_var_lu, varid_adj_kind_lu, jitter_under_lu
 from train_qm import get_var_id
@@ -33,9 +33,21 @@ logging.basicConfig(
     handlers=[logging.StreamHandler()],
 )
 
-
+# for detrend testing
+# remove when done
 detrend_configs = {
-    "det1": LoessDetrend(group="time.dayofyear", d=0, niter=1, f=0.2, weights="tricube")
+    "det0": NoDetrend(group="time.dayofyear"),
+    "det1": LoessDetrend(group="time.dayofyear", d=0, niter=1, f=0.2, weights="tricube"),
+    "det2": MeanDetrend(group="time.dayofyear"),
+    "det3": PolyDetrend(group="time.dayofyear", degree=1),
+    "det4": PolyDetrend(group="time.dayofyear", degree=2),
+    "det5": PolyDetrend(group="time.dayofyear", degree=3),
+}
+
+regions = {
+    "Fairbanks": {"x": slice(2.5e5, 5e5), "y": slice(1.75e6, 1.5e6)},
+    "MatSu": {"x": slice(0.5e5, 3e5), "y": slice(1.35e6, 1.1e6)},
+    "Yakutat": {"x": slice(6.5e5, 9e5), "y": slice(1.25e6, 1e6)},
 }
 
 
@@ -203,36 +215,52 @@ def parse_args():
         help="Path to write adjusted data",
         required=True,
     )
+    parser.add_argument(
+        "--det_config",
+        type=str,
+        help="Detrending configuration",
+        default="det0",
+    )
+    parser.add_argument(
+        "--region",
+        type=str,
+        help="region for subsetting",
+        default=None,
+    )
     args = parser.parse_args()
 
     return (
         Path(args.train_path),
         Path(args.sim_path),
         args.adj_path,
+        args.det_config,
+        args.region,
     )
 
 
-if __name__ == "__main__":
-    train_path, sim_path, adj_path = parse_args()
 
+if __name__ == "__main__":
+    train_path, sim_path, adj_path, det_config, region = parse_args()
+    if region:
+        sample_sel = regions[region]
+    else:   
+        sample_sel = {}
+
+    
     # suggestion from dask for ignoring large chunk warnings
     with dask.config.set(**{"array.slicing.split_large_chunks": False}):
         # messed around with the dask config a lot. This works but generates lots of GC warnings. Best I found though.
         with Client(n_workers=20, threads_per_worker=1) as client:
             # open connection to trained QM dataset
-
-            train_ds = xr.open_zarr(train_path)
-            # qm = sdba.QuantileDeltaMapping.from_dataset(train_ds)
+            train_ds = xr.open_zarr(train_path).sel(**sample_sel)
             qm = sdba.DetrendedQuantileMapping.from_dataset(train_ds)
-
             # Create the detrending object
-            det_config = "det1"
             det = detrend_configs[det_config]
-
+            
             # create a dataset containing all projected data to be adjusted
             # not adjusting historical, no need for now
             # need to rechunk this one too, same reason as for training data
-            sim_ds = xr.open_zarr(sim_path)
+            sim_ds = xr.open_zarr(sim_path).sel(**sample_sel)
             var_id = get_var_id(sim_ds)
 
             scen = qm.adjust(
@@ -241,12 +269,14 @@ if __name__ == "__main__":
                 interp="nearest",
                 detrend=det,
             )
-
-            adj_path = Path(adj_path.format(det_config=det_config))
-            if adj_path.exists():
-                logging.info(f"Adjusted data store exists, removing ({adj_path}).")
-                shutil.rmtree(adj_path, ignore_errors=True)
-
-            logging.info(f"Writing adjusted data to {adj_path}")
             scen_ds = scen.to_dataset(name=var_id)
-            scen_ds.to_zarr(adj_path)
+            logging.info(f"Running adjustment and loading into memory")
+            scen_ds.load()
+
+    adj_path = Path(adj_path.format(det_config=det_config, region=region))
+    if adj_path.exists():
+        logging.info(f"Adjusted data store exists, removing ({adj_path}).")
+        shutil.rmtree(adj_path, ignore_errors=True)
+
+    logging.info(f"Writing adjusted data to {adj_path}")       
+    scen_ds.to_zarr(adj_path)
