@@ -1,13 +1,19 @@
 """Script for bias adjusting a given model and scenario. Uses a pre-trained quantile mapping adjustment object.
 
 Usage:
-    python bias_adjust.py --train_path /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted_test/trained/tasmax_GFDL-ESM4_trained.zarr --sim_path /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted_test/optimized_inputs/tasmax_day_GFDL-ESM4_ssp245.zarr --adj_dir /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted_test/adjusted
+    python bias_adjust.py --train_path /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted_test/trained/tasmax_GFDL-ESM4_trained.zarr --sim_path /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted_test/optimized_inputs/tasmax_day_GFDL-ESM4_ssp245.zarr --adj_path /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted_test/det_testing/tasmax_GFDL-ESM4_ssp245_{det_config}.zarr
+
+    # for detrend testing
+    python bias_adjust.py --train_path /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted_test/trained/tasmax_GFDL-ESM4_trained.zarr --sim_path /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted_test/optimized_inputs/tasmax_day_GFDL-ESM4_historical.zarr --adj_path /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted_test/det_testing/tasmax_GFDL-ESM4_historical_{det_config}.zarr
 """
 
 import argparse
 import datetime
+import logging
 import re
-import multiprocessing as mp
+import shutil
+
+# import multiprocessing as mp
 from itertools import product
 from pathlib import Path
 import numpy as np
@@ -18,6 +24,19 @@ from xclim import sdba
 from xclim.sdba.detrending import LoessDetrend
 from config import ref_tmp_fn, cmip6_tmp_fn, train_tmp_fn
 from luts import sim_ref_var_lu, varid_adj_kind_lu, jitter_under_lu
+from train_qm import get_var_id
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler()],
+)
+
+
+detrend_configs = {
+    "det1": LoessDetrend(group="time.dayofyear", d=0, niter=1, f=0.2, weights="tricube")
+}
 
 
 def extract_values_from_format(format_str, formatted_str, keys):
@@ -154,148 +173,80 @@ def drop_non_coord_vars(ds):
     return ds
 
 
+def parse_sim_filename(sim_tmp_fn, sim_path):
+    """Parse the filename of a simulated data file to get the variable ID, model, and scenario"""
+
+    sim_fp_attrs = extract_values_from_format(
+        sim_tmp_fn, sim_path.name, ["var_id", "model", "scenario"]
+    )
+    return sim_fp_attrs["var_id"], sim_fp_attrs["model"], sim_fp_attrs["scenario"]
+
+
 def parse_args():
     """Parse some arguments"""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--train_fp",
+        "--train_path",
         type=str,
         help="Path to trained quantile mapping adjustment netcdf file",
         required=True,
     )
     parser.add_argument(
-        "--var_id",
+        "--sim_path",
         type=str,
-        help="Variable ID to adjust",
+        help="Path to model data to be adjusted",
         required=True,
     )
     parser.add_argument(
-        "--model",
+        "--adj_path",
         type=str,
-        help="Model to adjust",
+        help="Path to write adjusted data",
         required=True,
-    )
-    parser.add_argument(
-        "--scenario",
-        type=str,
-        help="Scenario to adjust",
-        required=True,
-    )
-    parser.add_argument(
-        "--sim_start_year",
-        type=str,
-        help="Starting year of simulated data to be adjusted",
-        required=True,
-    )
-    parser.add_argument(
-        "--sim_end_year",
-        type=str,
-        help="Ending year of simulated data to be adjusted",
-        required=True,
-    )
-    parser.add_argument(
-        "--sim_dir",
-        type=str,
-        help="Path to directory of simulated data files to be adjusted, with filepath structure <model>/<scenario>/day/<variable ID>/<files>",
-    )
-    parser.add_argument(
-        "--reference_dir",
-        type=str,
-        help="Path to directory of reference data with filepath structure <variable ID>/<files>",
-    )
-    parser.add_argument(
-        "--adj_dir",
-        type=str,
-        help="Path to adjusted data output directory, for data only",
     )
     args = parser.parse_args()
 
     return (
-        Path(args.train_fp),
-        args.var_id,
-        args.model,
-        args.scenario,
-        sim_start_year,
-        sim_end_year,
-        Path(args.sim_dir),
-        Path(args.reference_dir),
-        Path(args.adj_dir),
+        Path(args.train_path),
+        Path(args.sim_path),
+        args.adj_path,
     )
 
 
 if __name__ == "__main__":
-    (
-        train_fp,
-        var_id,
-        model,
-        scenario,
-        sim_start_year,
-        sim_end_year,
-        sim_dir,
-        reference_dir,
-        adj_dir,
-    ) = parse_args()
-
-    train_fp = validate_train_fp(train_fp, model, scenario, var_id)
-
-    sim_fps = get_sim_fps(
-        sim_dir, model, scenario, var_id, sim_start_year, sim_end_year
-    )
-
-    # get all remaining projected files
-    sim_start_year = 2023
-    # sim_end_year = 2030
-    sim_end_year = 2100
-    sim_years = list(range(sim_start_year, sim_end_year + 1))
-    sim_fps = [
-        generate_cmip6_fp(sim_dir, model, scenario, var_id, year) for year in sim_years
-    ]
-
-    kind = varid_adj_kind_lu[var_id]
+    train_path, sim_path, adj_path = parse_args()
 
     # suggestion from dask for ignoring large chunk warnings
     with dask.config.set(**{"array.slicing.split_large_chunks": False}):
         # messed around with the dask config a lot. This works but generates lots of GC warnings. Best I found though.
         with Client(n_workers=20, threads_per_worker=1) as client:
             # open connection to trained QM dataset
-            train_ds = xr.open_dataset(train_fp)
-            dqm = sdba.QuantileDeltaMapping.from_dataset(train_ds)
+
+            train_ds = xr.open_zarr(train_path)
+            # qm = sdba.QuantileDeltaMapping.from_dataset(train_ds)
+            qm = sdba.DetrendedQuantileMapping.from_dataset(train_ds)
 
             # Create the detrending object
-            det = LoessDetrend(
-                group="time.dayofyear", d=0, niter=1, f=0.2, weights="tricube"
-            )
+            det_config = "det1"
+            det = detrend_configs[det_config]
 
             # create a dataset containing all projected data to be adjusted
             # not adjusting historical, no need for now
             # need to rechunk this one too, same reason as for training data
-            sim_ds = xr.open_mfdataset(sim_fps)
-            sim_ds = drop_non_coord_vars(sim_ds)
-            sim = sim_ds[var_id]
-            sim.data = sim.data.rechunk({0: -1, 1: 15, 2: 15})
+            sim_ds = xr.open_zarr(sim_path)
+            var_id = get_var_id(sim_ds)
 
-            scen = (
-                # dqm.adjust(sim, extrapolation="constant", interp="nearest", detrend=det)
-                dqm.adjust(sim, extrapolation="constant", interp="nearest")
+            scen = qm.adjust(
+                sim_ds[var_id],
+                extrapolation="constant",
+                interp="nearest",
+                detrend=det,
             )
-            # doing the computation here seems to help with performance
-            scen.load()
 
-    # now write the adjusted data to disk by year
-    for year in sim_years:
-        adj_fp = generate_adjusted_filepaths(
-            adj_dir, [var_id], [model], [scenario], [year]
-        )[0]
-        # ensure dir exists before writing
-        adj_fp.parent.mkdir(exist_ok=True, parents=True)
-        # re-naming back to var_id and ensuring dataset has same dim ordering as
-        #  underlying data array (although this might not matter much)
-        out_ds = scen.sel(time=str(year)).to_dataset(name=var_id)[
-            ["time", "lat", "lon", var_id]
-        ]
-        # get the source CMIP6 data file used for the attributes
-        src_fp = generate_cmip6_fp(sim_dir, model, scenario, var_id, year)
-        out_ds = add_global_attrs(out_ds, src_fp)
-        out_ds.to_netcdf(adj_fp)
+            adj_path = Path(adj_path.format(det_config=det_config))
+            if adj_path.exists():
+                logging.info(f"Adjusted data store exists, removing ({adj_path}).")
+                shutil.rmtree(adj_path, ignore_errors=True)
 
-        print(year, "done", end=", ")
+            logging.info(f"Writing adjusted data to {adj_path}")
+            scen_ds = scen.to_dataset(name=var_id)
+            scen_ds.to_zarr(adj_path)
