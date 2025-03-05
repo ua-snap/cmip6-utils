@@ -74,6 +74,33 @@ def get_var_id(ds):
     return var_id
 
 
+def ensure_matching_time_coords(hist_ds, ref_ds):
+    """Ensure that the time coordinates of two datasets match."""
+    if all(ref_ds.time.values == hist_ds.time.values) is False:
+        # if the first dates match, and the hours don't, we can just fix that by using the hour used in the historical data
+        if (
+            ref_ds.time.values[0].strftime("%Y-%m-%d")
+            == hist_ds.time.values[0].strftime("%Y-%m-%d")
+        ) and (ref_ds.time.size == hist_ds.time.size):
+            if ref_ds.time.values.min().hour != hist_ds.time.values.min().hour:
+                # just make the hour the same for one of them
+                start_time = ref_ds.time.values.min()
+                end_time = ref_ds.time.values.max()
+                use_hour = hist_ds.time.values.min().hour
+                new_ref_times = xr.cftime_range(
+                    f"{start_time.year}-{str(start_time.month).zfill(2)}-{str(start_time.day).zfill(2)} {use_hour}:00:00",
+                    f"{end_time.year}-{str(end_time.month).zfill(2)}-{str(end_time.day).zfill(2)} {use_hour}:00:00",
+                    freq="D",
+                    calendar="noleap",
+                )
+                ref_ds = ref_ds.assign(time=new_ref_times)
+                assert all(
+                    ref_ds.time.values == hist_ds.time.values
+                ), "Hist and ref time values do not match after adjusting hours"
+
+    return hist_ds, ref_ds
+
+
 if __name__ == "__main__":
     (
         # method,
@@ -87,11 +114,14 @@ if __name__ == "__main__":
             "temporary_directory": "/beegfs/CMIP6/kmredilla/tmp",
         }
     ):
-        with Client(n_workers=10, threads_per_worker=1) as client:
+        # I *think* most Chinook nodes will have 28 or more CPUs,
+        # so these should be safe n_workers and threads_per_worker values
+        with Client(n_workers=4, threads_per_worker=6) as client:
             # open connection to data
             hist_ds = xr.open_zarr(sim_path)
             # convert calendar to noleap to match CMIP6
             ref_ds = xr.open_zarr(ref_path).convert_calendar("noleap")
+            hist_ds, ref_ds = ensure_matching_time_coords(hist_ds, ref_ds)
 
             var_id = get_var_id(hist_ds)
             ref_var_id = sim_ref_var_lu[var_id]
