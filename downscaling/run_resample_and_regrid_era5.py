@@ -2,7 +2,7 @@
 
 
 example usage:
-    python /beegfs/CMIP6/kmredilla/repos/cmip6-utils/downscaling/run_resample_and_regrid_era5.py --conda_env_name snap-geo --runner_script /beegfs/CMIP6/kmredilla/cmip6-utils/downscaling/run_resample_and_regrid_era5.sh --wrf_era5_directory /beegfs/CMIP6/wrf_era5/04km --processed_directory /beegfs/CMIP6/kmredilla/daily_era5_4km_3338/netcdf --slurm_directory /beegfs/CMIP6/kmredilla/daily_era5_4km_3338/netcdf --geo_file /beegfs/CMIP6/wrf_era5/geo_em.d02.nc --start_year 1965 --end_year 2022
+    python /beegfs/CMIP6/kmredilla/repos/cmip6-utils/downscaling/run_resample_and_regrid_era5.py --conda_env_name snap-geo --runner_script /beegfs/CMIP6/kmredilla/cmip6-utils/downscaling/run_resample_and_regrid_era5.sh --wrf_era5_directory /beegfs/CMIP6/wrf_era5/04km --output_directory /beegfs/CMIP6/kmredilla/daily_era5_4km_3338/netcdf --slurm_directory /beegfs/CMIP6/kmredilla/daily_era5_4km_3338/netcdf --geo_file /beegfs/CMIP6/wrf_era5/geo_em.d02.nc --start_year 1965 --end_year 2022
 """
 
 import argparse
@@ -48,7 +48,7 @@ def parse_args():
         Path to shell script that runs the resampling and reprojection of ERA5 data
     wrf_era5_directory : str
         Path to directory where WRF-downscaled ERA5 data is stored
-    processed_directory : str
+    output_directory : str
         Path to directory where resampled and reprojected ERA5 data will be written
     slurm_directory : str
         Path to directory for writing slurm files
@@ -140,7 +140,7 @@ if __name__ == "__main__":
         conda_env_name,
         runner_script,
         wrf_era5_directory,
-        processed_directory,
+        output_directory,
         slurm_directory,
         geo_file,
         start_year,
@@ -148,7 +148,7 @@ if __name__ == "__main__":
         no_clobber,
     ) = parse_args()
 
-    processed_directory.mkdir(exist_ok=True)
+    output_directory.mkdir(exist_ok=True)
     slurm_directory.mkdir(exist_ok=True)
     process_era5_sbatch_file = slurm_directory.joinpath(
         "resample_and_regrid_era5.slurm"
@@ -172,7 +172,7 @@ if __name__ == "__main__":
         # because iterating over years in the python script was causing hangups
         f"source {runner_script} "
         f"{wrf_era5_directory} "
-        f"{processed_directory} "
+        f"{output_directory} "
         f"{geo_file} "
         f"{start_year} {end_year}"
     )
