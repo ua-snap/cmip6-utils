@@ -176,20 +176,17 @@ def open_resample_regrid(
     grid_kwargs,
 ):
     """Open the dataset and aggregate the data for each variable"""
-    # only need to open the dataset once
-    # The threads_per_worker=1 seems to have really helped with open_mfdataset()
-    cluster = LocalCluster(n_workers=20, threads_per_worker=1)
-    client = Client(cluster)
-    era5_ds = open_dataset(fps, drop_vars)
-    era5_ds.load()
-    print("Dataset opened and read into memory.")
-    for agg_var in agg_vars:
-        agg_ds = resample(era5_ds, agg_var)
-        print("Dataset resampled.")
-        regrid_ds = regrid(agg_ds, agg_var, grid_kwargs)
-        print("Dataset regridded, writing.")
-        out_fp = write_data(regrid_ds, output_dir, agg_var, year)
-        print(year, agg_var, f"done, written to {out_fp}")
+    with Client(n_workers=4, threads_per_worker=6) as client:
+        era5_ds = open_dataset(fps, drop_vars)
+        era5_ds.load()
+        print("Dataset opened and read into memory.")
+        for agg_var in agg_vars:
+            agg_ds = resample(era5_ds, agg_var)
+            print("Dataset resampled.")
+            regrid_ds = regrid(agg_ds, agg_var, grid_kwargs)
+            print("Dataset regridded, writing.")
+            out_fp = write_data(regrid_ds, output_dir, agg_var, year)
+            print(year, agg_var, f"done, written to {out_fp}")
 
     del era5_ds
 
