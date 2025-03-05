@@ -170,6 +170,7 @@ if __name__ == "__main__":
         f"conda activate {conda_env_name}\n"
         # call the shell script to iterate and try the python script
         # because iterating over years in the python script was causing hangups
+        f"cd {runner_script.parent}\n"
         f"source {runner_script} "
         f"{wrf_era5_directory} "
         f"{output_directory} "
