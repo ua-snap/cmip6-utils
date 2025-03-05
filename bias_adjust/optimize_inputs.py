@@ -179,7 +179,7 @@ if __name__ == "__main__":
 
     fps = get_input_filepaths(data_dir, glob_str, year_str, start_year, end_year)
 
-    with Client() as client:
+    with Client(n_workers=8) as client:
         with xr.open_mfdataset(fps, parallel=True, engine="h5netcdf") as ds:
             ds = ds.load()
 
