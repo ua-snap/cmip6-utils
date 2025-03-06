@@ -37,6 +37,44 @@ def submit_sbatch(sbatch_fp):
     return job_id
 
 
+def write_config_file(config_path, start_year, end_year):
+    """Write a config file for the resampling script.
+
+    Parameters
+    ----------
+    config_path : pathlib.PosixPath
+        path to write the config file
+    start_year : str
+        start year for processing
+    end_year : str
+        end year for processing
+    """
+    with open(config_path, "w") as f:
+        f.write("array_id\tyear\n")
+        for array_id, year in enumerate(
+            range(int(start_year), int(end_year) + 1), start=1
+        ):
+            f.write(f"{array_id}\t{year}\n")
+
+
+def get_array_range(start_year, end_year):
+    """Get the range of years to process for the SLURM array.
+
+    Parameters
+    ----------
+    start_year : str
+        start year for processing
+    end_year : str
+        end year for processing
+
+    Returns
+    -------
+    str
+        string to use in the SLURM array
+    """
+    return f"1-{int(end_year) - int(start_year) + 1}"
+
+
 def parse_args():
     """Parse some command line arguments.
 
@@ -157,10 +195,16 @@ if __name__ == "__main__":
         ".slurm", "_%j.out"
     )
 
+    config_file = slurm_directory.joinpath("slurm_array_config.txt")
+    write_config_file(config_file, start_year, end_year)
+    array_range = get_array_range(start_year, end_year)
+
     sbatch_text = (
         "#!/bin/sh\n"
+        f"#SBATCH --array={array_range}%10\n"  # don't run more than 10 tasks
+        f"#SBATCH --job-name=era5_{start_year}_{end_year}\n"
         "#SBATCH --nodes=1\n"
-        f"#SBATCH --cpus-per-task=24\n"
+        # f"#SBATCH --cpus-per-task=24\n"
         f"#SBATCH -p t2small\n"
         f"#SBATCH --time=08:00:00\n"
         f"#SBATCH --output {process_era5_sbatch_out_file}\n"
@@ -171,12 +215,14 @@ if __name__ == "__main__":
         # call the shell script to iterate and try the python script
         # because iterating over years in the python script was causing hangups
         f"cd {runner_script.parent}\n"
-        f"source {runner_script} "
-        f"{wrf_era5_directory} "
-        f"{output_directory} "
-        f"{geo_file} "
-        f"{start_year} {end_year}"
+        f"config={config_file}\n"
+        # Extract the year to process for the current $SLURM_ARRAY_TASK_ID
+        "year=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $2}' $config)\n"
+        f"python resample_and_regrid_era5.py --era5_dir {wrf_era5_directory} "
+        f"--output_dir {output_directory} --year $year --geo_file {geo_file} "
     )
+    if no_clobber:
+        sbatch_text += "--no_clobber"
 
     # save the sbatch text as a new slurm file in the repo directory
     with open(process_era5_sbatch_file, "w") as f:
