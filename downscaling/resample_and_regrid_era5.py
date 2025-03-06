@@ -1,11 +1,12 @@
-"""REsample (aggregate) and reproject the WRF ERA5 from hourly to daily data in EPSG:3338.
+"""Resample (aggregate) and reproject the WRF ERA5 from hourly to daily data in EPSG:3338.
 This is done for maximum, mean, and minimum temperature, and total precipitation.
 
 Example usage:
-    python resample_era5.py --era5_dir /beegfs/CMIP6/wrf_era5/04km --output_dir /beegfs/CMIP6/kmredilla/daily_era5_4km --geo_file /beegfs/CMIP6/wrf_era5/geo_em.d02.nc --year 1995 --fn_str era5_wrf_dscale_4km_{date}.nc --no_clobber
+    python resample_and_regrid_era5.py --era5_dir /beegfs/CMIP6/wrf_era5/04km --output_dir /beegfs/CMIP6/kmredilla/daily_era5_4km_3338 --year 1965 --geo_file /beegfs/CMIP6/wrf_era5/geo_em.d02.nc
 """
 
 import argparse
+import logging
 from pathlib import Path
 import numpy as np
 import xarray as xr
@@ -147,10 +148,10 @@ def agg_files_exist(year, agg_vars, output_dir, fn_str):
 def check_no_clobber(no_clobber, year, agg_vars, output_dir, fn_str):
     """Check if the no_clobber flag is set and if the files already exist"""
     if no_clobber and agg_files_exist(year, agg_vars, output_dir, fn_str):
-        print(f"Resampled files for {year} already exist, skipping")
+        logging.info(f"Resampled files for {year} already exist, skipping")
         return True
     else:
-        print(f"Missing some resampled files for {year}, processing")
+        logging.info(f"Missing some resampled files for {year}, processing")
         return False
 
 
@@ -179,14 +180,15 @@ def open_resample_regrid(
     with Client(n_workers=4, threads_per_worker=6) as client:
         era5_ds = open_dataset(fps, drop_vars)
         era5_ds.load()
-        print("Dataset opened and read into memory.")
-        for agg_var in agg_vars:
-            agg_ds = resample(era5_ds, agg_var)
-            print("Dataset resampled.")
-            regrid_ds = regrid(agg_ds, agg_var, grid_kwargs)
-            print("Dataset regridded, writing.")
-            out_fp = write_data(regrid_ds, output_dir, agg_var, year)
-            print(year, agg_var, f"done, written to {out_fp}")
+        logging.info("Dataset opened and read into memory.")
+
+    for agg_var in agg_vars:
+        agg_ds = resample(era5_ds, agg_var)
+        logging.ingo(f"Dataset for {agg_var} resampled.")
+        regrid_ds = regrid(agg_ds, agg_var, grid_kwargs)
+        logging.info(f"Dataset regridded {agg_var} writing.")
+        out_fp = write_data(regrid_ds, output_dir, agg_var, year)
+        logging.info(year, agg_var, f"done, written to {out_fp}")
 
     del era5_ds
 
