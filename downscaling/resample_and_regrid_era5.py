@@ -184,7 +184,7 @@ def open_resample_regrid(
 
     for agg_var in agg_vars:
         agg_ds = resample(era5_ds, agg_var)
-        logging.ingo(f"Dataset for {agg_var} resampled.")
+        logging.info(f"Dataset for {agg_var} resampled.")
         regrid_ds = regrid(agg_ds, agg_var, grid_kwargs)
         logging.info(f"Dataset regridded {agg_var} writing.")
         out_fp = write_data(regrid_ds, output_dir, agg_var, year)
