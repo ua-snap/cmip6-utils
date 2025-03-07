@@ -2,7 +2,7 @@
 
 
 example usage:
-    python /beegfs/CMIP6/kmredilla/repos/cmip6-utils/downscaling/run_resample_and_regrid_era5.py --conda_env_name snap-geo --runner_script /beegfs/CMIP6/kmredilla/cmip6-utils/downscaling/run_resample_and_regrid_era5.sh --wrf_era5_directory /beegfs/CMIP6/wrf_era5/04km --output_directory /beegfs/CMIP6/kmredilla/daily_era5_4km_3338/netcdf --slurm_directory /beegfs/CMIP6/kmredilla/daily_era5_4km_3338/netcdf --geo_file /beegfs/CMIP6/wrf_era5/geo_em.d02.nc --start_year 1965 --end_year 2022
+    python /beegfs/CMIP6/kmredilla/repos/cmip6-utils/downscaling/run_resample_and_regrid_era5.py --conda_env_name snap-geo --wrf_era5_directory /beegfs/CMIP6/wrf_era5/04km --output_directory /beegfs/CMIP6/kmredilla/daily_era5_4km_3338/netcdf --slurm_directory /beegfs/CMIP6/kmredilla/daily_era5_4km_3338/netcdf --geo_file /beegfs/CMIP6/wrf_era5/geo_em.d02.nc --start_year 1965 --end_year 2022
 """
 
 import argparse
@@ -82,8 +82,6 @@ def parse_args():
     -------
     conda_env_name : str
         Name of conda environment to activate
-    runner_script : str
-        Path to shell script that runs the resampling and reprojection of ERA5 data
     wrf_era5_directory : str
         Path to directory where WRF-downscaled ERA5 data is stored
     output_directory : str
@@ -105,12 +103,6 @@ def parse_args():
         "--conda_env_name",
         type=str,
         help="Name of conda environment to activate",
-        required=True,
-    )
-    parser.add_argument(
-        "--runner_script",
-        type=str,
-        help="Path to script that runs the resampling and reprojection of ERA5 data",
         required=True,
     )
     parser.add_argument(
@@ -160,7 +152,6 @@ def parse_args():
     return (
         # Path(args.conda_init_script),
         args.conda_env_name,
-        Path(args.runner_script),
         Path(args.wrf_era5_directory),
         Path(args.output_directory),
         Path(args.slurm_directory),
@@ -176,7 +167,6 @@ if __name__ == "__main__":
     (
         # conda_init_script,
         conda_env_name,
-        runner_script,
         wrf_era5_directory,
         output_directory,
         slurm_directory,
@@ -212,9 +202,6 @@ if __name__ == "__main__":
         # this should work to initialize conda without init script
         'eval "$($HOME/miniconda3/bin/conda shell.bash hook)"\n'
         f"conda activate {conda_env_name}\n"
-        # call the shell script to iterate and try the python script
-        # because iterating over years in the python script was causing hangups
-        f"cd {runner_script.parent}\n"
         f"config={config_file}\n"
         # Extract the year to process for the current $SLURM_ARRAY_TASK_ID
         "year=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $2}' $config)\n"

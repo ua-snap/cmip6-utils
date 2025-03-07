@@ -180,7 +180,7 @@ def open_resample_regrid(
     with Client(n_workers=4, threads_per_worker=6) as client:
         era5_ds = open_dataset(fps, drop_vars)
         era5_ds.load()
-        logging.info("Dataset opened and read into memory.")
+    logging.info("Dataset opened and read into memory.")
 
     for agg_var in agg_vars:
         agg_ds = resample(era5_ds, agg_var)
