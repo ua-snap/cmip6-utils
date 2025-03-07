@@ -1,4 +1,14 @@
+"""Convert netCDF files to zarr format.
+
+Supply a parent directory containing netCDF files, a string for fetching the files from that directory,
+and a path to write the zarr store to.
+
+example usage:
+    python optimize_inputs.py --netcdf_dir /beegfs/CMIP6/kmredilla/daily_era5_4km_3338/ --year_str t2max/t2max_{year}_era5_4km_3338.nc --start_year 1965 --end_year 2014 --zarr_path /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted_test/optimized_inputs/era5_t2max.zarr
+"""
+
 import argparse
+import logging
 import json
 import shutil
 from pathlib import Path
@@ -9,9 +19,9 @@ from bias_adjust import drop_non_coord_vars
 
 def validate_args(args):
     """Validate the supplied command line args."""
-    args.data_dir = Path(args.data_dir)
-    if not args.data_dir.exists():
-        raise FileNotFoundError(f"Directory {args.data_dir} not found.")
+    args.netcdf_dir = Path(args.netcdf_dir)
+    if not args.netcdf_dir.exists():
+        raise FileNotFoundError(f"Directory {args.netcdf_dir} not found.")
     args.zarr_path = Path(args.zarr_path)
     if not args.zarr_path.parent.exists():
         raise FileNotFoundError(
@@ -70,7 +80,7 @@ def parse_args():
     """Parse some arguments"""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--data_dir",
+        "--netcdf_dir",
         type=str,
         help="Path to directory containing data files to optimize.",
         required=True,
@@ -78,13 +88,13 @@ def parse_args():
     parser.add_argument(
         "--glob_str",
         type=str,
-        help="Glob string for getting data files in data_dir. Required if files to optimize are not in the data_dir root.",
+        help="Glob string for getting data files in netcdf_dir. Required if files to optimize are not in the netcdf_dir root.",
         default=None,
     )
     parser.add_argument(
         "--year_str",
         type=str,
-        help="String for getting data files in data_dir based on start and end years. Requires both start_year and end_year to use.",
+        help="String for getting data files in netcdf_dir based on start and end years. Requires both start_year and end_year to use.",
         default=None,
     )
     parser.add_argument(
@@ -116,7 +126,7 @@ def parse_args():
     args = validate_args(args)
 
     return (
-        args.data_dir,
+        args.netcdf_dir,
         args.glob_str,
         args.year_str,
         args.start_year,
@@ -127,21 +137,21 @@ def parse_args():
 
 
 def get_input_filepaths(
-    data_dir, glob_str=None, year_str=None, start_year=None, end_year=None
+    netcdf_dir, glob_str=None, year_str=None, start_year=None, end_year=None
 ):
-    """Get filepaths for all files in data_dir matching glob_str.
+    """Get filepaths for all files in netcdf_dir matching glob_str or year_str + start_year + end_year.
 
     Default behaviors:
-    - if nothing but data_dir is provided, return all files in data_dir (i.e. set glob_str to "*")
-    - if glob_str is provided, return all files in data_dir that match glob_str
-    - if year_str is provided, return all files in data_dir that match year_str formatted for all years in range(start_year, end_year + 1)
+    - if nothing but netcdf_dir is provided, return all files in netcdf_dir (i.e. set glob_str to "*")
+    - if glob_str is provided, return all files in netcdf_dir that match glob_str
+    - if year_str is provided, return all files in netcdf_dir that match year_str formatted for all years in range(start_year, end_year + 1)
 
     example year_str: "GFDL-ESM4/historical/day/tasmax/tasmax_day_GFDL-ESM4_historical_regrid_{year}0101-{year}1231.nc"
     example glob_str: "GFDL-ESM4/historical/day/tasmax/tasmax_day_GFDL-ESM4_historical_regrid_*.nc"
     """
     if year_str is not None:
         fps = [
-            data_dir.joinpath(year_str.format(year=year))
+            netcdf_dir.joinpath(year_str.format(year=year))
             for year in range(start_year, end_year + 1)
         ]
 
@@ -156,11 +166,11 @@ def get_input_filepaths(
     else:
         if glob_str is None:
             glob_str = "*"
-        fps = list(data_dir.glob(glob_str))
+        fps = list(netcdf_dir.glob(glob_str))
 
         if not fps:
             raise FileNotFoundError(
-                f"No files found matching glob_str: {glob_str} in the data directory, {data_dir}"
+                f"No files found matching glob_str: {glob_str} in the data directory, {netcdf_dir}"
             )
 
     return fps
@@ -168,7 +178,7 @@ def get_input_filepaths(
 
 if __name__ == "__main__":
     (
-        data_dir,
+        netcdf_dir,
         glob_str,
         year_str,
         start_year,
@@ -177,7 +187,7 @@ if __name__ == "__main__":
         zarr_path,
     ) = parse_args()
 
-    fps = get_input_filepaths(data_dir, glob_str, year_str, start_year, end_year)
+    fps = get_input_filepaths(netcdf_dir, glob_str, year_str, start_year, end_year)
 
     with Client(n_workers=8) as client:
         with xr.open_mfdataset(fps, parallel=True, engine="h5netcdf") as ds:
@@ -187,10 +197,10 @@ if __name__ == "__main__":
     var_id = list(ds.data_vars)[0]
     # hardcoding chunks stuff for now
     ds[var_id].encoding["preferred_chunks"] = chunks_dict
-    ds[var_id].encoding["chunks"] = (ds.time.values.shape[0], 10, 10)
-    ds[var_id].encoding["chunksizes"] = (ds.time.values.shape[0], 10, 10)
+    ds[var_id].encoding["chunks"] = (ds.time.values.shape[0], 50, 50)
+    ds[var_id].encoding["chunksizes"] = (ds.time.values.shape[0], 50, 50)
 
-    print(f"Optimizing {len(fps)} files in {data_dir} to {zarr_path}")
+    logging.info(f"Optimizing {len(fps)} files in {netcdf_dir} to {zarr_path}")
 
     if zarr_path.exists():
         shutil.rmtree(zarr_path, ignore_errors=True)
