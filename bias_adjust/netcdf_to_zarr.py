@@ -200,9 +200,13 @@ if __name__ == "__main__":
     ds[var_id].encoding["chunks"] = (ds.time.values.shape[0], 50, 50)
     ds[var_id].encoding["chunksizes"] = (ds.time.values.shape[0], 50, 50)
 
-    logging.info(f"Optimizing {len(fps)} files in {netcdf_dir} to {zarr_path}")
+    logging.info(
+        f"Converting {len(fps)} files in {netcdf_dir} to Zarr store at {zarr_path}"
+    )
 
     if zarr_path.exists():
         shutil.rmtree(zarr_path, ignore_errors=True)
 
     ds.to_zarr(zarr_path)
+
+    logging.info(f"Conversion complete.")
