@@ -4,7 +4,7 @@ Supply a parent directory containing netCDF files, a string for fetching the fil
 and a path to write the zarr store to.
 
 example usage:
-    python optimize_inputs.py --netcdf_dir /beegfs/CMIP6/kmredilla/daily_era5_4km_3338/ --year_str t2max/t2max_{year}_era5_4km_3338.nc --start_year 1965 --end_year 2014 --zarr_path /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted_test/optimized_inputs/era5_t2max.zarr
+    python netcdf_to_zarr.py --netcdf_dir /beegfs/CMIP6/kmredilla/daily_era5_4km_3338/ --year_str t2max/t2max_{year}_era5_4km_3338.nc --start_year 1965 --end_year 2014 --zarr_path /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted_test/optimized_inputs/era5_t2max.zarr
 """
 
 import argparse
@@ -113,7 +113,7 @@ def parse_args():
         "--chunks_dict",  # this is just a template for now, in case we want to make this configurable
         type=json.loads,
         help="Dictionary of chunks to use for rechunking",
-        default='{"time": -1, "x": 10, "y": 10}',
+        default='{"time": -1, "x": 50, "y": 50}',
     )
     parser.add_argument(
         "--zarr_path",

@@ -109,9 +109,8 @@ def parse_args():
     )
     parser.add_argument(
         "--chunks_dict",  # this is just a template for now, in case we want to make this configurable
-        type=json.loads,
+        type=str,
         help="Dictionary of chunks to use for rechunking",
-        default='{"time": -1, "x": 10, "y": 10}',
     )
     parser.add_argument(
         "--zarr_path",
@@ -161,12 +160,14 @@ if __name__ == "__main__":
         zarr_path.parent.exists()
     ), f"Parent directory of zarr_path, {zarr_path.parent}, does not exist. Aborting."
     slurm_dir.mkdir(exist_ok=True)
-    conversion_job_file = slurm_dir.joinpath("resample_and_regrid_era5.slurm")
+    # use the zarr path to get a name for the job
+    job_name = zarr_path.name.replace(".zarr", "")
+    conversion_job_file = slurm_dir.joinpath(f"convert_netcdf_to_zarr_{job_name}.slurm")
     conversion_job_out_file = str(conversion_job_file).replace(".slurm", "_%j.out")
 
     job_str = (
         "#!/bin/sh\n"
-        f"#SBATCH --job-name=convert_netcdf_to_zarr\n"
+        f"#SBATCH --job-name=convert_netcdf_to_zarr_{job_name}\n"
         "#SBATCH --nodes=1\n"
         f"#SBATCH -p t2small\n"
         f"#SBATCH --time=08:00:00\n"
@@ -186,7 +187,9 @@ if __name__ == "__main__":
         job_str += (
             f"--year_str {year_str} --start_year {start_year} --end_year {end_year} "
         )
-    job_str += f"--chunks_dict '{chunks_dict}' --zarr_path {zarr_path}\n"
+    if chunks_dict:
+        job_str += f"--chunks_dict '{chunks_dict}' "
+    job_str += f"--zarr_path {zarr_path}\n"
 
     # save the sbatch text as a new slurm file in the repo directory
     with open(conversion_job_file, "w") as f:
