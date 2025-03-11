@@ -14,7 +14,6 @@ import shutil
 from pathlib import Path
 import xarray as xr
 from dask.distributed import Client
-from bias_adjust import drop_non_coord_vars
 
 
 def validate_args(args):
@@ -190,10 +189,14 @@ if __name__ == "__main__":
     fps = get_input_filepaths(netcdf_dir, glob_str, year_str, start_year, end_year)
 
     with Client(n_workers=8) as client:
-        with xr.open_mfdataset(fps, parallel=True, engine="h5netcdf") as ds:
+        # the data_vars="minimal" argument is a workaround for behavior in
+        # xarray.open_mfdataset that will assign concat dimension to dimensionless
+        # data variables (such as spatial_ref)
+        with xr.open_mfdataset(
+            fps, parallel=True, engine="h5netcdf", data_vars="minimal"
+        ) as ds:
             ds = ds.load()
 
-    ds = drop_non_coord_vars(ds)
     var_id = list(ds.data_vars)[0]
     # hardcoding chunks stuff for now
     ds[var_id].encoding["preferred_chunks"] = chunks_dict
