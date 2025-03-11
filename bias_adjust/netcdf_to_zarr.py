@@ -15,6 +15,12 @@ from pathlib import Path
 import xarray as xr
 from dask.distributed import Client
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler()],
+)
+
 
 def validate_args(args):
     """Validate the supplied command line args."""
@@ -199,9 +205,7 @@ if __name__ == "__main__":
 
     var_id = list(ds.data_vars)[0]
     # hardcoding chunks stuff for now
-    ds[var_id].encoding["preferred_chunks"] = chunks_dict
-    ds[var_id].encoding["chunks"] = (ds.time.values.shape[0], 50, 50)
-    ds[var_id].encoding["chunksizes"] = (ds.time.values.shape[0], 50, 50)
+    ds = ds.chunk(chunks_dict)
 
     logging.info(
         f"Converting {len(fps)} files in {netcdf_dir} to Zarr store at {zarr_path}"
