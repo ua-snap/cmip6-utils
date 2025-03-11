@@ -2,7 +2,7 @@
 
 
 example usage:
-    python /beegfs/CMIP6/kmredilla/repos/cmip6-utils/downscaling/run_resample_and_regrid_era5.py --conda_env_name snap-geo --wrf_era5_directory /beegfs/CMIP6/wrf_era5/04km --output_directory /beegfs/CMIP6/kmredilla/daily_era5_4km_3338/netcdf --slurm_directory /beegfs/CMIP6/kmredilla/daily_era5_4km_3338/netcdf --geo_file /beegfs/CMIP6/wrf_era5/geo_em.d02.nc --start_year 1965 --end_year 2022
+    python /beegfs/CMIP6/kmredilla/repos/cmip6-utils/downscaling/run_resample_and_regrid_era5.py --conda_env_name snap-geo --wrf_era5_directory /beegfs/CMIP6/wrf_era5/04km --output_directory /beegfs/CMIP6/kmredilla/daily_era5_4km_3338/netcdf --slurm_directory /beegfs/CMIP6/kmredilla/daily_era5_4km_3338/slurm --script_directory /beegfs/CMIP6/kmredilla/cmip6-utils --geo_file /beegfs/CMIP6/wrf_era5/geo_em.d02.nc --start_year 1965 --end_year 2022
 """
 
 import argparse
@@ -88,6 +88,8 @@ def parse_args():
         Path to directory where resampled and reprojected ERA5 data will be written
     slurm_directory : str
         Path to directory for writing slurm files
+    script_directory : str
+        Path to directory containing worker script
     geo_file : str
         Path to WRF geo_em file for projection information
     start_year : str
@@ -124,6 +126,12 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
+        "--script_directory",
+        type=str,
+        help="Path to directory for writing slurm files",
+        required=True,
+    )
+    parser.add_argument(
         "--geo_file",
         type=str,
         help="Path to WRF geo_em file for projection information",
@@ -155,6 +163,7 @@ def parse_args():
         Path(args.wrf_era5_directory),
         Path(args.output_directory),
         Path(args.slurm_directory),
+        Path(args.script_directory),
         Path(args.geo_file),
         args.start_year,
         args.end_year,
@@ -170,6 +179,7 @@ if __name__ == "__main__":
         wrf_era5_directory,
         output_directory,
         slurm_directory,
+        script_directory,
         geo_file,
         start_year,
         end_year,
@@ -188,6 +198,7 @@ if __name__ == "__main__":
     config_file = slurm_directory.joinpath("slurm_array_config.txt")
     write_config_file(config_file, start_year, end_year)
     array_range = get_array_range(start_year, end_year)
+    worker_script = script_directory.joinpath("resample_and_regrid_era5.py")
 
     sbatch_text = (
         "#!/bin/sh\n"
@@ -205,7 +216,7 @@ if __name__ == "__main__":
         f"config={config_file}\n"
         # Extract the year to process for the current $SLURM_ARRAY_TASK_ID
         "year=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $2}' $config)\n"
-        f"python resample_and_regrid_era5.py --era5_dir {wrf_era5_directory} "
+        f"python {worker_script} --era5_dir {wrf_era5_directory} "
         f"--output_dir {output_directory} --year $year --geo_file {geo_file} "
     )
     if no_clobber:
