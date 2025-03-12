@@ -1,6 +1,6 @@
 """Script for regridding a batch of files listed in a text file
 
-Note - this script first crops the dataset to the panarctic domain of 50N and up. 
+Note - this script first crops the dataset to the panarctic domain of 50N and up.
 """
 
 import argparse
@@ -356,7 +356,6 @@ def dayfreq_gregorian_to_noleap(ds):
         Dataset with time axis converted from gregorian to noleap
     """
     out_ds = ds.sel(time=~((ds.time.dt.day == 29) & (ds.time.dt.month == 2)))
-    del out_ds.time.encoding["dtype"]  # let this be assigned?
     out_ds.time.encoding["calendar"] = "noleap"
     # Run this function just to ensure consistent hour values
     out_ds = fix_hour_in_time_dim(out_ds)
@@ -546,7 +545,10 @@ def fix_time(out_ds, src_ds):
     out_ds.time.encoding["calendar"] = "noleap"
     # also ensure time axis encoding dtype is removed,
     # sometimes the incorrect dtype is assigned? perhaps at regridding?
-    del out_ds.time.encoding["dtype"]
+    try:
+        del out_ds.time.encoding["dtype"]
+    except KeyError:
+        pass
 
     # make sure bnds variables are out, we probably don't need for this dataset
     # just makes things simpler.
