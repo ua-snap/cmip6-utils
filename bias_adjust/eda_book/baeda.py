@@ -19,10 +19,9 @@ cmip6_dir = Path("/beegfs/CMIP6/kmredilla/cmip6_regridding/regrid")
 doy_func_lu = {"min": np.min, "max": np.max, "mean": np.mean}
 
 
-def wsdi(tasmax):
+def wsdi(tasmax, hist_da):
     """Warm spell duration index."""
     # use the ERA5 as baseline reference for WSDI percentiles
-    hist_da = tasmax.sel(Method="ERA5")
     tasmax_per = percentile_doy(hist_da, per=90).sel(percentiles=90)
     da = indices.warm_spell_duration_index(tasmax, tasmax_per, window=6).drop(
         "percentiles"
@@ -51,8 +50,7 @@ def summer_days(tasmax):
     return da
 
 
-def tx90p(tasmax):
-    hist_da = tasmax.sel(Method="ERA5")
+def tx90p(tasmax, hist_da):
     tasmax_per = percentile_doy(hist_da, per=90).sel(percentiles=90)
     da = indices.tx90p(tasmax, tasmax_per)
     da.name = "tx90p"
@@ -110,6 +108,10 @@ indices_lu = {
         "tx90p": tx90p,
     },
 }
+
+# indices that require additional  historical reference data
+hist_ref_indices = ["wsdi", "tx90p"]
+
 
 # these are some different detrending methods for the DQM
 detrend_configs = {
@@ -523,16 +525,17 @@ def run_bias_adjustment_and_package_data(
 def run_indicators(da, era5_extr):
     """Run a set of indicators on the given dataframe."""
     var_id = da.name
-    # combine in the ERA5 with adjusted data
-    da = xr.concat(
-        [era5_extr[var_id].expand_dims({"Method": ["ERA5"]}), da], dim="Method"
-    )
 
     indicator_das = []
     for index in indices_lu[var_id]:
-        indicator_das.append(indices_lu[var_id][index](da))
+        if index in hist_ref_indices:
+            indicator_das.append(indices_lu[var_id][index](da, era5_extr[var_id]))
+        else:
+            indicator_das.append(indices_lu[var_id][index](da))
 
     indicators = xr.merge(indicator_das)
+    indicators = drop_non_coord_vars(indicators)
+
     return indicators
 
 
