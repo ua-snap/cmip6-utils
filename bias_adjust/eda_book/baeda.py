@@ -522,14 +522,17 @@ def run_bias_adjustment_and_package_data(
     return xr.merge([hist_extr, sim_extr, hist_adj_da, sim_adj_da])[var_id]
 
 
-def run_indicators(da, era5_extr):
+def run_indicators(da, hist_da=None):
     """Run a set of indicators on the given dataframe."""
     var_id = da.name
+    # if hist_da is not provided, use the same as da
+    if hist_da is None:
+        hist_da = da
 
     indicator_das = []
     for index in indices_lu[var_id]:
         if index in hist_ref_indices:
-            indicator_das.append(indices_lu[var_id][index](da, era5_extr[var_id]))
+            indicator_das.append(indices_lu[var_id][index](da, hist_da))
         else:
             indicator_das.append(indices_lu[var_id][index](da))
 
@@ -582,3 +585,64 @@ def indicator_boxplot_by_method_location(indicators, indicator):
     g.figure.suptitle(indicators[indicator].attrs["long_name"])
     plt.tight_layout()
     plt.show()
+
+
+def indicator_deltas_by_method_location(proj_indicators, hist_indicators, indicator):
+    """Create a seaborn catplot of an indicator faceted by location and colored by method"""
+    proj_da = proj_indicators.sel(time=slice("1970", "2100")).mean("time")
+    hist_da = hist_indicators.sel(time=slice("1985", "2014")).mean("time")
+    delta_df = (proj_da - hist_da).to_dataframe()
+
+    g = sns.catplot(
+        delta_df,
+        kind="bar",
+        y=indicator,
+        hue="Method",
+        col="location",
+        sharey=False,
+        col_wrap=3,
+        height=2.5,
+    )
+    sns.move_legend(g, "upper left", bbox_to_anchor=(0.75, 0.45), frameon=False)
+    g.figure.suptitle(
+        f"Projected - Historical {proj_indicators[indicator].attrs['long_name']}"
+    )
+    plt.tight_layout()
+    plt.show()
+
+
+def run_full_adjustment_and_summarize(
+    zarr_dir, model, scenario, var_id, projected_coords, era5_extr, results
+):
+    """Run the full adjustment and summarize the results."""
+
+    tmp_da = run_bias_adjustment_and_package_data(
+        zarr_dir, model, scenario, var_id, projected_coords, era5_extr
+    )
+    results[model][var_id]["adj"] = {
+        "historical": tmp_da.sel(experiment="historical")
+        .dropna(dim="time")
+        .drop_vars("experiment"),
+        scenario: tmp_da.sel(experiment=scenario)
+        .dropna(dim="time")
+        .drop_vars("experiment"),
+    }
+
+    # run the historical indicators separate so we can merge with ERA5 indicators for later steps
+    historical_indicators = run_indicators(
+        results[model][var_id]["adj"]["historical"],
+    )
+    # merge with ERA5 indicators for plotting
+    era5_indicators = results["ERA5"][var_id]["indicators"]
+    historical_indicators = xr.concat(
+        [era5_indicators, historical_indicators], dim="Method"
+    )
+    results[model][var_id]["indicators"] = {
+        "historical": historical_indicators,
+        scenario: run_indicators(
+            results[model][var_id]["adj"][scenario],
+            results[model][var_id]["adj"]["historical"],
+        ),
+    }
+
+    return results
