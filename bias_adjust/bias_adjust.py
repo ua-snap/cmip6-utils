@@ -52,33 +52,6 @@ regions = {
 }
 
 
-def extract_values_from_format(format_str, formatted_str, keys):
-    """Extract values from a formatted string using the original format string"""
-    # Create a regex pattern from the format string
-    pattern = re.sub(r"{(\w+)}", r"(?P<\1>.+)", format_str)
-    match = re.match(pattern, formatted_str)
-    if match:
-        return {key: match.group(key) for key in keys}
-    else:
-        raise ValueError(f"Keys {keys} not found in the formatted string")
-
-
-def validate_train_fp(train_fp, model, scenario, var_id):
-    """Validate the train_fp by checking the attributes in the filename against the script parameters"""
-    train_fp_attrs = extract_values_from_format(
-        train_tmp_fn, train_fp.name, ["method", "var_id", "model", "scenario"]
-    )
-    if (
-        train_fp_attrs["model"] != model
-        or train_fp_attrs["scenario"] != scenario
-        or train_fp_attrs["var_id"] != var_id
-    ):
-        raise ValueError(
-            f"Model, scenario, or var_id in train_fp does not match the input values"
-        )
-    return train_fp
-
-
 def generate_adjusted_filepaths(adj_dir, var_ids, models, scenarios, years):
     """Generate the adjusted filepaths. Args are lists to allow multiple combinations
 
@@ -239,6 +212,15 @@ def parse_args():
     )
 
 
+def validate_sim_source(train_ds, sim_ds):
+    logging.info("Validating source_id")
+    assert train_ds.attrs["source_id"] == sim_ds.attrs["source_id"]
+    logging.info(
+        "Simulated data source (model) validated, sim trained adjustment "
+        f"({train_ds.attrs['source_id']}) matches sim ({sim_ds.attrs['source_id']})"
+    )
+
+
 if __name__ == "__main__":
     train_path, sim_path, adj_path, det_config, region = parse_args()
     if region:
@@ -251,7 +233,10 @@ if __name__ == "__main__":
         # fewer workers and more threads is better for non-GIL like Numpy etc
         with Client(n_workers=4, threads_per_worker=6) as client:
             # open connection to trained QM dataset
-            train_ds = xr.open_zarr(train_path).sel(**sample_sel)
+            train_ds = (
+                xr.open_zarr(train_path).sel(**sample_sel).chunk({"x": 50, "y": 50})
+            )
+
             qm = sdba.DetrendedQuantileMapping.from_dataset(train_ds)
             # Create the detrending object
             det = detrend_configs[det_config]
@@ -259,7 +244,13 @@ if __name__ == "__main__":
             # create a dataset containing all projected data to be adjusted
             # not adjusting historical, no need for now
             # need to rechunk this one too, same reason as for training data
-            sim_ds = xr.open_zarr(sim_path).sel(**sample_sel)
+            sim_ds = (
+                xr.open_zarr(sim_path)
+                .sel(**sample_sel)
+                .chunk({"time": -1, "x": 50, "y": 50})
+            )
+            validate_sim_source(train_ds, sim_ds)
+
             var_id = get_var_id(sim_ds)
 
             scen = qm.adjust(
@@ -269,7 +260,7 @@ if __name__ == "__main__":
                 detrend=det,
             )
             scen_ds = scen.to_dataset(name=var_id)
-            logging.info(f"Running adjustment and loading into memory")
+            logging.info(f"Running adjustment and writing to {adj_path}")
             # scen_ds.load()
 
             adj_path = Path(adj_path.format(det_config=det_config, region=region))
