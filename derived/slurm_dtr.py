@@ -1,7 +1,7 @@
 """Script for constructing slurm jobs for computing daily temperature range for CMIP6 data.
 
 Example usage:
-    python slurm_dtr.py --models "GFDL-ESM4 CESM2" --scenarios "ssp245 ssp585" --input_dir /import/beegfs/CMIP6/arctic-cmip6/regrid --working_dir /import/beegfs/CMIP6/kmredilla --partition debug --ncpus 24
+    python slurm_dtr.py --models "GFDL-ESM4 CESM2" --scenarios "ssp245 ssp585" --input_dir /import/beegfs/CMIP6/arctic-cmip6/regrid --output_directory /import/beegfs/CMIP6/kmredilla/dtr_processing --partition debug
 
 Returns:
     Outputs are written in a dtr_processing directory created as a subdirectory in working_dir, following the model/scenario/variable/<files>*.nc convention.
@@ -10,36 +10,173 @@ Returns:
 
 import argparse
 import subprocess
+import logging
 from pathlib import Path
-from config import output_dir_name
+from itertools import product
+
+# this is the subdirectory name for the actual transformed data
+target_dir_name = "netcdf"
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler()],
+)
 
 
-def make_sbatch_head(partition, conda_init_script, ncpus):
+def validate_args(args):
+    """Validate the arguments passed to the script."""
+    args.dtr_script = Path(args.dtr_script)
+    args.output_directory = Path(args.output_directory)
+    if not args.output_directory.parent.exists():
+        raise FileNotFoundError(
+            f"Parent of output directory, {args.output_directory.parent}, does not exist. Aborting."
+        )
+    args.input_directory = Path(args.input_dir)
+    if not args.input_directory.exists():
+        raise FileNotFoundError(
+            f"Input directory, {args.input_dir}, does not exist. Aborting."
+        )
+
+    args.models = args.models.split(" ")
+    models_in_input_dir = [
+        model for model in args.models if model in args.input_directory.glob("*")
+    ]
+    if not any(models_in_input_dir):
+        raise ValueError(
+            f"No subdirectories in the input directory match the models provided. Aborting."
+        )
+    elif not all([model in models_in_input_dir for model in args.models]):
+        logging.warning(
+            f"Some models in the input directory do not have subdirectories: {models_in_input_dir}. Skipping these models."
+        )
+
+    return args
+
+
+def parse_args():
+    """Parse some arguments"""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--worker_script",
+        type=str,
+        help="Path to dtr processing script",
+        required=True,
+    )
+    parser.add_argument(
+        "--models",
+        type=str,
+        help="' '-separated list of CMIP6 models to work on",
+        required=True,
+    )
+    parser.add_argument(
+        "--scenarios",
+        type=str,
+        help="' '-separated list of scenarios to work on",
+        required=True,
+    )
+    parser.add_argument(
+        "--input_dir",
+        type=str,
+        help="Path to directory of simulated data files to be adjusted, with filepath structure <model>/<scenario>/day/<variable ID>/<files>",
+    )
+    parser.add_argument(
+        "--output_directory",
+        type=str,
+        help="Path to directory where outputs will be written.",
+        required=True,
+    )
+    parser.add_argument(
+        "--partition",
+        type=str,
+        help="slurm partition",
+    )
+    args = parser.parse_args()
+    args = validate_args(args)
+
+    return (
+        args.worker_script,
+        args.models.split(" "),
+        args.scenarios.split(" "),
+        Path(args.input_dir),
+        Path(args.output_directory),
+        args.partition,
+    )
+
+
+def get_dtr_script_directory_args(input_dir, output_dir, models, scenarios):
+    input_directories = []
+    for model, scenario in product(models, scenarios):
+        tasmax_dir = input_dir.joinpath(model, scenario, "day", "tasmax")
+        tasmin_dir = input_dir.joinpath(model, scenario, "day", "tasmin")
+        target_dir = output_dir.joinpath("netcdf", model, scenario, "dtr")
+        input_directories.append((tasmax_dir, tasmin_dir, target_dir))
+
+    return input_directories
+
+
+def write_config_file(
+    config_path,
+    models,
+    scenarios,
+):
+    """Write a config file for the DTR processing slurm job script.
+    This is used to split the job into a job array, one task per model/scenario combination.
+
+    Parameters
+    ----------
+    config_path : pathlib.PosixPath
+        path to write the config file
+    models : list of str
+        list of models to process
+    scenarios : list of str
+        list of scenarios to process
+
+    Returns
+    -------
+    array_range : str
+        string to use in the SLURM array
+    """
+    array_list = []
+    with open(config_path, "w") as f:
+        f.write("array_id\ttmax_dir\ttmin_dir\toutput_dir\n")
+        for array_id, (model, scenario) in enumerate(
+            product(models, scenarios), start=1
+        ):
+            f.write(f"{array_id}\t{model}\t{scenario}\n")
+            array_list.append(array_id)
+
+    array_range = f"{min(array_list)}-{max(array_list)}"
+
+    return array_range
+
+
+def make_sbatch_head(array_range, partition, sbatch_out_fp):
     """Make a string of SBATCH commands that can be written into a .slurm script
 
     Args:
+        array_range (str): string to use in the SLURM array
         partition (str): name of the partition to use
-        conda_init_script (path_like): path to a script that contains commands for initializing the shells on the compute nodes to use conda activate
-        ncpus (int): number of cpus to request
+        sbatch_out_fp (path_like): path to where sbatch stdout should be written
 
     Returns:
-        sbatch_head (str): string of SBATCH commands ready to be used as parameter in sbatch-writing functions. The following gaps are left for filling with .format:
-            - ncpus
+        sbatch_head (str): string of SBATCH commands ready to be used as parameter in sbatch-writing functions.
+        The following keys are left for filling with str.format:
+
             - output slurm filename
     """
     sbatch_head = (
         "#!/bin/sh\n"
+        f"#SBATCH --array={array_range}%10\n"  # don't run more than 10 tasks
+        f"#SBATCH --job-name=cmip6_dtr\n"
         "#SBATCH --nodes=1\n"
-        f"#SBATCH --cpus-per-task={ncpus}\n"
         f"#SBATCH -p {partition}\n"
-        "#SBATCH --output {sbatch_out_fp}\n"
+        f"#SBATCH --output {sbatch_out_fp}\n"
         # print start time
         "echo Start slurm && date\n"
         # prepare shell for using activate - Chinook requirement
-        f"source {conda_init_script}\n"
-        # okay this is not the desired way to do this, but Chinook compute
-        # nodes are not working with anaconda-project, so we activate
-        # this manually then run the python command
+        # this seems to work to initialize conda without init script
+        'eval "$($HOME/miniconda3/bin/conda shell.bash hook)"\n'
         f"conda activate cmip6-utils\n"
     )
 
@@ -49,10 +186,10 @@ def make_sbatch_head(partition, conda_init_script, ncpus):
 def write_sbatch_dtr(
     sbatch_fp,
     sbatch_out_fp,
-    dtr_script,
-    tasmax_dir,
-    tasmin_dir,
-    output_dir,
+    worker_script,
+    tmax_dir,
+    tmin_dir,
+    target_dir,
     sbatch_head,
 ):
     """Write an sbatch script for executing the bias adjustment script for a given model, scenario, and variable
@@ -60,10 +197,10 @@ def write_sbatch_dtr(
     Args:
         sbatch_fp (path_like): path to .slurm script to write sbatch commands to
         sbatch_out_fp (path_like): path to where sbatch stdout should be written
-        dtr_script (path_like): path to the script to be called to run the dtr processing
-        tasmax_dir (path-like): path to directory of tasmax files
-        tasmin_dir (path-like): path to directory of tasmin files (should correspond to files in tasmax_dir)
-        output_dir (path-like): directory to write the dtr data
+        worker_script (path_like): path to the script to be called to run the dtr processing
+        tmax_dir (path-like): path to directory of tasmax files
+        tmin_dir (path-like): path to directory of tasmin files (should correspond to files in tmax_dir)
+        target_dir (path-like): directory to write the dtr data
         sbatch_head (dict): string for sbatch head script
 
     Returns:
@@ -71,10 +208,14 @@ def write_sbatch_dtr(
     """
     pycommands = "\n"
     pycommands += (
-        f"python {dtr_script} "
-        f"--tasmax_dir {tasmax_dir} "
-        f"--tasmin_dir {tasmin_dir} "
-        f"--output_dir {output_dir}\n"
+        # Extract the model and scenario to process for the current $SLURM_ARRAY_TASK_ID
+        "model=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $2}' $config)\n"
+        "scenario=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $3}' $config)\n"
+        f"python {worker_script} "
+        f"--tmax_dir {input_dir}/$model/$scenario/day/tasmax "
+        f"--tmin_dir {input_dir}/$model/$scenario/day/tasmin "
+        f"--target_dir {target_dir}/$model/$scenario/dtr "
+        f"--dtr_tmp_fn dtr_$model_$scenario_{{start_date}}_{{end_date}}.nc\n"
     )
 
     pycommands += f"echo End dtr processing && date\n\n"
@@ -101,157 +242,53 @@ def submit_sbatch(sbatch_fp):
     return job_id
 
 
-def parse_args():
-    """Parse some arguments"""
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--models",
-        type=str,
-        help="' '-separated list of CMIP6 models to work on",
-        required=True,
-    )
-    parser.add_argument(
-        "--scenarios",
-        type=str,
-        help="' '-separated list of scenarios to work on",
-        required=True,
-    )
-    parser.add_argument(
-        "--input_dir",
-        type=str,
-        help="Path to directory of simulated data files to be adjusted, with filepath structure <model>/<scenario>/day/<variable ID>/<files>",
-    )
-    parser.add_argument(
-        "--working_dir",
-        type=str,
-        help="Path to working directory, where outputs and ancillary files will be written",
-    )
-    parser.add_argument(
-        "--partition",
-        type=str,
-        help="slurm partition",
-    )
-    parser.add_argument(
-        "--ncpus",
-        type=str,
-        help="CPUs per node",
-    )
-    args = parser.parse_args()
-
-    return (
-        args.models.split(" "),
-        args.scenarios.split(" "),
-        Path(args.input_dir),
-        Path(args.working_dir),
-        args.partition,
-        args.ncpus,
-    )
-
-
-def get_output_dir(working_dir, output_dir_name):
-    """Get the output directory path which will contain all subfolders of outputs (data, slurm etc). Function for sharing."""
-    return working_dir.joinpath(output_dir_name)
-
-
-def get_dtr_dir(output_dir, model, scenario):
-    """Get the DTR directory from output_dir, model, and scenario. Function for sharing."""
-    return output_dir.joinpath("netcdf", model, scenario, "dtr")
-
-
-def get_tmax_tmin_fps(tasmax_dir, tasmin_dir):
-    """Helper function for getting tasmax and tasmin filepaths. Put in function for checking prior to slurming."""
-    tasmax_fps = list(tasmax_dir.glob("tasmax*.nc"))
-    tasmin_fps = list(tasmin_dir.glob("tasmin*.nc"))
-
-    return tasmax_fps, tasmin_fps
-
-
 if __name__ == "__main__":
     (
+        worker_script,
         models,
         scenarios,
         input_dir,
-        working_dir,
+        output_directory,
         partition,
-        ncpus,
     ) = parse_args()
 
-    working_dir.mkdir(exist_ok=True)
-    output_dir = get_output_dir(working_dir, output_dir_name)
-    output_dir.mkdir(exist_ok=True)
+    output_directory.mkdir(exist_ok=True)
+    target_directory = output_directory.joinpath(target_dir_name)
+    target_directory.mkdir(exist_ok=True)
 
-    # make batch files for each model / scenario / variable combination
-    sbatch_dir = output_dir.joinpath("slurm")
-    sbatch_dir.mkdir(exist_ok=True)
-    _ = [fp.unlink() for fp in sbatch_dir.glob("*.slurm")]
+    slurm_directory = output_directory.joinpath("slurm")
+    slurm_directory.mkdir(exist_ok=True)
 
-    qc_dir = output_dir.joinpath("qc")
-    qc_dir.mkdir(exist_ok=True)
+    # filepath for slurm script
+    sbatch_fp = slurm_directory.joinpath(f"process_cmip6_dtr.slurm")
+    # filepath for slurm stdout
+    sbatch_out_fp = slurm_directory.joinpath(
+        sbatch_fp.name.replace(".slurm", "_%A-%a.out")
+    )
 
-    # sbatch head - replaces config.py params for now!
+    config_path = slurm_directory.joinpath("config.txt")
+    array_range = write_config_file(
+        config_path=config_path,
+        models=models,
+        scenarios=scenarios,
+    )
+
     sbatch_head_kwargs = {
+        "array_range": array_range,
         "partition": partition,
-        "ncpus": ncpus,
-        "conda_init_script": working_dir.joinpath(
-            "cmip6-utils/regridding/conda_init.sh"
-        ),
+        "sbatch_out_fp": sbatch_out_fp,
     }
+    sbatch_head = make_sbatch_head(**sbatch_head_kwargs)
 
-    dtr_script = working_dir.joinpath("cmip6-utils/derived/cmip6_dtr.py")
+    sbatch_dtr_kwargs = {
+        "sbatch_fp": sbatch_fp,
+        "sbatch_out_fp": sbatch_out_fp,
+        "worker_script": worker_script,
+        "input_dir": input_dir,
+        "target_dir": target_directory,
+        "sbatch_head": sbatch_head,
+    }
+    write_sbatch_dtr(**sbatch_dtr_kwargs)
+    # job_id = submit_sbatch(sbatch_fp)
 
-    job_ids = []
-    for model in models:
-        for scenario in scenarios:
-            # get directories for tasmax and tasmin
-            tasmax_dir = input_dir.joinpath(model, scenario, "day", "tasmax")
-            tasmin_dir = input_dir.joinpath(model, scenario, "day", "tasmin")
-
-            # if these don't exist, skip them
-            try:
-                assert tasmax_dir.exists()
-                assert tasmin_dir.exists()
-            except AssertionError:
-                # wanted to have a print statement here, about skipping directories that don't have valid input data,
-                #  but that would make it more messy to pass job IDs to next function in prefect
-                continue
-
-            try:
-                tasmax_fps, tasmin_fps = get_tmax_tmin_fps(tasmax_dir, tasmin_dir)
-                assert len(tasmax_fps) == len(tasmin_fps)
-            except AssertionError:
-                # again, print statement would interefere with printing job ids.
-                continue
-
-            # filepath for slurm script
-            sbatch_fp = sbatch_dir.joinpath(f"{model}_{scenario}_process_dtr.slurm")
-            # filepath for slurm stdout
-            sbatch_out_fp = sbatch_dir.joinpath(
-                sbatch_fp.name.replace(".slurm", "_%j.out")
-            )
-            # excluding node 138 until issue resolved
-            sbatch_head = make_sbatch_head(**sbatch_head_kwargs)
-
-            # create the nested output directory matching our model/scenario/variable convention
-            # nesting this in a 'netcdf' subdir to keep the dir structure separate from slurm folder
-            #  and other non-data outputs
-            dtr_dir = get_dtr_dir(output_dir, model, scenario)
-            dtr_dir.mkdir(exist_ok=True, parents=True)
-
-            sbatch_dtr_kwargs = {
-                "sbatch_fp": sbatch_fp,
-                "sbatch_out_fp": sbatch_out_fp,
-                "dtr_script": dtr_script,
-                "tasmax_dir": tasmax_dir,
-                "tasmin_dir": tasmin_dir,
-                "output_dir": dtr_dir,
-                "sbatch_head": sbatch_head,
-            }
-            write_sbatch_dtr(**sbatch_dtr_kwargs)
-            job_id = submit_sbatch(sbatch_fp)
-
-            sbatch_out_fp_with_jobid = sbatch_dir.joinpath(
-                sbatch_out_fp.name.replace("%j", str(job_id))
-            )
-            job_ids.append(job_id)
-    # currently printing Job IDs to give to next steps in prefect. Probably better ways to do this.
-    print(job_ids)
+    # print(job_id)

@@ -1,67 +1,103 @@
-"""Script for making daily / diurnal temperature range (dtr) data to be used for processing CMIP6 data.
-Note, ERA5 dtr is processed in the ERA5 prep notebook.
+"""Script for making daily / diurnal temperature range (dtr) data from tmax and tmin data.
+Here, tmax and tmin refer to the daily maximum and minimum temperature data,
+but not necessarily "tas" or temperature at surface - other temperature variables should work as well.
+This script is designed to work with any gridded daily tmax and tmin data, not just CMIP6. E.g., it can be used for ERA5 data.
+The only requirement is that the gridded daily data is in a flat file structure in the input directories,
+and can be opened with xarray.open_mfdataset.
 
 Example usage:
-    python cmip6_dtr.py --tasmax_dir /import/beegfs/CMIP6/arctic-cmip6/regrid/GFDL-ESM4/historical/day/tasmax --tasmin_dir /import/beegfs/CMIP6/arctic-cmip6/regrid/GFDL-ESM4/historical/day/tasmin --output_dir /import/beegfs/CMIP6/snapdata/dtr_processing/netcdf/GFDL-ESM4/historical/day/dtr
+    python cmip6_dtr.py --tmax_dir /import/beegfs/CMIP6/arctic-cmip6/regrid/GFDL-ESM4/historical/day/tasmax --tmin_dir /import/beegfs/CMIP6/arctic-cmip6/regrid/GFDL-ESM4/historical/day/tasmin --dtr_tmp_fn dtr_GFDL-ESM4_historical_{start_date}_{end_date}.nc --target_dir /import/beegfs/CMIP6/snapdata/dtr_processing/netcdf/GFDL-ESM4/historical/day/dtr
 """
 
 import argparse
+import logging
 from pathlib import Path
-import dask
-from dask.distributed import LocalCluster
-from multiprocessing import cpu_count
-import numpy as np
-import pandas as pd
+from dask.distributed import Client
 import xarray as xr
-from config import dtr_tmp_fn
 from slurm_dtr import get_tmax_tmin_fps
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler()],
+)
+
+
+def get_var_id(ds):
+    """Get the variable id from the dataset attributes.
+    This is a helper function for getting the variable id from the dataset attributes.
+    """
+    if "variable_id" in ds.attrs.keys():
+        var_id = ds.attrs["variable_id"]
+        assert var_id in ds.data_vars, f"{var_id} not in {ds.data_vars}"
+    else:
+        assert len(ds.data_vars) == 1, "Dataset must have exactly one variable"
+        var_id = list(ds.data_vars.keys())[0]
+    return var_id
+
+
+def get_start_end_dates(ds):
+    """Get the start and end dates from the dataset attributes."""
+    start_date = ds.time.min().dt.strftime("%Y%m%d").values.item()
+    end_date = ds.time.max().dt.strftime("%Y%m%d").values.item()
+    return start_date, end_date
 
 
 def parse_args():
     """Parse some arguments"""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--tasmax_dir",
+        "--tmax_dir",
         type=str,
         help="Directory containing daily maximum temperature data saved by year (and nothing else)",
         required=True,
     )
     parser.add_argument(
-        "--tasmin_dir",
+        "--tmin_dir",
         type=str,
         help="Directory containing daily minimum temperature data saved by year (and nothing else)",
         required=True,
     )
     parser.add_argument(
-        "--output_dir",
+        "--target_dir",
         type=str,
         help="Directory for writing daily temperature range data",
         required=True,
     )
+    parser.add_argument(
+        "--dtr_tmp_fn",
+        type=str,
+        help="Template filename for the daily temperature range data",
+        required=True,
+    )
     args = parser.parse_args()
 
-    return (Path(args.tasmax_dir), Path(args.tasmin_dir), Path(args.output_dir))
+    return (
+        Path(args.tmax_dir),
+        Path(args.tmin_dir),
+        Path(args.target_dir),
+        args.dtr_tmp_fn,
+    )
 
 
 if __name__ == "__main__":
-    tasmax_dir, tasmin_dir, output_dir = parse_args()
-    # keep getting a bunch of errors about unable to remove lock files on Chinook
-    dask.config.set({"distributed.worker.use-file-locking": False})
+    tmax_dir, tmin_dir, target_dir, dtr_tmp_fn = parse_args()
 
     # assumes all files in one dir have corresponding file in the other
-    tasmax_fps, tasmin_fps = get_tmax_tmin_fps(tasmax_dir, tasmin_dir)
+    tmax_fps, tmin_fps = get_tmax_tmin_fps(tmax_dir, tmin_dir)
 
-    output_dir.mkdir(exist_ok=True)
+    target_dir.mkdir(exist_ok=True)
 
-    with LocalCluster(
-        n_workers=int(0.9 * cpu_count()),
-        memory_limit="4GB",
-    ) as cluster:
-        with xr.open_mfdataset(tasmax_fps) as tasmax_ds:
-            with xr.open_mfdataset(tasmin_fps) as tasmin_ds:
-                dtr = tasmax_ds["tasmax"] - tasmin_ds["tasmin"]
-                units = tasmax_ds["tasmax"].attrs["units"]
-                assert units == tasmin_ds["tasmin"].attrs["units"]
+    with Client(n_workers=4, threads_per_worker=6) as client:
+        with xr.open_mfdataset(tmax_fps, engine="h5netcdf", parallel=True) as tmax_ds:
+            tmax_var_id = get_var_id(tmax_ds)
+            with xr.open_mfdataset(
+                tmin_fps, engine="h5netcdf", parallel=True
+            ) as tmin_ds:
+                tmin_var_id = get_var_id(tmin_ds)
+                dtr = tmax_ds[tmax_var_id] - tmin_ds[tmin_var_id]
+                units = tmax_ds[tmax_var_id].attrs["units"]
+                assert units == tmin_ds[tmin_var_id].attrs["units"]
 
         dtr.name = "dtr"
         dtr.attrs = {
@@ -73,40 +109,18 @@ if __name__ == "__main__":
         # include the isnull() check so we don't replace nan's
         dtr = dtr.where((dtr.isnull() | (dtr >= 0)), 0.0000999)
 
-        # the list here at the end is just making sure we have the time - lat - lon dimensional order
-        dtr_ds = dtr.to_dataset()[["time", "lat", "lon", "dtr"]]
-        dtr_ds.attrs = {
-            k: v for k, v in tasmax_ds.attrs.items() & tasmin_ds.attrs.items()
-        }
-
-        # getting info for saving and some extra checks
-        start_year = dtr_ds.time.data[0].year
-        end_year = dtr_ds.time.data[-1].year
-        years = list(range(start_year, end_year + 1))
-        assert len(years) == len(tasmax_fps) == len(tasmin_fps)
-        model, scenario = [dtr_ds.attrs[a] for a in ["source_id", "experiment_id"]]
-        # lol sry
-        assert all(
-            [
-                (model == tasmax_fp.name.split("_")[2] == tasmin_fp.name.split("_")[2])
-                for tasmax_fp, tasmin_fp in zip(tasmax_fps, tasmin_fps)
-            ]
-        )
-        assert all(
-            [
-                (
-                    scenario
-                    == tasmax_fp.name.split("_")[3]
-                    == tasmin_fp.name.split("_")[3]
-                )
-                for tasmax_fp, tasmin_fp in zip(tasmax_fps, tasmin_fps)
-            ]
-        )
+        # the list here at the end is just making sure we have a matching dim order
+        dtr_ds = dtr.to_dataset()[list(tmax_ds[tmax_var_id].dims)]
+        dtr_ds.attrs = {k: v for k, v in tmax_ds.attrs.items() & tmin_ds.attrs.items()}
 
         # write
-        for year in years:
-            dtr_ds.sel(time=str(year)).to_netcdf(
-                output_dir.joinpath(
-                    dtr_tmp_fn.format(model=model, scenario=scenario, year=year)
-                )
+        for year in dtr_ds.time.dt.year.unique():
+            year_ds = dtr_ds.sel(time=str(year))
+            start_date, end_date = get_start_end_dates(year_ds)
+            output_fp = target_dir.joinpath(
+                dtr_tmp_fn.format(start_date=start_date, end_date=end_date)
             )
+            logging.info(
+                f"Writing {year_ds.dtr.name} for {start_date} to {end_date} to {output_fp}"
+            )
+            year_ds.to_netcdf(output_fp)
