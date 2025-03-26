@@ -14,13 +14,22 @@ import logging
 from pathlib import Path
 from dask.distributed import Client
 import xarray as xr
-from slurm_dtr import get_tmax_tmin_fps
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[logging.StreamHandler()],
 )
+
+
+def get_tmax_tmin_fps(tmax_dir, tmin_dir):
+    """Helper function for getting tasmax and tasmin filepaths. Put in function for checking prior to slurming.
+    Assumes that all files in the input directories are the target input files.
+    """
+    tmax_fps = list(tmax_dir.glob("*"))
+    tmin_fps = list(tmin_dir.glob(f"*"))
+
+    return tmax_fps, tmin_fps
 
 
 def get_var_id(ds):
