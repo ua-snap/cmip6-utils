@@ -12,6 +12,7 @@ from pathlib import Path
 import xarray as xr
 import dask
 from dask.distributed import Client
+from dask_jobqueue import SLURMCluster
 from xclim import sdba
 from config import ref_tmp_fn, train_tmp_fn
 from luts import sim_ref_var_lu, varid_adj_kind_lu, jitter_under_lu
@@ -101,6 +102,38 @@ def ensure_matching_time_coords(hist_ds, ref_ds):
     return hist_ds, ref_ds
 
 
+def keep_attrs(train_ds, hist_ds, hist_path):
+    """Keep the attributes of the historical dataset for the trained QM object.
+
+    Params:
+    -------
+    train_ds: xarray.Dataset
+        The trained QM object dataset.
+    hist_ds: xarray.Dataset
+        The historical dataset.
+
+    Returns:
+    --------
+    train_ds : xarray.Dataset
+        The trained QM object dataset with the attributes of the historical dataset.
+    """
+    check_attrs = [
+        "activity_id",
+        "experiment_id",
+        "source_id",
+        "variabl_id",
+        "table_id",
+    ]
+
+    for attr in check_attrs:
+        if attr in hist_ds.attrs:
+            train_ds.attrs[attr] = hist_ds.attrs[attr]
+
+    train_ds.attrs["parent_path"] = str(hist_path)
+
+    return train_ds
+
+
 if __name__ == "__main__":
     (
         # method,
@@ -112,6 +145,7 @@ if __name__ == "__main__":
         **{
             # "array.slicing.split_large_chunks": False,
             "temporary_directory": "/beegfs/CMIP6/kmredilla/tmp",
+            "idle-timeout": "120s",
         }
     ):
         # I *think* most Chinook nodes will have 28 or more CPUs,
@@ -154,6 +188,8 @@ if __name__ == "__main__":
                 train_kwargs.update(adapt_freq_thresh="1 mm d-1")
 
             qm_train = sdba.DetrendedQuantileMapping.train(**train_kwargs)
+
+            qm_train.ds = keep_attrs(qm_train.ds, hist_ds, sim_path)
 
             print(f"Writing QDM object to {train_path}")
             if train_path.exists():
