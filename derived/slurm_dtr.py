@@ -59,32 +59,27 @@ def validate_args(args):
     # get list of model/scenario combinations in input directory
     # could go deeper here and check for day/tasmax/tasmin subdirectories
     args.scenarios = args.scenarios.split(" ")
-    models_and_scenarios = list(product(args.models, args.scenarios))
+    modscens_from_args = list(product(args.models, args.scenarios))
+    modscens_from_input_dir = set(
+        [(d.parent.name, d.name) for d in list((args.input_directory.glob("*/*")))]
+    )
     model_scenarios_in_input_dir = [
         (model, scenario)
-        for model, scenario in models_and_scenarios
-        if (model, scenario)
-        in set(
-            set(
-                [
-                    (d.parent.name, d.name)
-                    for d in list((args.input_directory.glob("*/*")))
-                ]
-            )
-        )
+        for model, scenario in modscens_from_args
+        if (model, scenario) in modscens_from_input_dir
     ]
     if not any(model_scenarios_in_input_dir):
         raise ValueError(
-            f"No subdirectories in the input directory match the scenarios provided. Aborting."
+            f"No subdirectories in the input directory match the scenarios provided. Model-scenario combinations specified in arguments: {modscens_from_args}. Model-scenario combinations in input directory: {modscens_from_input_dir}."
         )
     elif not all(
         [
             (model, scenario) in model_scenarios_in_input_dir
-            for (model, scenario) in models_and_scenarios
+            for (model, scenario) in modscens_from_args
         ]
     ):
         logging.warning(
-            f"Some model/scenario combinations in the input directory were not found: {model_scenarios_in_input_dir}. Skipping these model/scenario combinations."
+            f"Some specified model/scenario combinations were not found in the input directory: {set(modscens_from_args) - set(model_scenarios_in_input_dir)}. Skipping these model/scenario combinations."
         )
 
     return args
@@ -121,6 +116,7 @@ def parse_args():
         "--input_directory",
         type=str,
         help="Path to directory of simulated data files to be adjusted, with filepath structure <model>/<scenario>/day/<variable ID>/<files>",
+        required=True,
     )
     parser.add_argument(
         "--output_directory",
@@ -132,6 +128,7 @@ def parse_args():
         "--partition",
         type=str,
         help="slurm partition",
+        required=True,
     )
     parser.add_argument(
         "--clear_out_files",
