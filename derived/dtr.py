@@ -6,13 +6,14 @@ The only requirement is that the gridded daily data is in a flat file structure 
 and can be opened with xarray.open_mfdataset.
 
 Example usage:
-    python cmip6_dtr.py --tmax_dir /import/beegfs/CMIP6/arctic-cmip6/regrid/GFDL-ESM4/historical/day/tasmax --tmin_dir /import/beegfs/CMIP6/arctic-cmip6/regrid/GFDL-ESM4/historical/day/tasmin --dtr_tmp_fn dtr_GFDL-ESM4_historical_{start_date}_{end_date}.nc --target_dir /import/beegfs/CMIP6/snapdata/dtr_processing/netcdf/GFDL-ESM4/historical/day/dtr
+    python dtr.py --tmax_dir /import/beegfs/CMIP6/arctic-cmip6/regrid/GFDL-ESM4/historical/day/tasmax --tmin_dir /import/beegfs/CMIP6/arctic-cmip6/regrid/GFDL-ESM4/historical/day/tasmin --dtr_tmp_fn dtr_GFDL-ESM4_historical_{start_date}_{end_date}.nc --target_dir /import/beegfs/CMIP6/snapdata/dtr_processing/netcdf/GFDL-ESM4/historical/day/dtr
 """
 
 import argparse
 import logging
 from pathlib import Path
 from dask.distributed import Client
+import numpy as np
 import xarray as xr
 
 logging.basicConfig(
@@ -27,7 +28,17 @@ def get_tmax_tmin_fps(tmax_dir, tmin_dir):
     Assumes that all files in the input directories are the target input files.
     """
     tmax_fps = list(tmax_dir.glob("*"))
-    tmin_fps = list(tmin_dir.glob(f"*"))
+    tmin_fps = list(tmin_dir.glob("*"))
+
+    assert (
+        len(tmax_fps) > 0
+    ), f"No tasmax files found in the input directory, in {tmax_dir}"
+    assert (
+        len(tmin_fps) > 0
+    ), f"No tasmin files found in the input directory, in {tmin_dir}"
+    assert len(tmax_fps) == len(
+        tmin_fps
+    ), f"Number of tmax and tmin files must be the same. tmax: {len(tmax_fps)} files in {tmax_dir}, tmin: {len(tmin_fps)} files in {tmin_dir}"
 
     return tmax_fps, tmin_fps
 
@@ -95,7 +106,7 @@ if __name__ == "__main__":
     # assumes all files in one dir have corresponding file in the other
     tmax_fps, tmin_fps = get_tmax_tmin_fps(tmax_dir, tmin_dir)
 
-    target_dir.mkdir(exist_ok=True)
+    target_dir.mkdir(exist_ok=True, parents=True)
 
     with Client(n_workers=4, threads_per_worker=6) as client:
         with xr.open_mfdataset(tmax_fps, engine="h5netcdf", parallel=True) as tmax_ds:
@@ -119,11 +130,11 @@ if __name__ == "__main__":
         dtr = dtr.where((dtr.isnull() | (dtr >= 0)), 0.0000999)
 
         # the list here at the end is just making sure we have a matching dim order
-        dtr_ds = dtr.to_dataset()[list(tmax_ds[tmax_var_id].dims)]
+        dtr_ds = dtr.to_dataset().transpose(*list(tmax_ds[tmax_var_id].dims))
         dtr_ds.attrs = {k: v for k, v in tmax_ds.attrs.items() & tmin_ds.attrs.items()}
 
         # write
-        for year in dtr_ds.time.dt.year.unique():
+        for year in np.unique(dtr_ds.time.dt.year):
             year_ds = dtr_ds.sel(time=str(year))
             start_date, end_date = get_start_end_dates(year_ds)
             output_fp = target_dir.joinpath(
