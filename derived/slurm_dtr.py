@@ -26,21 +26,26 @@ logging.basicConfig(
 
 def validate_args(args):
     """Validate the arguments passed to the script."""
-    args.dtr_script = Path(args.dtr_script)
+    args.worker_script = Path(args.worker_script)
     args.output_directory = Path(args.output_directory)
     if not args.output_directory.parent.exists():
         raise FileNotFoundError(
             f"Parent of output directory, {args.output_directory.parent}, does not exist. Aborting."
         )
-    args.input_directory = Path(args.input_dir)
+    args.input_directory = Path(args.input_directory)
     if not args.input_directory.exists():
         raise FileNotFoundError(
-            f"Input directory, {args.input_dir}, does not exist. Aborting."
+            f"Input directory, {args.input_directory}, does not exist. Aborting."
         )
 
     args.models = args.models.split(" ")
     models_in_input_dir = [
-        model for model in args.models if model in args.input_directory.glob("*")
+        model
+        for model in args.models
+        if model
+        in next(args.input_directory.walk())[
+            1
+        ]  # this gets the list of subdirectories in the input directory
     ]
     if not any(models_in_input_dir):
         raise ValueError(
@@ -49,6 +54,37 @@ def validate_args(args):
     elif not all([model in models_in_input_dir for model in args.models]):
         logging.warning(
             f"Some models in the input directory do not have subdirectories: {models_in_input_dir}. Skipping these models."
+        )
+
+    # get list of model/scenario combinations in input directory
+    # could go deeper here and check for day/tasmax/tasmin subdirectories
+    args.scenarios = args.scenarios.split(" ")
+    models_and_scenarios = list(product(args.models, args.scenarios))
+    model_scenarios_in_input_dir = [
+        (model, scenario)
+        for model, scenario in models_and_scenarios
+        if (model, scenario)
+        in set(
+            set(
+                [
+                    (d.parent.name, d.name)
+                    for d in list((args.input_directory.glob("*/*")))
+                ]
+            )
+        )
+    ]
+    if not any(model_scenarios_in_input_dir):
+        raise ValueError(
+            f"No subdirectories in the input directory match the scenarios provided. Aborting."
+        )
+    elif not all(
+        [
+            (model, scenario) in model_scenarios_in_input_dir
+            for (model, scenario) in models_and_scenarios
+        ]
+    ):
+        logging.warning(
+            f"Some model/scenario combinations in the input directory were not found: {model_scenarios_in_input_dir}. Skipping these model/scenario combinations."
         )
 
     return args
@@ -76,7 +112,7 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
-        "--input_dir",
+        "--input_directory",
         type=str,
         help="Path to directory of simulated data files to be adjusted, with filepath structure <model>/<scenario>/day/<variable ID>/<files>",
     )
@@ -96,10 +132,10 @@ def parse_args():
 
     return (
         args.worker_script,
-        args.models.split(" "),
-        args.scenarios.split(" "),
-        Path(args.input_dir),
-        Path(args.output_directory),
+        args.models,
+        args.scenarios,
+        args.input_directory,
+        args.output_directory,
         args.partition,
     )
 
@@ -139,7 +175,7 @@ def write_config_file(
     """
     array_list = []
     with open(config_path, "w") as f:
-        f.write("array_id\ttmax_dir\ttmin_dir\toutput_dir\n")
+        f.write("array_id\tmodel\tscenario\n")
         for array_id, (model, scenario) in enumerate(
             product(models, scenarios), start=1
         ):
@@ -187,8 +223,7 @@ def write_sbatch_dtr(
     sbatch_fp,
     sbatch_out_fp,
     worker_script,
-    tmax_dir,
-    tmin_dir,
+    input_dir,
     target_dir,
     sbatch_head,
 ):
@@ -198,8 +233,7 @@ def write_sbatch_dtr(
         sbatch_fp (path_like): path to .slurm script to write sbatch commands to
         sbatch_out_fp (path_like): path to where sbatch stdout should be written
         worker_script (path_like): path to the script to be called to run the dtr processing
-        tmax_dir (path-like): path to directory of tasmax files
-        tmin_dir (path-like): path to directory of tasmin files (should correspond to files in tmax_dir)
+        input_dir (path-like): path to directory of tasmax and tasmin files for all models and scenarios
         target_dir (path-like): directory to write the dtr data
         sbatch_head (dict): string for sbatch head script
 
@@ -223,6 +257,8 @@ def write_sbatch_dtr(
 
     with open(sbatch_fp, "w") as f:
         f.write(commands)
+
+    logging.info(f"Wrote sbatch script to {sbatch_fp}")
 
     return
 
