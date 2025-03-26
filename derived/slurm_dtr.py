@@ -127,6 +127,12 @@ def parse_args():
         type=str,
         help="slurm partition",
     )
+    parser.add_argument(
+        "--clear_out_files",
+        action="store_true",
+        help="Remove output files in the output directory before running the job",
+        default=True,
+    )
     args = parser.parse_args()
     args = validate_args(args)
 
@@ -137,6 +143,7 @@ def parse_args():
         args.input_directory,
         args.output_directory,
         args.partition,
+        args.clear_out_files,
     )
 
 
@@ -145,7 +152,7 @@ def get_dtr_script_directory_args(input_dir, output_dir, models, scenarios):
     for model, scenario in product(models, scenarios):
         tasmax_dir = input_dir.joinpath(model, scenario, "day", "tasmax")
         tasmin_dir = input_dir.joinpath(model, scenario, "day", "tasmin")
-        target_dir = output_dir.joinpath("netcdf", model, scenario, "dtr")
+        target_dir = output_dir.joinpath("netcdf", model, scenario, "day", "dtr")
         input_directories.append((tasmax_dir, tasmin_dir, target_dir))
 
     return input_directories
@@ -226,6 +233,7 @@ def write_sbatch_dtr(
     input_dir,
     target_dir,
     sbatch_head,
+    config_file,
 ):
     """Write an sbatch script for executing the bias adjustment script for a given model, scenario, and variable
 
@@ -236,13 +244,14 @@ def write_sbatch_dtr(
         input_dir (path-like): path to directory of tasmax and tasmin files for all models and scenarios
         target_dir (path-like): directory to write the dtr data
         sbatch_head (dict): string for sbatch head script
-
+        config_file (path_like): path to the config file for the slurm job array
     Returns:
         None, writes the commands to sbatch_fp
     """
     pycommands = "\n"
     pycommands += (
         # Extract the model and scenario to process for the current $SLURM_ARRAY_TASK_ID
+        f"config={config_file}\n"
         "model=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $2}' $config)\n"
         "scenario=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $3}' $config)\n"
         f"python {worker_script} "
@@ -286,6 +295,7 @@ if __name__ == "__main__":
         input_dir,
         output_directory,
         partition,
+        clear_out_files,
     ) = parse_args()
 
     output_directory.mkdir(exist_ok=True)
@@ -294,6 +304,9 @@ if __name__ == "__main__":
 
     slurm_directory = output_directory.joinpath("slurm")
     slurm_directory.mkdir(exist_ok=True)
+    if clear_out_files:
+        for file in slurm_directory.glob("*.out"):
+            file.unlink()
 
     # filepath for slurm script
     sbatch_fp = slurm_directory.joinpath(f"process_cmip6_dtr.slurm")
@@ -323,8 +336,9 @@ if __name__ == "__main__":
         "input_dir": input_dir,
         "target_dir": target_directory,
         "sbatch_head": sbatch_head,
+        "config_file": config_path,
     }
     write_sbatch_dtr(**sbatch_dtr_kwargs)
-    # job_id = submit_sbatch(sbatch_fp)
+    job_id = submit_sbatch(sbatch_fp)
 
-    # print(job_id)
+    print(job_id)
