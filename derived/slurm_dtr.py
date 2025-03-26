@@ -1,7 +1,7 @@
 """Script for constructing slurm jobs for computing daily temperature range for CMIP6 data.
 
 Example usage:
-    python slurm_dtr.py --models "GFDL-ESM4 CESM2" --scenarios "ssp245 ssp585" --input_dir /import/beegfs/CMIP6/arctic-cmip6/regrid --output_directory /import/beegfs/CMIP6/kmredilla/dtr_processing --partition debug
+    python slurm_dtr.py --worker_script /import/beegfs/CMIP6/kmredilla/cmip6-utils/derived/dtr.py --conda_env_name cmip6-utils --models "GFDL-ESM4 CESM2" --scenarios "ssp245 ssp585" --input_dir /import/beegfs/CMIP6/arctic-cmip6/regrid --output_directory /import/beegfs/CMIP6/kmredilla/dtr_processing --partition debug
 
 Returns:
     Outputs are written in a dtr_processing directory created as a subdirectory in working_dir, following the model/scenario/variable/<files>*.nc convention.
@@ -100,6 +100,12 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
+        "--conda_env_name",
+        type=str,
+        help="Name of the conda environment to activate",
+        required=True,
+    )
+    parser.add_argument(
         "--models",
         type=str,
         help="' '-separated list of CMIP6 models to work on",
@@ -194,13 +200,14 @@ def write_config_file(
     return array_range
 
 
-def make_sbatch_head(array_range, partition, sbatch_out_fp):
+def make_sbatch_head(array_range, partition, sbatch_out_fp, conda_env_name):
     """Make a string of SBATCH commands that can be written into a .slurm script
 
     Args:
         array_range (str): string to use in the SLURM array
         partition (str): name of the partition to use
         sbatch_out_fp (path_like): path to where sbatch stdout should be written
+        conda_env_name (str): name of the conda environment to activate
 
     Returns:
         sbatch_head (str): string of SBATCH commands ready to be used as parameter in sbatch-writing functions.
@@ -220,7 +227,7 @@ def make_sbatch_head(array_range, partition, sbatch_out_fp):
         # prepare shell for using activate - Chinook requirement
         # this seems to work to initialize conda without init script
         'eval "$($HOME/miniconda3/bin/conda shell.bash hook)"\n'
-        f"conda activate cmip6-utils\n"
+        f"conda activate {conda_env_name}\n"
     )
 
     return sbatch_head
@@ -290,6 +297,7 @@ def submit_sbatch(sbatch_fp):
 if __name__ == "__main__":
     (
         worker_script,
+        conda_env_name,
         models,
         scenarios,
         input_dir,
@@ -326,6 +334,7 @@ if __name__ == "__main__":
         "array_range": array_range,
         "partition": partition,
         "sbatch_out_fp": sbatch_out_fp,
+        "conda_env_name": conda_env_name,
     }
     sbatch_head = make_sbatch_head(**sbatch_head_kwargs)
 
