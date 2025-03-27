@@ -6,7 +6,7 @@ The only requirement is that the gridded daily data is in a flat file structure 
 and can be opened with xarray.open_mfdataset.
 
 Example usage:
-    python dtr.py --tmax_dir /import/beegfs/CMIP6/arctic-cmip6/regrid/GFDL-ESM4/historical/day/tasmax --tmin_dir /import/beegfs/CMIP6/arctic-cmip6/regrid/GFDL-ESM4/historical/day/tasmin --dtr_tmp_fn dtr_GFDL-ESM4_historical_{start_date}_{end_date}.nc --target_dir /import/beegfs/CMIP6/snapdata/dtr_processing/netcdf/GFDL-ESM4/historical/day/dtr
+    python dtr.py --tmax_dir /import/beegfs/CMIP6/arctic-cmip6/regrid/GFDL-ESM4/historical/day/tasmax --tmin_dir /import/beegfs/CMIP6/arctic-cmip6/regrid/GFDL-ESM4/historical/day/tasmin --target_dir /import/beegfs/CMIP6/snapdata/dtr_processing/netcdf/GFDL-ESM4/historical/day/dtr --dtr_tmp_fn dtr_GFDL-ESM4_historical_{start_date}_{end_date}.nc
 """
 
 import argparse
@@ -20,6 +20,43 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[logging.StreamHandler()],
 )
+
+
+def parse_args():
+    """Parse some arguments"""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--tmax_dir",
+        type=str,
+        help="Directory containing daily maximum temperature data saved by year (and nothing else)",
+        required=True,
+    )
+    parser.add_argument(
+        "--tmin_dir",
+        type=str,
+        help="Directory containing daily minimum temperature data saved by year (and nothing else)",
+        required=True,
+    )
+    parser.add_argument(
+        "--target_dir",
+        type=str,
+        help="Directory for writing daily temperature range data",
+        required=True,
+    )
+    parser.add_argument(
+        "--dtr_tmp_fn",
+        type=str,
+        help="Template filename for the daily temperature range data",
+        required=True,
+    )
+    args = parser.parse_args()
+
+    return (
+        Path(args.tmax_dir),
+        Path(args.tmin_dir),
+        Path(args.target_dir),
+        args.dtr_tmp_fn,
+    )
 
 
 def get_tmax_tmin_fps(tmax_dir, tmin_dir):
@@ -62,51 +99,11 @@ def get_start_end_dates(ds):
     return start_date, end_date
 
 
-def parse_args():
-    """Parse some arguments"""
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--tmax_dir",
-        type=str,
-        help="Directory containing daily maximum temperature data saved by year (and nothing else)",
-        required=True,
-    )
-    parser.add_argument(
-        "--tmin_dir",
-        type=str,
-        help="Directory containing daily minimum temperature data saved by year (and nothing else)",
-        required=True,
-    )
-    parser.add_argument(
-        "--target_dir",
-        type=str,
-        help="Directory for writing daily temperature range data",
-        required=True,
-    )
-    parser.add_argument(
-        "--dtr_tmp_fn",
-        type=str,
-        help="Template filename for the daily temperature range data",
-        required=True,
-    )
-    args = parser.parse_args()
-
-    return (
-        Path(args.tmax_dir),
-        Path(args.tmin_dir),
-        Path(args.target_dir),
-        args.dtr_tmp_fn,
-    )
-
-
 if __name__ == "__main__":
     tmax_dir, tmin_dir, target_dir, dtr_tmp_fn = parse_args()
 
     # assumes all files in one dir have corresponding file in the other
     tmax_fps, tmin_fps = get_tmax_tmin_fps(tmax_dir, tmin_dir)
-
-    target_dir.mkdir(exist_ok=True, parents=True)
-    # was getting issues trying to do this without loading the data.
 
     with xr.open_mfdataset(
         tmax_fps, engine="h5netcdf", parallel=True, chunks="auto"
@@ -137,6 +134,7 @@ if __name__ == "__main__":
     dtr_ds.attrs = {k: v for k, v in tmax_ds.attrs.items() & tmin_ds.attrs.items()}
 
     # write
+    target_dir.mkdir(exist_ok=True, parents=True)
     for year in np.unique(dtr_ds.time.dt.year):
         year_ds = dtr_ds.sel(time=str(year))
         start_date, end_date = get_start_end_dates(year_ds)

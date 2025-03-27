@@ -240,7 +240,7 @@ def write_sbatch_dtr(
     sbatch_head,
     config_file,
 ):
-    """Write an sbatch script for executing the bias adjustment script for a given model, scenario, and variable
+    """Write an sbatch array script for executing the dtr processing for a suite of models and scenarios.
 
     Args:
         sbatch_fp (path_like): path to .slurm script to write sbatch commands to
@@ -262,7 +262,7 @@ def write_sbatch_dtr(
         f"python {worker_script} "
         f"--tmax_dir {input_dir}/$model/$scenario/day/tasmax "
         f"--tmin_dir {input_dir}/$model/$scenario/day/tasmin "
-        f"--target_dir {target_dir}/$model/$scenario/dtr "
+        f"--target_dir {target_dir}/$model/$scenario/day/dtr "
         f"--dtr_tmp_fn dtr_$model_$scenario_{{start_date}}_{{end_date}}.nc\n"
     )
 
