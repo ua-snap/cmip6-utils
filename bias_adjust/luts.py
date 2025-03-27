@@ -17,3 +17,26 @@ expected_value_ranges = {
     # safe max is probably 150 mm, or in 1 kg m-2 s-1
     "pr": {"minimum": 0, "maximum": 1},
 }
+
+cmip6_year_ranges = {
+    "historical": {
+        "start_year": 1950,
+        "end_year": 2014,
+    },
+    "ssp126": {
+        "start_year": 2015,
+        "end_year": 2100,
+    },
+    "ssp245": {
+        "start_year": 2015,
+        "end_year": 2100,
+    },
+    "ssp370": {
+        "start_year": 2015,
+        "end_year": 2100,
+    },
+    "ssp585": {
+        "start_year": 2015,
+        "end_year": 2100,
+    },
+}
