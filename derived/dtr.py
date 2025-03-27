@@ -12,7 +12,6 @@ Example usage:
 import argparse
 import logging
 from pathlib import Path
-from dask.distributed import Client
 import numpy as np
 import xarray as xr
 
@@ -108,11 +107,11 @@ if __name__ == "__main__":
 
     target_dir.mkdir(exist_ok=True, parents=True)
     # was getting issues trying to do this without loading the data.
-    with Client(n_workers=4, threads_per_worker=6) as client:
-        with xr.open_mfdataset(tmax_fps, engine="h5netcdf", parallel=True) as tmax_ds:
-            tmax_ds.load()
-        with xr.open_mfdataset(tmin_fps, engine="h5netcdf", parallel=True) as tmin_ds:
-            tmin_ds.load()
+
+    with xr.open_mfdataset(tmax_fps, engine="h5netcdf", parallel=True) as tmax_ds:
+        tmax_ds.load()
+    with xr.open_mfdataset(tmin_fps, engine="h5netcdf", parallel=True) as tmin_ds:
+        tmin_ds.load()
 
     tmax_var_id = get_var_id(tmax_ds)
     tmin_var_id = get_var_id(tmin_ds)
