@@ -107,40 +107,41 @@ if __name__ == "__main__":
     tmax_fps, tmin_fps = get_tmax_tmin_fps(tmax_dir, tmin_dir)
 
     target_dir.mkdir(exist_ok=True, parents=True)
-
+    # was getting issues trying to do this without loading the data.
     with Client(n_workers=4, threads_per_worker=6) as client:
         with xr.open_mfdataset(tmax_fps, engine="h5netcdf", parallel=True) as tmax_ds:
-            tmax_var_id = get_var_id(tmax_ds)
-            with xr.open_mfdataset(
-                tmin_fps, engine="h5netcdf", parallel=True
-            ) as tmin_ds:
-                tmin_var_id = get_var_id(tmin_ds)
-                dtr = tmax_ds[tmax_var_id] - tmin_ds[tmin_var_id]
-                units = tmax_ds[tmax_var_id].attrs["units"]
-                assert units == tmin_ds[tmin_var_id].attrs["units"]
+            tmax_ds.load()
+        with xr.open_mfdataset(tmin_fps, engine="h5netcdf", parallel=True) as tmin_ds:
+            tmin_ds.load()
 
-        dtr.name = "dtr"
-        dtr.attrs = {
-            "long_name": "Daily temperature range",
-            "units": units,
-        }
-        # replace any negative values (tasmax - tasmin < 0) with 0.0000999
-        # using this number instead of zero gives us a way of estimating what spots were tweaked
-        # include the isnull() check so we don't replace nan's
-        dtr = dtr.where((dtr.isnull() | (dtr >= 0)), 0.0000999)
+    tmax_var_id = get_var_id(tmax_ds)
+    tmin_var_id = get_var_id(tmin_ds)
+    dtr = tmax_ds[tmax_var_id] - tmin_ds[tmin_var_id]
+    units = tmax_ds[tmax_var_id].attrs["units"]
+    assert units == tmin_ds[tmin_var_id].attrs["units"]
 
-        # the list here at the end is just making sure we have a matching dim order
-        dtr_ds = dtr.to_dataset().transpose(*list(tmax_ds[tmax_var_id].dims))
-        dtr_ds.attrs = {k: v for k, v in tmax_ds.attrs.items() & tmin_ds.attrs.items()}
+    dtr.name = "dtr"
+    dtr.attrs = {
+        "long_name": "Daily temperature range",
+        "units": units,
+    }
+    # replace any negative values (tasmax - tasmin < 0) with 0.0000999
+    # using this number instead of zero gives us a way of estimating what spots were tweaked
+    # include the isnull() check so we don't replace nan's
+    dtr = dtr.where((dtr.isnull() | (dtr >= 0)), 0.0000999)
 
-        # write
-        for year in np.unique(dtr_ds.time.dt.year):
-            year_ds = dtr_ds.sel(time=str(year))
-            start_date, end_date = get_start_end_dates(year_ds)
-            output_fp = target_dir.joinpath(
-                dtr_tmp_fn.format(start_date=start_date, end_date=end_date)
-            )
-            logging.info(
-                f"Writing {year_ds.dtr.name} for {start_date} to {end_date} to {output_fp}"
-            )
-            year_ds.to_netcdf(output_fp)
+    # the list here at the end is just making sure we have a matching dim order
+    dtr_ds = dtr.to_dataset().transpose(*list(tmax_ds[tmax_var_id].dims))
+    dtr_ds.attrs = {k: v for k, v in tmax_ds.attrs.items() & tmin_ds.attrs.items()}
+
+    # write
+    for year in np.unique(dtr_ds.time.dt.year):
+        year_ds = dtr_ds.sel(time=str(year))
+        start_date, end_date = get_start_end_dates(year_ds)
+        output_fp = target_dir.joinpath(
+            dtr_tmp_fn.format(start_date=start_date, end_date=end_date)
+        )
+        logging.info(
+            f"Writing {year_ds.dtr.name} for {start_date} to {end_date} to {output_fp}"
+        )
+        year_ds.to_netcdf(output_fp)
