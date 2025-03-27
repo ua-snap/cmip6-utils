@@ -141,6 +141,7 @@ def parse_args():
 
     return (
         args.worker_script,
+        args.conda_env_name,
         args.models,
         args.scenarios,
         args.input_directory,
