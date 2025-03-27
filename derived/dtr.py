@@ -109,13 +109,12 @@ if __name__ == "__main__":
     # was getting issues trying to do this without loading the data.
 
     with xr.open_mfdataset(tmax_fps, engine="h5netcdf", parallel=True) as tmax_ds:
-        tmax_ds.load()
-    with xr.open_mfdataset(tmin_fps, engine="h5netcdf", parallel=True) as tmin_ds:
-        tmin_ds.load()
+        with xr.open_mfdataset(tmin_fps, engine="h5netcdf", parallel=True) as tmin_ds:
+            tmax_var_id = get_var_id(tmax_ds)
+            tmin_var_id = get_var_id(tmin_ds)
+            dtr = tmax_ds[tmax_var_id] - tmin_ds[tmin_var_id]
+            dtr.persist()
 
-    tmax_var_id = get_var_id(tmax_ds)
-    tmin_var_id = get_var_id(tmin_ds)
-    dtr = tmax_ds[tmax_var_id] - tmin_ds[tmin_var_id]
     units = tmax_ds[tmax_var_id].attrs["units"]
     assert units == tmin_ds[tmin_var_id].attrs["units"]
 
