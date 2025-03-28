@@ -3,7 +3,7 @@
 
 example usage:
     python run_netcdf_to_zarr.py --netcdf_dir /beegfs/CMIP6/kmredilla/daily_era5_4km_3338/ --year_str t2max/t2max_{year}_era5_4km_3338.nc --start_year 1965 --end_year 2014 --output_dir /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted_test/optimized_inputs/
-    python run_netcdf_to_zarr.py --worker_script /beegfs/CMIP6/kmredilla/cmip6-utils/bias_adjust/netcdf_to_zarr.py --conda_env_name cmip6-utils  --netcdf_dir /beegfs/CMIP6/kmredilla/cmip6_4km_3338/netcdf --models 'GFDL-ESM4 CESM2' --scenarios 'historical ssp585' --variables 'tasmax pr' --output_dir /beegfs/CMIP6/kmredilla/zarr_bias_adjust_inputs
+    python run_netcdf_to_zarr.py --worker_script /beegfs/CMIP6/kmredilla/cmip6-utils/bias_adjust/netcdf_to_zarr.py --conda_env_name cmip6-utils  --netcdf_dir /beegfs/CMIP6/kmredilla/cmip6_4km_3338/netcdf --models 'GFDL-ESM4 CESM2' --scenarios 'historical ssp585' --variables 'tasmax pr' --output_dir /beegfs/CMIP6/kmredilla/zarr_bias_adjust_inputs --partition t2small
 """
 
 import argparse
@@ -13,7 +13,7 @@ from pathlib import Path
 from slurm import (
     write_netcdf_to_zarr_cmip6_config_file,
     write_sbatch_netcdf_to_zarr_cmip6,
-    make_sbatch_head,
+    make_sbatch_array_head,
     submit_sbatch,
 )
 
@@ -83,6 +83,7 @@ def validate_args(args):
         logging.warning(
             f"Some specified model/scenario combinations were not found in the input directory: {set(modscens_from_args) - set(model_scenarios_in_input_dir)}. Skipping these model/scenario combinations."
         )
+    args.variables = args.variables.split(" ")
 
     return args
 
@@ -182,10 +183,10 @@ def parse_args():
     return (
         args.worker_script,
         args.conda_env_name,
+        args.netcdf_dir,
         args.models,
         args.scenarios,
         args.variables,
-        args.netcdf_dir,
         args.output_dir,
         args.chunks_dict,
         args.partition,
@@ -198,11 +199,12 @@ if __name__ == "__main__":
     (
         worker_script,
         conda_env_name,
+        netcdf_dir,
         models,
         scenarios,
         variables,
-        netcdf_dir,
         output_dir,
+        chunks_dict,
         partition,
         clear_out_files,
     ) = parse_args()
@@ -236,7 +238,7 @@ if __name__ == "__main__":
         "sbatch_out_fp": sbatch_out_fp,
         "conda_env_name": conda_env_name,
     }
-    sbatch_head = make_sbatch_head(**sbatch_head_kwargs)
+    sbatch_head = make_sbatch_array_head(**sbatch_head_kwargs)
 
     sbatch_kwargs = {
         "sbatch_fp": sbatch_fp,
@@ -247,6 +249,8 @@ if __name__ == "__main__":
         "sbatch_head": sbatch_head,
         "config_file": config_path,
     }
+    if chunks_dict is not None:
+        sbatch_kwargs["chunks_dict"] = chunks_dict
     write_sbatch_netcdf_to_zarr_cmip6(**sbatch_kwargs)
     # job_id = submit_sbatch(sbatch_fp)
 

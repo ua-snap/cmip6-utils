@@ -155,10 +155,10 @@ def write_sbatch_netcdf_to_zarr_cmip6(
         "end_year=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $6}' $config)\n"
         f"python {worker_script} "
         f"--netcdf_dir {netcdf_dir} "
-        f"--year_str $model/$scenario/day/$variable/$variable_day_$model_$scenario_regrid_{{year}}0101-{{year}}1231.nc "
+        f"--year_str $model/$scenario/day/$variable/${{variable}}_day_${{model}}_${{scenario}}_regrid_{{year}}0101-{{year}}1231.nc "
         f"--start_year $start_year "
         f"--end_year $end_year "
-        f"--zarr_path {target_dir}/$model_$scenario_$variable.zarr\n"
+        f"--zarr_path {target_dir}/${{variable}}_${{model}}_${{scenario}}.zarr\n"
     )
 
     pycommands += f"echo End netcdf-to-zarr conversion && date\n\n"
