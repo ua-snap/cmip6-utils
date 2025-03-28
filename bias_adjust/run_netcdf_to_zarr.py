@@ -252,6 +252,6 @@ if __name__ == "__main__":
     if chunks_dict is not None:
         sbatch_kwargs["chunks_dict"] = chunks_dict
     write_sbatch_netcdf_to_zarr_cmip6(**sbatch_kwargs)
-    # job_id = submit_sbatch(sbatch_fp)
+    job_id = submit_sbatch(sbatch_fp)
 
-    # print(job_id)
+    print(job_id)
