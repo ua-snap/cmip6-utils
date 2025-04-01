@@ -1,6 +1,7 @@
 # module for re-using code for bias adjustment exploratory data analysis
 
 from pathlib import Path
+from warnings import warn
 import matplotlib.pyplot as plt
 from xclim import units, sdba, indices
 from xclim.core.calendar import percentile_doy
@@ -17,6 +18,33 @@ cmip6_dir = Path("/beegfs/CMIP6/kmredilla/cmip6_regridding/regrid")
 
 # lookups for functions and indices
 doy_func_lu = {"min": np.min, "max": np.max, "mean": np.mean}
+
+
+# these are some different detrending methods for the DQM
+detrend_configs = {
+    "Loess DQM": sdba.detrending.LoessDetrend(
+        group="time.dayofyear", d=0, niter=1, f=0.2, weights="tricube"
+    ),
+    "Mean DQM": sdba.detrending.MeanDetrend(group="time.dayofyear"),
+    "Poly1 DQM": sdba.detrending.PolyDetrend(group="time.dayofyear", degree=1),
+    "Poly3 DQM": sdba.detrending.PolyDetrend(group="time.dayofyear", degree=3),
+}
+
+# This is a dict of locations with lat/lon coords for rapid testing
+coords = {
+    "Fairbanks": {"lat": 64.8401, "lon": -147.72},
+    "Anchorage": {"lat": 61.2176, "lon": -149.8997},
+    "Nome": {"lat": 64.5006, "lon": -165.4086},
+    "Yakutat": {"lat": 59.5453, "lon": -139.7268},
+    "Utqiagvik": {"lat": 71.2906, "lon": -156.7886},
+}
+
+
+era5_var_id_lu = {"t2max": "tasmax", "pr": "pr"}
+jitter_under_thresh_lu = {"pr": "0.01 mm d-1", "dtr": "1e-4 K"}
+adapt_freq_thresh_lu = {"pr": "1 mm d-1"}
+units_lu = {"pr": "mm d-1", "tasmax": "degC", "dtr": "degC"}
+varid_adj_kind_lu = {"tasmax": "+", "tasmin": "+", "dtr": "*", "pr": "*"}
 
 
 def wsdi(tasmax, hist_da):
@@ -111,33 +139,6 @@ indices_lu = {
 
 # indices that require additional  historical reference data
 hist_ref_indices = ["wsdi", "tx90p"]
-
-
-# these are some different detrending methods for the DQM
-detrend_configs = {
-    "Loess DQM": sdba.detrending.LoessDetrend(
-        group="time.dayofyear", d=0, niter=1, f=0.2, weights="tricube"
-    ),
-    "Mean DQM": sdba.detrending.MeanDetrend(group="time.dayofyear"),
-    "Poly1 DQM": sdba.detrending.PolyDetrend(group="time.dayofyear", degree=1),
-    "Poly3 DQM": sdba.detrending.PolyDetrend(group="time.dayofyear", degree=3),
-}
-
-# This is a dict of locations with lat/lon coords for rapid testing
-coords = {
-    "Fairbanks": {"lat": 64.8401, "lon": -147.72},
-    "Anchorage": {"lat": 61.2176, "lon": -149.8997},
-    "Nome": {"lat": 64.5006, "lon": -165.4086},
-    "Yakutat": {"lat": 59.5453, "lon": -139.7268},
-    "Utqiagvik": {"lat": 71.2906, "lon": -156.7886},
-}
-
-
-era5_var_id_lu = {"t2max": "tasmax", "pr": "pr"}
-jitter_under_thresh_lu = {"pr": "0.01 mm d-1", "dtr": "1e-4 K"}
-adapt_freq_thresh_lu = {"pr": "1 mm d-1"}
-units_lu = {"pr": "mm d-1", "tasmax": "degC", "dtr": "degC"}
-varid_adj_kind_lu = {"tasmax": "+", "tasmin": "+", "dtr": "*", "pr": "*"}
 
 
 # we will be getting filepaths in a similar way many times. Make some functions to make this easier
@@ -337,10 +338,17 @@ def extract_time_series(ds, var_id, projected_coords):
     """Extracts the time series of the given coordinates from the dataset. returns a dictionary of time series."""
     time_series = {}
     for location, coord in projected_coords.items():
-        x, y = projected_coords[location]["x"], projected_coords[location]["y"]
-        time_series[location] = (
-            ds[var_id].sel(x=x, y=y, method="nearest").drop_vars(["x", "y"])
-        )
+        x, y = coord["x"], coord["y"]
+        extr = ds[var_id].sel(x=x, y=y, method="nearest").drop_vars(["x", "y"])
+        if extr.dropna("time").size == 0:
+            warn(
+                (
+                    f"All-nan extraction encountered for location: {location}.\n"
+                    f"Coordinates supplied: x: {projected_coords[location]["x"]}, y: {projected_coords[location]["y"]}. "
+                    f"Dataset connection: {ds}"
+                )
+            )
+        time_series[location] = extr
 
     # Combine the time series into a single dataset
     combined_time_series = xr.concat(time_series.values(), dim="location")
@@ -373,8 +381,9 @@ def adjust_and_combine_dqm_qdm(dqm_train, qdm_train, sim):
     # combine the DQM and QDM data
     adj_da = xr.concat(adj_das, dim="Method").rename(sim.name)
     adj_da["Method"] = list(detrend_configs.keys()) + ["QDM"]
+    adj_da = adj_da
 
-    return adj_da.load()
+    return adj_da
 
 
 def drop_non_coord_vars(ds):
@@ -431,15 +440,21 @@ def extract_era5_time_series(era5_ds, projected_coords):
 def extract_time_series_from_zarr(zarr_dir, model, scenario, var_id, coords):
     """Extract time series from zarr stores for ERA5, historical, and future data for a given model and scenario."""
     # open historical and future data
-    hist_store = zarr_dir.joinpath(f"{var_id}_{model}_historical.zarr")
+    hist_scenario = "historical"
+    hist_store = zarr_dir.joinpath(f"{var_id}_{model}_{hist_scenario}.zarr")
     sim_store = zarr_dir.joinpath(f"{var_id}_{model}_{scenario}.zarr")
     hist_ds = xr.open_zarr(hist_store)
     sim_ds = xr.open_zarr(sim_store)
     hist_ds = drop_non_coord_vars(hist_ds)
     sim_ds = drop_non_coord_vars(sim_ds)
+
     # ensure the time coordinates have 0 for the hour
-    hist_ds = hist_ds.assign_coords(time=hist_ds.time.dt.floor("D"))
-    sim_ds = sim_ds.assign_coords(time=sim_ds.time.dt.floor("D"))
+    hist_ds = hist_ds.assign_coords(time=hist_ds.time.dt.floor("D")).sel(
+        time=slice("1965", "2014")
+    )
+    sim_ds = sim_ds.assign_coords(time=sim_ds.time.dt.floor("D")).sel(
+        time=slice("2015", "2100")
+    )
 
     target_unit = units_lu[var_id]
     # Extract time series for each location
@@ -450,19 +465,26 @@ def extract_time_series_from_zarr(zarr_dir, model, scenario, var_id, coords):
         extract_time_series(sim_ds, var_id, coords), target_unit
     )
 
+    hist_extr = hist_extr.assign_coords(
+        Method=f"{model}", experiment=hist_scenario
+    ).expand_dims(["Method", "experiment"])
+    sim_extr = sim_extr.assign_coords(
+        Method=f"{model}", experiment=scenario
+    ).expand_dims(["Method", "experiment"])
+
+    hist_extr.attrs["source_id"] = model
+    sim_extr.attrs["source_id"] = model
+    hist_extr.attrs["experiment_id"] = hist_scenario
+    sim_extr.attrs["experiment_id"] = scenario
+
     return hist_extr, sim_extr
 
 
-def run_bias_adjustment_and_package_data(
-    zarr_dir, model, scenario, var_id, coords, era5_extr
-):
+def run_bias_adjustment_and_package_data(hist_extr, sim_extr, era5_extr):
     """returns bias adjusted data and non-adjusted data relevant for plotting comparisons.
     assumes all relevant zarr stores are in the same directory.
     """
-    hist_extr, sim_extr = extract_time_series_from_zarr(
-        zarr_dir, model, scenario, var_id, coords
-    )
-
+    var_id = hist_extr.name
     # need to supply the correct variable to the train function
     if isinstance(era5_extr, xr.Dataset):
         era5_extr = era5_extr[var_id]
@@ -470,7 +492,9 @@ def run_bias_adjustment_and_package_data(
     # Since it is easy to process both quantile delta mapping and detrended quantile mapping, we will do so
     train_kwargs = dict(
         ref=era5_extr,
-        hist=hist_extr,
+        # think having experiment coordinate may quietly prevent
+        # adjustment of data with different coordinates (e.g. ssp's)
+        hist=hist_extr.isel(Method=0, experiment=0).drop_vars(["Method", "experiment"]),
         nquantiles=50,
         group="time.dayofyear",
         window=31,
@@ -487,39 +511,22 @@ def run_bias_adjustment_and_package_data(
     qdm_train = sdba.QuantileDeltaMapping.train(**train_kwargs)
 
     # adjust and combine the historical data
-    hist_adj_da = adjust_and_combine_dqm_qdm(dqm_train, qdm_train, hist_extr)
-    hist_adj_da = (
-        hist_adj_da.assign_coords(
-            experiment="historical",
-            # Method=[m + "-historical" for m in hist_adj_da.Method.values]
-        )
-        .expand_dims(["experiment"])
-        .load()
+    hist_adj_da = adjust_and_combine_dqm_qdm(
+        dqm_train,
+        qdm_train,
+        hist_extr.isel(Method=0, experiment=0).drop_vars(["Method", "experiment"]),
     )
-    # do the same for the future data
-    sim_adj_da = adjust_and_combine_dqm_qdm(dqm_train, qdm_train, sim_extr)
-    sim_adj_da = (
-        sim_adj_da.assign_coords(
-            experiment=scenario,
-            # Method=[m + "-future" for m in sim_adj_da.Method.values]
-        )
-        .expand_dims(["experiment"])
-        .load()
+    sim_adj_da = adjust_and_combine_dqm_qdm(
+        dqm_train,
+        qdm_train,
+        sim_extr.isel(Method=0, experiment=0).drop_vars(["Method", "experiment"]),
     )
 
-    # addign Method and experiment dims for each of the unadjusted dataarrays
-    hist_extr = (
-        hist_extr.assign_coords(Method=f"{model}", experiment="historical")
-        .expand_dims(["Method", "experiment"])
-        .load()
-    )
-    sim_extr = (
-        sim_extr.assign_coords(Method=f"{model}", experiment=scenario)
-        .expand_dims(["Method", "experiment"])
-        .load()
-    )
+    adj_da = xr.merge([hist_extr, sim_extr, hist_adj_da, sim_adj_da])[var_id]
 
-    return xr.merge([hist_extr, sim_extr, hist_adj_da, sim_adj_da])[var_id]
+    del adj_da.attrs["experiment_id"]
+
+    return adj_da
 
 
 def run_indicators(da, hist_da=None):
@@ -578,10 +585,10 @@ def indicator_boxplot_by_method_location(indicators, indicator):
         hue="Method",
         col="location",
         sharey=False,
-        col_wrap=3,
-        height=2.5,
+        col_wrap=5,
+        height=3,
     )
-    sns.move_legend(g, "upper left", bbox_to_anchor=(0.75, 0.45), frameon=False)
+    sns.move_legend(g, "upper left", bbox_to_anchor=(0.7, 0.3), frameon=False)
     g.figure.suptitle(indicators[indicator].attrs["long_name"])
     plt.tight_layout()
     plt.show()
@@ -600,10 +607,10 @@ def indicator_deltas_by_method_location(proj_indicators, hist_indicators, indica
         hue="Method",
         col="location",
         sharey=False,
-        col_wrap=3,
-        height=2.5,
+        col_wrap=5,
+        height=3,
     )
-    sns.move_legend(g, "upper left", bbox_to_anchor=(0.75, 0.45), frameon=False)
+    sns.move_legend(g, "upper left", bbox_to_anchor=(0.7, 0.3), frameon=False)
     g.figure.suptitle(
         f"Projected - Historical {proj_indicators[indicator].attrs['long_name']}"
     )
@@ -611,19 +618,19 @@ def indicator_deltas_by_method_location(proj_indicators, hist_indicators, indica
     plt.show()
 
 
-def run_full_adjustment_and_summarize(
-    zarr_dir, model, scenario, var_id, projected_coords, era5_extr, results
-):
+def run_full_adjustment_and_summarize(hist_extr, sim_extr, era5_extr, results):
     """Run the full adjustment and summarize the results."""
+    adj_da = run_bias_adjustment_and_package_data(hist_extr, sim_extr, era5_extr)
 
-    tmp_da = run_bias_adjustment_and_package_data(
-        zarr_dir, model, scenario, var_id, projected_coords, era5_extr
-    )
+    var_id = hist_extr.name
+    assert var_id == sim_extr.name == era5_extr.name
+    model = adj_da.attrs["source_id"]
+    scenario = sim_extr.attrs["experiment_id"]
     results[model][var_id]["adj"] = {
-        "historical": tmp_da.sel(experiment="historical")
+        "historical": adj_da.sel(experiment="historical")
         .dropna(dim="time")
         .drop_vars("experiment"),
-        scenario: tmp_da.sel(experiment=scenario)
+        scenario: adj_da.sel(experiment=scenario)
         .dropna(dim="time")
         .drop_vars("experiment"),
     }
@@ -632,17 +639,19 @@ def run_full_adjustment_and_summarize(
     historical_indicators = run_indicators(
         results[model][var_id]["adj"]["historical"],
     )
+    future_indicators = run_indicators(
+        results[model][var_id]["adj"][scenario],
+        results[model][var_id]["adj"]["historical"],
+    )
     # merge with ERA5 indicators for plotting
     era5_indicators = results["ERA5"][var_id]["indicators"]
     historical_indicators = xr.concat(
         [era5_indicators, historical_indicators], dim="Method"
     )
-    results[model][var_id]["indicators"] = {
+    indicators_dict = {
         "historical": historical_indicators,
-        scenario: run_indicators(
-            results[model][var_id]["adj"][scenario],
-            results[model][var_id]["adj"]["historical"],
-        ),
+        scenario: future_indicators,
     }
+    results[model][var_id]["indicators"] = indicators_dict
 
     return results
