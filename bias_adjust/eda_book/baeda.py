@@ -334,25 +334,28 @@ def get_projected_coords(zarr_store, coords):
     return projected_coords
 
 
-def extract_time_series(ds, var_id, projected_coords):
+def extract_time_series(ds, var_id, projected_coords=None):
     """Extracts the time series of the given coordinates from the dataset. returns a dictionary of time series."""
-    time_series = {}
-    for location, coord in projected_coords.items():
-        x, y = coord["x"], coord["y"]
-        extr = ds[var_id].sel(x=x, y=y, method="nearest").drop_vars(["x", "y"])
-        if extr.dropna("time").size == 0:
-            warn(
-                (
-                    f"All-nan extraction encountered for location: {location}.\n"
-                    f"Coordinates supplied: x: {projected_coords[location]["x"]}, y: {projected_coords[location]["y"]}. "
-                    f"Dataset connection: {ds}"
+    if projected_coords is not None:
+        time_series = {}
+        for location, coord in projected_coords.items():
+            x, y = coord["x"], coord["y"]
+            extr = ds[var_id].sel(x=x, y=y, method="nearest").drop_vars(["x", "y"])
+            if extr.dropna("time").size == 0:
+                warn(
+                    (
+                        f"All-nan extraction encountered for location: {location}.\n"
+                        f"Coordinates supplied: x: {projected_coords[location]["x"]}, y: {projected_coords[location]["y"]}. "
+                        f"Dataset connection: {ds}"
+                    )
                 )
-            )
-        time_series[location] = extr
+            time_series[location] = extr
 
-    # Combine the time series into a single dataset
-    combined_time_series = xr.concat(time_series.values(), dim="location")
-    combined_time_series["location"] = list(time_series.keys())
+        # Combine the time series into a single dataset
+        combined_time_series = xr.concat(time_series.values(), dim="location")
+        combined_time_series["location"] = list(time_series.keys())
+    else:
+        combined_time_series = ds[var_id]
 
     return combined_time_series
 
