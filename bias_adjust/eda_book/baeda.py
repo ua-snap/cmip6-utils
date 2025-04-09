@@ -30,6 +30,9 @@ detrend_configs = {
     "Poly3 DQM": sdba.detrending.PolyDetrend(group="time.dayofyear", degree=3),
 }
 
+# simply window sizes
+window_configs = [31, 61, 91, 121]
+
 # This is a dict of locations with lat/lon coords for rapid testing
 coords = {
     "Fairbanks": {"lat": 64.8401, "lon": -147.72},
@@ -313,7 +316,8 @@ def get_hist(model_dir, var_id, chunks={"lat_chunk": 60, "lon_chunk": 60}):
     return hist
 
 
-### everything below here is from the more recent explore_qdm.ipynb efforts for the bias adjustment piece of statistical downscaling
+### everything below here is from the more recent explore_qdm.ipynb efforts
+# for the bias adjustment piece of statistical downscaling
 
 
 def get_projected_coords(zarr_store, coords):
@@ -360,7 +364,7 @@ def extract_time_series(ds, var_id, projected_coords=None):
     return combined_time_series
 
 
-def adjust_and_combine_dqm_qdm(dqm_train, qdm_train, sim):
+def adjust_and_combine_allqm(qm_train, dqm_train, qdm_train, sim):
     """Run adjustments for all iterations of detrending, plus the qdm method, and combine into a single dataset.
     Triggers computation of returned dataarray."""
     adj_das = []
@@ -381,9 +385,17 @@ def adjust_and_combine_dqm_qdm(dqm_train, qdm_train, sim):
     )
     adj_das.append(qdm_da)
 
+    # run the QM adjustment
+    qm_da = qm_train.adjust(
+        sim,
+        extrapolation="constant",
+        interp="nearest",
+    )
+    adj_das.append(qm_da)
+
     # combine the DQM and QDM data
     adj_da = xr.concat(adj_das, dim="Method").rename(sim.name)
-    adj_da["Method"] = list(detrend_configs.keys()) + ["QDM"]
+    adj_da["Method"] = list(detrend_configs.keys()) + ["QDM", "QM"]
     adj_da = adj_da
 
     return adj_da
@@ -510,16 +522,19 @@ def run_bias_adjustment_and_package_data(hist_extr, sim_extr, era5_extr):
             jitter_under_thresh_value=jitter_under_thresh_lu[var_id],
         )
 
+    qm_train = sdba.EmpiricalQuantileMapping.train(**train_kwargs)
     dqm_train = sdba.DetrendedQuantileMapping.train(**train_kwargs)
     qdm_train = sdba.QuantileDeltaMapping.train(**train_kwargs)
 
     # adjust and combine the historical data
-    hist_adj_da = adjust_and_combine_dqm_qdm(
+    hist_adj_da = adjust_and_combine_allqm(
+        qm_train,
         dqm_train,
         qdm_train,
         hist_extr.isel(Method=0, experiment=0).drop_vars(["Method", "experiment"]),
     )
-    sim_adj_da = adjust_and_combine_dqm_qdm(
+    sim_adj_da = adjust_and_combine_allqm(
+        qm_train,
         dqm_train,
         qdm_train,
         sim_extr.isel(Method=0, experiment=0).drop_vars(["Method", "experiment"]),
@@ -528,6 +543,55 @@ def run_bias_adjustment_and_package_data(hist_extr, sim_extr, era5_extr):
     adj_da = xr.merge([hist_extr, sim_extr, hist_adj_da, sim_adj_da])[var_id]
 
     del adj_da.attrs["experiment_id"]
+
+    return adj_da
+
+
+def run_bias_adjustment_profile_window(hist_extr, era5_extr):
+    """returns bias adjusted data and non-adjusted data relevant for plotting comparisons.
+    assumes all relevant zarr stores are in the same directory.
+    """
+    var_id = hist_extr.name
+    # need to supply the correct variable to the train function
+    if isinstance(era5_extr, xr.Dataset):
+        era5_extr = era5_extr[var_id]
+
+    hist = hist_extr.isel(Method=0, experiment=0).drop_vars(["Method", "experiment"])
+
+    adj_das = []
+    for window in window_configs:
+        train_kwargs = dict(
+            ref=era5_extr,
+            # think having experiment coordinate may quietly prevent
+            # adjustment of data with different coordinates (e.g. ssp's)
+            hist=hist_extr.isel(Method=0, experiment=0).drop_vars(
+                ["Method", "experiment"]
+            ),
+            nquantiles=50,
+            group="time.dayofyear",
+            window=window,
+            kind=varid_adj_kind_lu[var_id],
+        )
+        if var_id in adapt_freq_thresh_lu:
+            # do the adapt frequency thingy for precipitation data
+            train_kwargs.update(
+                adapt_freq_thresh=adapt_freq_thresh_lu[var_id],
+                jitter_under_thresh_value=jitter_under_thresh_lu[var_id],
+            )
+
+        # will only do QDM for this window analysis
+        qdm_train = sdba.QuantileDeltaMapping.train(**train_kwargs)
+
+        qdm_da = qdm_train.adjust(
+            hist,
+            extrapolation="constant",
+            interp="nearest",
+        )
+        adj_das.append(qdm_da)
+
+    # combine the DQM and QDM data
+    adj_da = xr.concat(adj_das, dim="window_size").rename(hist.name)
+    adj_da["window_size"] = [str(w) for w in window_configs]
 
     return adj_da
 
@@ -569,7 +633,7 @@ def plot_kde(df, var_id):
         common_norm=False,
     )
 
-    sns.move_legend(g, "upper left", bbox_to_anchor=(0.65, 0.45), frameon=False)
+    sns.move_legend(g, "upper left", bbox_to_anchor=(0.75, 0.45), frameon=False)
 
     # pr distros have long tails, so limit the x axis to 25% of inital xlimit for better visualization
     if var_id == "pr":
@@ -577,7 +641,7 @@ def plot_kde(df, var_id):
             ax.set_xlim(0, ax.get_xlim()[1] * 0.25)
 
 
-def indicator_boxplot_by_method_location(indicators, indicator):
+def indicator_boxplot_by_location(indicators, indicator, hue="Method"):
     """Create a seaborn catplot of an indicator faceted by location and colored by method"""
     historical_indicators_df = indicators.to_dataframe()
 
@@ -585,13 +649,13 @@ def indicator_boxplot_by_method_location(indicators, indicator):
         historical_indicators_df,
         kind="box",
         y=indicator,
-        hue="Method",
+        hue=hue,
         col="location",
         sharey=False,
         col_wrap=5,
         height=3,
     )
-    sns.move_legend(g, "upper left", bbox_to_anchor=(0.7, 0.3), frameon=False)
+    sns.move_legend(g, "upper left", bbox_to_anchor=(0.8, 0.3), frameon=False)
     g.figure.suptitle(indicators[indicator].attrs["long_name"])
     plt.tight_layout()
     plt.show()
@@ -613,7 +677,7 @@ def indicator_deltas_by_method_location(proj_indicators, hist_indicators, indica
         col_wrap=5,
         height=3,
     )
-    sns.move_legend(g, "upper left", bbox_to_anchor=(0.7, 0.3), frameon=False)
+    sns.move_legend(g, "upper left", bbox_to_anchor=(0.8, 0.3), frameon=False)
     g.figure.suptitle(
         f"Projected - Historical {proj_indicators[indicator].attrs['long_name']}"
     )
@@ -656,5 +720,35 @@ def run_full_adjustment_and_summarize(hist_extr, sim_extr, era5_extr, results):
         scenario: future_indicators,
     }
     results[model][var_id]["indicators"] = indicators_dict
+
+    return results
+
+
+def run_window_profile_adjustment_and_summarize(hist_extr, era5_extr, results):
+    """Run the full adjustment and summarize the results."""
+    adj_da = run_bias_adjustment_profile_window(hist_extr, era5_extr)
+
+    var_id = hist_extr.name
+    tmp_name = "qdm_windows"
+    model = adj_da.attrs["source_id"]
+    results[model][var_id][tmp_name] = {"historical": adj_da}
+
+    # run the historical indicators separate so we can merge with ERA5 indicators for later steps
+    historical_indicators = run_indicators(
+        results[model][var_id][tmp_name]["historical"],
+    )
+    era5_indicators = results["ERA5"][var_id]["indicators"]
+    historical_indicators = xr.concat(
+        [
+            era5_indicators.rename(Method="window_size"),
+            historical_indicators,
+        ],
+        dim="window_size",
+    )
+
+    indicators_dict = {
+        "historical": historical_indicators,
+    }
+    results[model][var_id][tmp_name]["indicators"] = indicators_dict
 
     return results
