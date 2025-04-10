@@ -195,10 +195,10 @@ def write_sbatch_train_qm(
 
     pycommands = "\n"
     pycommands += (
-        f"python {worker_script} "
-        f"--sim_path {sim_path} "
-        f"--ref_path {ref_path} "
-        f"--train_path {train_path} "
+        f"python {worker_script} \\\n"
+        f"--sim_path {sim_path} \\\n"
+        f"--ref_path {ref_path} \\\n"
+        f"--train_path {train_path} \\\n"
     )
 
     pycommands += "\n\n"
@@ -237,7 +237,8 @@ def write_all_sbatch_train_qm(
     for model, var_id in combinations:
         sbatch_kwargs.update({"model": model, "var_id": var_id})
         sbatch_path = write_sbatch_train_qm(**sbatch_kwargs)
-        sbatch_paths.append(sbatch_path)
+        if sbatch_path is not None:
+            sbatch_paths.append(sbatch_path)
 
     return sbatch_paths
 
@@ -280,6 +281,5 @@ if __name__ == "__main__":
 
     sbatch_paths = write_all_sbatch_train_qm(**all_sbatch_kwargs)
 
-    # job_ids = [submit_sbatch(sbatch_path) for sbatch_path in sbatch_paths]
-    job_ids = [123456, 234567, 345678]  # Mock job IDs for testing
+    job_ids = [submit_sbatch(sbatch_path) for sbatch_path in sbatch_paths]
     print(job_ids)

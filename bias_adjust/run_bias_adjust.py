@@ -214,10 +214,10 @@ def write_sbatch_bias_adjust(
 
     pycommands = "\n"
     pycommands += (
-        f"python {worker_script} "
-        f"--train_path {train_path} "
-        f"--sim_path {sim_path} "
-        f"--adj_path {adj_path} "
+        f"python {worker_script} \\\n"
+        f"--train_path {train_path} \\\n"
+        f"--sim_path {sim_path} \\\n"
+        f"--adj_path {adj_path} \\\n"
     )
 
     pycommands += "\n\n"
@@ -257,7 +257,8 @@ def write_all_sbatch_bias_adjust(
     for model, scenario, var_id in combinations:
         sbatch_kwargs.update({"model": model, "scenario": scenario, "var_id": var_id})
         sbatch_path = write_sbatch_bias_adjust(**sbatch_kwargs)
-        sbatch_paths.append(sbatch_path)
+        if sbatch_path is not None:
+            sbatch_paths.append(sbatch_path)
 
     return sbatch_paths
 
