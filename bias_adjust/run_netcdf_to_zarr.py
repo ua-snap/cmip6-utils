@@ -11,11 +11,10 @@ from itertools import product
 import logging
 from pathlib import Path
 from slurm import (
-    write_netcdf_to_zarr_cmip6_config_file,
-    write_sbatch_netcdf_to_zarr_cmip6,
-    make_sbatch_array_head,
+    make_sbatch_head,
     submit_sbatch,
 )
+from luts import cmip6_year_ranges
 
 
 logging.basicConfig(
@@ -194,6 +193,98 @@ def parse_args():
     )
 
 
+def write_netcdf_to_zarr_cmip6_config_file(
+    config_path,
+    models,
+    scenarios,
+    variables,
+):
+    """Write a config file for the Zarr conversion slurm job script.
+    This is used to split the job into a job array, one task per model/scenario combination.
+
+    Parameters
+    ----------
+    config_path : pathlib.PosixPath
+        path to write the config file
+    models : list of str
+        list of models to process
+    scenarios : list of str
+        list of scenarios to process
+    variables : list of str
+        list of variables to process
+
+    Returns
+    -------
+    array_range : str
+        string to use in the SLURM array
+    """
+    array_list = []
+    with open(config_path, "w") as f:
+        f.write("array_id\tmodel\tscenario\tvariable\tstart_year\tend_year\n")
+        for array_id, (model, scenario, variable) in enumerate(
+            product(models, scenarios, variables), start=1
+        ):
+            start_year = cmip6_year_ranges[scenario]["start_year"]
+            end_year = cmip6_year_ranges[scenario]["end_year"]
+            f.write(
+                f"{array_id}\t{model}\t{scenario}\t{variable}\t{start_year}\t{end_year}\n"
+            )
+            array_list.append(array_id)
+
+    array_range = f"{min(array_list)}-{max(array_list)}"
+
+    return array_range
+
+
+def write_sbatch_netcdf_to_zarr_cmip6(
+    sbatch_path,
+    worker_script,
+    netcdf_dir,
+    target_dir,
+    sbatch_head,
+    config_file,
+):
+    """Write an sbatch script for executing the bias adjustment script for a given model, scenario, and variable.
+    Hardcoded for daily data.
+
+    Args:
+        sbatch_path (path_like): path to .slurm script to write sbatch commands to
+        worker_script (path_like): path to the script to be called to run the netcdf-to-zarr conversion
+        netcdf_dir (path-like): path to directory of netcdf files to be converted to zarr
+        target_dir (path-like): directory to write the zarr data
+        sbatch_head (dict): string for sbatch head script
+        config_file (path_like): path to the config file for the slurm job array
+    Returns:
+        None, writes the commands to sbatch_path
+    """
+    pycommands = "\n"
+    pycommands += (
+        # Extract the attrs for the current $SLURM_ARRAY_TASK_ID
+        f"config={config_file}\n"
+        "model=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $2}' $config)\n"
+        "scenario=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $3}' $config)\n"
+        "variable=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $4}' $config)\n"
+        "start_year=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $5}' $config)\n"
+        "end_year=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $6}' $config)\n"
+        f"python {worker_script} "
+        f"--netcdf_dir {netcdf_dir} "
+        f"--year_str $model/$scenario/day/$variable/${{variable}}_day_${{model}}_${{scenario}}_regrid_{{year}}0101-{{year}}1231.nc "
+        f"--start_year $start_year "
+        f"--end_year $end_year "
+        f"--zarr_path {target_dir}/${{variable}}_${{model}}_${{scenario}}.zarr\n"
+    )
+
+    pycommands += f"echo End netcdf-to-zarr conversion && date\n\n"
+    commands = sbatch_head + pycommands
+
+    with open(sbatch_path, "w") as f:
+        f.write(commands)
+
+    logging.info(f"Wrote sbatch script to {sbatch_path}")
+
+    return
+
+
 if __name__ == "__main__":
 
     (
@@ -220,9 +311,11 @@ if __name__ == "__main__":
             file.unlink()
 
     # filepath for slurm script
-    sbatch_fp = slurm_dir.joinpath(f"convert_cmip6_netcdf_to_zarr.slurm")
+    sbatch_path = slurm_dir.joinpath(f"convert_cmip6_netcdf_to_zarr.slurm")
     # filepath for slurm stdout
-    sbatch_out_fp = slurm_dir.joinpath(sbatch_fp.name.replace(".slurm", "_%A-%a.out"))
+    sbatch_out_path = slurm_dir.joinpath(
+        sbatch_path.name.replace(".slurm", "_%A-%a.out")
+    )
 
     config_path = slurm_dir.joinpath("config.txt")
     array_range = write_netcdf_to_zarr_cmip6_config_file(
@@ -235,14 +328,14 @@ if __name__ == "__main__":
     sbatch_head_kwargs = {
         "array_range": array_range,
         "partition": partition,
-        "sbatch_out_fp": sbatch_out_fp,
+        "sbatch_out_path": sbatch_out_path,
         "conda_env_name": conda_env_name,
+        "job_name": "netcdf_to_zarr",
     }
-    sbatch_head = make_sbatch_array_head(**sbatch_head_kwargs)
+    sbatch_head = make_sbatch_head(**sbatch_head_kwargs)
 
     sbatch_kwargs = {
-        "sbatch_fp": sbatch_fp,
-        "sbatch_out_fp": sbatch_out_fp,
+        "sbatch_path": sbatch_path,
         "worker_script": worker_script,
         "netcdf_dir": netcdf_dir,
         "target_dir": target_dir,
@@ -252,6 +345,6 @@ if __name__ == "__main__":
     if chunks_dict is not None:
         sbatch_kwargs["chunks_dict"] = chunks_dict
     write_sbatch_netcdf_to_zarr_cmip6(**sbatch_kwargs)
-    job_id = submit_sbatch(sbatch_fp)
+    job_id = submit_sbatch(sbatch_path)
 
     print(job_id)
