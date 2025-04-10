@@ -3,7 +3,16 @@
 
 example usage:
     python run_netcdf_to_zarr.py --netcdf_dir /beegfs/CMIP6/kmredilla/daily_era5_4km_3338/ --year_str t2max/t2max_{year}_era5_4km_3338.nc --start_year 1965 --end_year 2014 --output_dir /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted_test/optimized_inputs/
-    python run_netcdf_to_zarr.py --worker_script /beegfs/CMIP6/kmredilla/cmip6-utils/bias_adjust/netcdf_to_zarr.py --conda_env_name cmip6-utils  --netcdf_dir /beegfs/CMIP6/kmredilla/cmip6_4km_3338/netcdf --models 'GFDL-ESM4 CESM2' --scenarios 'historical ssp585' --variables 'tasmax pr' --output_dir /beegfs/CMIP6/kmredilla/zarr_bias_adjust_inputs --partition t2small
+    python run_netcdf_to_zarr.py \
+        --partition t2small \
+        --conda_env_name cmip6-utils \
+        --worker_script /beegfs/CMIP6/kmredilla/cmip6-utils/bias_adjust/netcdf_to_zarr.py \
+        --netcdf_dir /beegfs/CMIP6/kmredilla/cmip6_downscaling/cmip6_4km_3338/ \
+        --output_dir /beegfs/CMIP6/kmredilla/cmip6_downscaling/optimized_inputs/ \
+        --models 'GFDL-ESM4 CESM2' \
+        --scenarios 'historical ssp585' \
+        --variables 'tasmax pr' \
+        --slurm_dir /beegfs/CMIP6/kmredilla/cmip6_downscaling/slurm
 """
 
 import argparse
@@ -14,6 +23,7 @@ from slurm import (
     make_sbatch_head,
     submit_sbatch,
 )
+from config import netcdf_to_zarr_sbatch_tmp_fn, cmip6_regrid_tmp_fn, cmip6_zarr_tmp_fn
 from luts import cmip6_year_ranges
 
 
@@ -22,8 +32,6 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[logging.StreamHandler()],
 )
-
-target_dir_name = "zarr"
 
 
 def validate_args(args):
@@ -88,37 +96,12 @@ def validate_args(args):
 
 
 def parse_args():
-    """Parse some command line arguments.
-
-    Returns
-    -------
-    worker_script : str
-        Path to netcdf-to-zarr conversion script
-    conda_env_name : str
-        Name of conda environment to activate
-    netcdf_dir : str
-        Path to directory where netcdf files to be converted to zarr are stored
-    models : list of str
-        List of models to work on
-    scenarios : list of str
-        List of scenarios to work on
-    variables : list of str
-        List of variables to work on
-    output_dir : str
-        Path to directory where outputs will be written.
-    chunks_dict : dict
-        Optional. Dictionary of chunks to use for rechunking
-    partition : str
-        Slurm partition
-    clear_out_files : bool
-        Optional. Remove output files in the output directory before running the job
-    """
-
+    """Parse some command line arguments."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--worker_script",
+        "--partition",
         type=str,
-        help="Path to netcdf-to-zarr conversion script",
+        help="slurm partition",
         required=True,
     )
     parser.add_argument(
@@ -128,9 +111,21 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
+        "--worker_script",
+        type=str,
+        help="Path to netcdf-to-zarr conversion script",
+        required=True,
+    )
+    parser.add_argument(
         "--netcdf_dir",
         type=str,
         help="Path to directory of netcdf files to be converted to zarr",
+        required=True,
+    )
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        help="Path to directory where converted zarr stores will be written.",
         required=True,
     )
     parser.add_argument(
@@ -152,12 +147,6 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
-        "--output_dir",
-        type=str,
-        help="Path to directory where outputs will be written.",
-        required=True,
-    )
-    parser.add_argument(
         "--chunks_dict",
         type=str,
         help="Dictionary of chunks to use for rechunking",
@@ -165,9 +154,9 @@ def parse_args():
         default=None,
     )
     parser.add_argument(
-        "--partition",
+        "--slurm_dir",
         type=str,
-        help="slurm partition",
+        help="Path to directory where slurm files and logs will be written.",
         required=True,
     )
     parser.add_argument(
@@ -180,15 +169,16 @@ def parse_args():
     args = validate_args(args)
 
     return (
-        args.worker_script,
+        args.partition,
         args.conda_env_name,
+        args.worker_script,
         args.netcdf_dir,
+        args.output_dir,
         args.models,
         args.scenarios,
         args.variables,
-        args.output_dir,
         args.chunks_dict,
-        args.partition,
+        args.slurm_dir,
         args.clear_out_files,
     )
 
@@ -236,11 +226,23 @@ def write_netcdf_to_zarr_cmip6_config_file(
     return array_range
 
 
+def format_for_slurm_array_config(str):
+    """Format a string for use in sbatch file for job array.
+
+    Args:
+        str (str): string to format
+
+    Returns:
+        str: formatted string
+    """
+    return str.replace("{", "${{").replace("}", "}}")
+
+
 def write_sbatch_netcdf_to_zarr_cmip6(
     sbatch_path,
     worker_script,
     netcdf_dir,
-    target_dir,
+    output_dir,
     sbatch_head,
     config_file,
 ):
@@ -251,7 +253,7 @@ def write_sbatch_netcdf_to_zarr_cmip6(
         sbatch_path (path_like): path to .slurm script to write sbatch commands to
         worker_script (path_like): path to the script to be called to run the netcdf-to-zarr conversion
         netcdf_dir (path-like): path to directory of netcdf files to be converted to zarr
-        target_dir (path-like): directory to write the zarr data
+        output_dir (path-like): directory to write the zarr data
         sbatch_head (dict): string for sbatch head script
         config_file (path_like): path to the config file for the slurm job array
     Returns:
@@ -268,10 +270,11 @@ def write_sbatch_netcdf_to_zarr_cmip6(
         "end_year=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $6}' $config)\n"
         f"python {worker_script} "
         f"--netcdf_dir {netcdf_dir} "
-        f"--year_str $model/$scenario/day/$variable/${{variable}}_day_${{model}}_${{scenario}}_regrid_{{year}}0101-{{year}}1231.nc "
+        f"--year_str $model/$scenario/day/$variable/{format_for_slurm_array_config(cmip6_regrid_tmp_fn)} "
         f"--start_year $start_year "
         f"--end_year $end_year "
-        f"--zarr_path {target_dir}/${{variable}}_${{model}}_${{scenario}}.zarr\n"
+        # format this to get "${{variable}}${{model}}_${{scenario}}.zarr" for the slurm array
+        f"--zarr_path {output_dir.joinpath(format_for_slurm_array_config(cmip6_zarr_tmp_fn))}\n"
     )
 
     pycommands += f"echo End netcdf-to-zarr conversion && date\n\n"
@@ -288,26 +291,27 @@ def write_sbatch_netcdf_to_zarr_cmip6(
 if __name__ == "__main__":
 
     (
-        worker_script,
+        partition,
         conda_env_name,
+        worker_script,
         netcdf_dir,
+        output_dir,
         models,
         scenarios,
         variables,
-        output_dir,
         chunks_dict,
-        partition,
+        slurm_dir,
         clear_out_files,
     ) = parse_args()
 
     output_dir.mkdir(exist_ok=True)
-    target_dir = output_dir.joinpath(target_dir_name)
-    target_dir.mkdir(exist_ok=True)
-
-    slurm_dir = output_dir.joinpath("slurm")
-    slurm_dir.mkdir(exist_ok=True)
     if clear_out_files:
-        for file in slurm_dir.glob("*.out"):
+        for file in slurm_dir.glob(
+            netcdf_to_zarr_sbatch_tmp_fn.format(model="*", var_id="*").replace(
+                ".sbatch", ".out"
+            )
+        ):
+
             file.unlink()
 
     # filepath for slurm script
@@ -338,7 +342,7 @@ if __name__ == "__main__":
         "sbatch_path": sbatch_path,
         "worker_script": worker_script,
         "netcdf_dir": netcdf_dir,
-        "target_dir": target_dir,
+        "output_dir": output_dir,
         "sbatch_head": sbatch_head,
         "config_file": config_path,
     }

@@ -5,11 +5,13 @@ example usage:
         --partition t2small \
         --conda_env_name cmip6-utils \
         --worker_script /home/kmredilla/repos/cmip6-utils/bias_adjust.py \
-        --input_dir /center1/CMIP6/kmredilla/zarr_bias_adjust_inputs/ \
+        --input_dir /beegfs/CMIP6/kmredilla/cmip6_downscaling/zarr_bias_adjust_inputs/ \
+        --output_dir /beegfs/CMIP6/kmredilla/cmip6_downscaling/downscaled \
         --models 'GFDL-ESM4 CESM2' \
         --scenarios 'historical ssp245' \
         --variables 'tasmax pr' \
-        --output_dir /center1/CMIP6/kmredilla/cmip6_4km_3338_adjusted
+        --slurm_dir /beegfs/CMIP6/kmredilla/cmip6_downscaling/slurm
+        
 """
 
 import argparse
@@ -25,7 +27,7 @@ from config import (
     cmip6_zarr_tmp_fn,
     cmip6_adjusted_tmp_fn,
     trained_qm_tmp_fn,
-    biasadjust_sbatch_tmp_fn,
+    bias_adjust_sbatch_tmp_fn,
 )
 
 logging.basicConfig(
@@ -33,9 +35,6 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[logging.StreamHandler()],
 )
-
-
-target_dir_name = "zarr"
 
 
 def get_sim_path(input_dir, model, scenario, var_id):
@@ -119,6 +118,12 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
+        "--output_dir",
+        type=str,
+        help="Path to directory where bias-adjusted data will be written.",
+        required=True,
+    )
+    parser.add_argument(
         "--models",
         type=str,
         help="' '-separated list of CMIP6 models to work on",
@@ -137,9 +142,9 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
-        "--output_dir",
+        "--slurm_dir",
         type=str,
-        help="Path to directory where bias-adjusted data will be written.",
+        help="Path to directory where slurm files and logs will be written.",
         required=True,
     )
     parser.add_argument(
@@ -156,10 +161,11 @@ def parse_args():
         args.conda_env_name,
         args.worker_script,
         args.input_dir,
+        args.output_dir,
         args.models,
         args.scenarios,
         args.variables,
-        args.output_dir,
+        args.slurm_dir,
         args.clear_out_files,
     )
 
@@ -167,7 +173,7 @@ def parse_args():
 def write_sbatch_bias_adjust(
     input_dir,
     slurm_dir,
-    target_dir,
+    output_dir,
     model,
     scenario,
     var_id,
@@ -193,13 +199,13 @@ def write_sbatch_bias_adjust(
         )
         return
 
-    adj_path = target_dir.joinpath(
+    adj_path = output_dir.joinpath(
         cmip6_adjusted_tmp_fn.format(var_id=var_id, model=model, scenario=scenario)
     )
 
     # create the sbatch file
     sbatch_path = slurm_dir.joinpath(
-        biasadjust_sbatch_tmp_fn.format(model=model, scenario=scenario, var_id=var_id)
+        bias_adjust_sbatch_tmp_fn.format(model=model, scenario=scenario, var_id=var_id)
     )
     sbatch_out_path = slurm_dir.joinpath(sbatch_path.name.replace(".sbatch", "_%j.out"))
 
@@ -234,7 +240,7 @@ def write_sbatch_bias_adjust(
 
 def write_all_sbatch_bias_adjust(
     input_dir,
-    target_dir,
+    output_dir,
     slurm_dir,
     worker_script,
     models,
@@ -247,7 +253,7 @@ def write_all_sbatch_bias_adjust(
     sbatch_kwargs = {
         "input_dir": input_dir,
         "slurm_dir": slurm_dir,
-        "target_dir": target_dir,
+        "output_dir": output_dir,
         "worker_script": worker_script,
         "sbatch_head_kwargs": sbatch_head_kwargs,
     }
@@ -270,21 +276,22 @@ if __name__ == "__main__":
         conda_env_name,
         worker_script,
         input_dir,
+        output_dir,
         models,
         scenarios,
         variables,
-        output_dir,
+        slurm_dir,
         clear_out_files,
     ) = parse_args()
 
     output_dir.mkdir(exist_ok=True)
-    target_dir = output_dir.joinpath(target_dir_name)
-    target_dir.mkdir(exist_ok=True)
-
-    slurm_dir = output_dir.joinpath("slurm")
     slurm_dir.mkdir(exist_ok=True)
     if clear_out_files:
-        for file in slurm_dir.glob("*.out"):
+        for file in slurm_dir.glob(
+            bias_adjust_sbatch_tmp_fn.format(model="*", var_id="*").replace(
+                ".sbatch", ".out"
+            )
+        ):
             file.unlink()
 
     sbatch_head_kwargs = {
@@ -294,7 +301,7 @@ if __name__ == "__main__":
     all_sbatch_kwargs = {
         "input_dir": input_dir,
         "slurm_dir": slurm_dir,
-        "target_dir": target_dir,
+        "output_dir": output_dir,
         "worker_script": worker_script,
         "sbatch_head_kwargs": sbatch_head_kwargs,
         "models": models,

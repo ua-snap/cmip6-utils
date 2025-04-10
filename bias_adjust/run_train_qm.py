@@ -9,10 +9,11 @@ example usage:
         --partition t2small \
         --conda_env_name cmip6-utils \
         --worker_script /home/kmredilla/repos/cmip6-utils/train_qm.py \
-        --input_dir /center1/CMIP6/kmredilla/zarr_bias_adjust_inputs/ \
+        --input_dir /center1/CMIP6/kmredilla/cmip6_downscaling/optimized_inputs/ \
+        --output_dir /center1/CMIP6/kmredilla/cmip6_downscaling/optimized_inputs/ \
         --models 'GFDL-ESM4 CESM2' \
         --variables 'tasmax pr' \
-        --slurm_dir /center1/CMIP6/kmredilla/cmip6_qdm_downscaling/slurm \
+        --slurm_dir /center1/CMIP6/kmredilla/cmip6_downscaling/slurm
 """
 
 import argparse
@@ -38,9 +39,6 @@ logging.basicConfig(
 )
 
 
-target_dir_name = "zarr"
-
-
 def get_hist_path(input_dir, model, var_id):
     """Get the filepath to a historical cmip6 file in input_dir given the attributes."""
     return input_dir.joinpath(
@@ -55,6 +53,11 @@ def validate_args(args):
     if not args.input_dir.exists():
         raise FileNotFoundError(
             f"Input directory, {args.input_dir}, does not exist. Aborting."
+        )
+    args.output_dir = Path(args.output_dir)
+    if not args.output_dir.parent.exists():
+        raise FileNotFoundError(
+            f"Parent of output directory, {args.output_dir.parent}, does not exist. Aborting."
         )
     args.slurm_dir = Path(args.slurm_dir)
     if not args.slurm_dir.exists():
