@@ -1,16 +1,12 @@
 """Script for bias adjusting a given model and scenario. Uses a pre-trained quantile mapping adjustment object.
 
-Usage:
-    python bias_adjust.py --train_path /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted_test/trained/tasmax_GFDL-ESM4_trained.zarr --sim_path /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted_test/optimized_inputs/tasmax_day_GFDL-ESM4_ssp245.zarr --adj_path /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted_test/det_testing/tasmax_GFDL-ESM4_ssp245_{det_config}.zarr
-
-    # for detrend testing
-    python bias_adjust.py --train_path /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted_test/trained/tasmax_GFDL-ESM4_trained.zarr --sim_path /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted_test/optimized_inputs/tasmax_day_GFDL-ESM4_historical.zarr --adj_path /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted_test/det_testing/tasmax_GFDL-ESM4_historical_{det_config}.zarr --det_config det0 --region Fairbanks
+Example usage:
+    python bias_adjust.py --train_path /center1/CMIP6/kmredilla/bias_adjustment_testing/trained_qdm_pr_GFDL-ESM4.zarr --sim_path /center1/CMIP6/kmredilla/zarr_bias_adjust_inputs/pr_GFDL-ESM4_historical.zarr --adj_path /center1/CMIP6/kmredilla/cmip6_4km_3338_downscaled/pr_GFDL-ESM4_historical_adj.zarr
 """
 
 import argparse
 import datetime
 import logging
-import re
 import shutil
 
 # import multiprocessing as mp
@@ -20,9 +16,9 @@ import xarray as xr
 import dask
 from dask.distributed import Client
 from xclim import sdba
-from xclim.sdba.detrending import NoDetrend, LoessDetrend, MeanDetrend, PolyDetrend
 from config import ref_tmp_fn, cmip6_tmp_fn, train_tmp_fn
-from luts import jitter_under_lu
+
+# from luts import jitter_under_lu
 from train_qm import get_var_id
 
 
@@ -31,25 +27,6 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[logging.StreamHandler()],
 )
-
-# for detrend testing
-# remove when done
-detrend_configs = {
-    "det0": NoDetrend(group="time.dayofyear"),
-    "det1": LoessDetrend(
-        group="time.dayofyear", d=0, niter=1, f=0.2, weights="tricube"
-    ),
-    "det2": MeanDetrend(group="time.dayofyear"),
-    "det3": PolyDetrend(group="time.dayofyear", degree=1),
-    "det4": PolyDetrend(group="time.dayofyear", degree=2),
-    "det5": PolyDetrend(group="time.dayofyear", degree=3),
-}
-
-regions = {
-    "Fairbanks": {"x": slice(2.5e5, 5e5), "y": slice(1.75e6, 1.5e6)},
-    "MatSu": {"x": slice(0.5e5, 3e5), "y": slice(1.35e6, 1.1e6)},
-    "Yakutat": {"x": slice(6.5e5, 9e5), "y": slice(1.25e6, 1e6)},
-}
 
 
 def generate_adjusted_filepaths(adj_dir, var_ids, models, scenarios, years):
@@ -189,26 +166,13 @@ def parse_args():
         help="Path to write adjusted data",
         required=True,
     )
-    parser.add_argument(
-        "--det_config",
-        type=str,
-        help="Detrending configuration",
-        default="det0",
-    )
-    parser.add_argument(
-        "--region",
-        type=str,
-        help="region for subsetting",
-        default=None,
-    )
+
     args = parser.parse_args()
 
     return (
         Path(args.train_path),
         Path(args.sim_path),
-        args.adj_path,
-        args.det_config,
-        args.region,
+        Path(args.adj_path),
     )
 
 
@@ -222,51 +186,33 @@ def validate_sim_source(train_ds, sim_ds):
 
 
 if __name__ == "__main__":
-    train_path, sim_path, adj_path, det_config, region = parse_args()
-    if region:
-        sample_sel = regions[region]
-    else:
-        sample_sel = {}
+    train_path, sim_path, adj_path = parse_args()
 
-    # suggestion from dask for ignoring large chunk warnings
-    with dask.config.set(**{"array.slicing.split_large_chunks": False}):
-        # fewer workers and more threads is better for non-GIL like Numpy etc
-        with Client(n_workers=4, threads_per_worker=6) as client:
-            # open connection to trained QM dataset
-            train_ds = (
-                xr.open_zarr(train_path).sel(**sample_sel).chunk({"x": 50, "y": 50})
-            )
+    # fewer workers and more threads is better for non-GIL like Numpy etc
+    with Client(n_workers=4, threads_per_worker=6) as client:
+        # open connection to trained QM dataset
+        train_ds = xr.open_zarr(train_path).chunk({"x": 50, "y": 50})
+        qm = sdba.QuantileDeltaMapping.from_dataset(train_ds)
 
-            qm = sdba.DetrendedQuantileMapping.from_dataset(train_ds)
-            # Create the detrending object
-            det = detrend_configs[det_config]
+        # create a dataset containing all projected data to be adjusted
+        # not adjusting historical, no need for now
+        # need to rechunk this one too, same reason as for training data
+        sim_ds = xr.open_zarr(sim_path)
+        validate_sim_source(train_ds, sim_ds)
 
-            # create a dataset containing all projected data to be adjusted
-            # not adjusting historical, no need for now
-            # need to rechunk this one too, same reason as for training data
-            sim_ds = (
-                xr.open_zarr(sim_path)
-                .sel(**sample_sel)
-                .chunk({"time": -1, "x": 50, "y": 50})
-            )
-            validate_sim_source(train_ds, sim_ds)
+        var_id = get_var_id(sim_ds)
 
-            var_id = get_var_id(sim_ds)
+        scen = qm.adjust(
+            sim_ds[var_id],
+            extrapolation="constant",
+            interp="nearest",
+        )
+        scen_ds = scen.to_dataset(name=var_id)
+        logging.info(f"Running adjustment and writing to {adj_path}")
 
-            scen = qm.adjust(
-                sim_ds[var_id],
-                extrapolation="constant",
-                interp="nearest",
-                detrend=det,
-            )
-            scen_ds = scen.to_dataset(name=var_id)
-            logging.info(f"Running adjustment and writing to {adj_path}")
-            # scen_ds.load()
+        if adj_path.exists():
+            logging.info(f"Adjusted data store exists, removing ({adj_path}).")
+            shutil.rmtree(adj_path, ignore_errors=True)
 
-            adj_path = Path(adj_path.format(det_config=det_config, region=region))
-            if adj_path.exists():
-                logging.info(f"Adjusted data store exists, removing ({adj_path}).")
-                shutil.rmtree(adj_path, ignore_errors=True)
-
-            logging.info(f"Writing adjusted data to {adj_path}")
-            scen_ds.to_zarr(adj_path)
+        logging.info(f"Writing adjusted data to {adj_path}")
+        scen_ds.to_zarr(adj_path)
