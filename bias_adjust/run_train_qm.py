@@ -1,15 +1,18 @@
-"""Script to build slurm files that run bias_adjust.py on a suite of models, scenarios, and variables.
+"""Script to build and submit slurm files that run train_qm.py on a suite of models, scenarios, and variables.
+
+Notes:
+- Writes the trained object to the input directory, as this remains the input directory for the bias adjustment effort.
+- only trains on historical GCM data, no other CMIP6 "experiments" (i.e. SSPs) are used.
 
 example usage:
-    python run_bias_adjust.py \
+    python run_train_qm.py \
         --partition t2small \
         --conda_env_name cmip6-utils \
-        --worker_script /home/kmredilla/repos/cmip6-utils/bias_adjust.py \
+        --worker_script /home/kmredilla/repos/cmip6-utils/train_qm.py \
         --input_dir /center1/CMIP6/kmredilla/zarr_bias_adjust_inputs/ \
         --models 'GFDL-ESM4 CESM2' \
-        --scenarios 'historical ssp245' \
         --variables 'tasmax pr' \
-        --output_dir /center1/CMIP6/kmredilla/cmip6_4km_3338_adjusted
+        --slurm_dir /center1/CMIP6/kmredilla/cmip6_qdm_downscaling/slurm \
 """
 
 import argparse
@@ -23,9 +26,9 @@ from slurm import (
 )
 from config import (
     cmip6_zarr_tmp_fn,
-    cmip6_adjusted_tmp_fn,
+    ref_zarr_tmp_fn,
     trained_qm_tmp_fn,
-    biasadjust_sbatch_tmp_fn,
+    train_qm_sbatch_tmp_fn,
 )
 
 logging.basicConfig(
@@ -38,35 +41,32 @@ logging.basicConfig(
 target_dir_name = "zarr"
 
 
-def get_sim_path(input_dir, model, scenario, var_id):
-    """Get the filepath to a cmip6 file in input_dir given the attributes."""
+def get_hist_path(input_dir, model, var_id):
+    """Get the filepath to a historical cmip6 file in input_dir given the attributes."""
     return input_dir.joinpath(
-        cmip6_zarr_tmp_fn.format(model=model, scenario=scenario, var_id=var_id),
+        cmip6_zarr_tmp_fn.format(model=model, scenario="historical", var_id=var_id),
     )
 
 
 def validate_args(args):
     """Validate the arguments passed to the script."""
     args.worker_script = Path(args.worker_script)
-    args.output_dir = Path(args.output_dir)
-    if not args.output_dir.parent.exists():
-        raise FileNotFoundError(
-            f"Parent of output directory, {args.output_dir.parent}, does not exist. Aborting."
-        )
     args.input_dir = Path(args.input_dir)
     if not args.input_dir.exists():
         raise FileNotFoundError(
             f"Input directory, {args.input_dir}, does not exist. Aborting."
         )
+    args.slurm_dir = Path(args.slurm_dir)
+    if not args.slurm_dir.exists():
+        raise FileNotFoundError(
+            f"Slurm directory, {args.slurm_dir}, does not exist. Aborting."
+        )
 
     args.models = args.models.split(" ")
-    args.scenarios = args.scenarios.split(" ")
     args.variables = args.variables.split(" ")
     expected_stores_in_input_dir = [
-        get_sim_path(args.input_dir, model, scenario, var_id)
-        for var_id, model, scenario in product(
-            args.variables, args.models, args.scenarios
-        )
+        get_hist_path(args.input_dir, model, var_id)
+        for var_id, model in product(args.variables, args.models)
     ]
     found_stores_in_input_dir = [
         store for store in expected_stores_in_input_dir if store.exists()
@@ -84,7 +84,7 @@ def validate_args(args):
                 [f"- {str(store)}" for store in list(missing_stores)]
             )
             logging.warning(
-                f"Some model / scenario / variable combinations were not found in the input directory and will be skipped: \n{missing_stores_str}\n"
+                f"Some model / variable combinations were not found in the input directory and will be skipped: \n{missing_stores_str}\n"
             )
 
     return args
@@ -125,21 +125,15 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
-        "--scenarios",
-        type=str,
-        help="' '-separated list of scenarios to work on",
-        required=True,
-    )
-    parser.add_argument(
         "--variables",
         type=str,
         help="' '-separated list of variables to work on",
         required=True,
     )
     parser.add_argument(
-        "--output_dir",
+        "--slurm_dir",
         type=str,
-        help="Path to directory where bias-adjusted data will be written.",
+        help="Path to directory where slurm scripts and logs will be written.",
         required=True,
     )
     parser.add_argument(
@@ -157,56 +151,43 @@ def parse_args():
         args.worker_script,
         args.input_dir,
         args.models,
-        args.scenarios,
         args.variables,
-        args.output_dir,
+        args.slurm_dir,
         args.clear_out_files,
     )
 
 
-def write_sbatch_bias_adjust(
+def write_sbatch_train_qm(
     input_dir,
     slurm_dir,
-    target_dir,
+    output_dir,
     model,
-    scenario,
     var_id,
     worker_script,
     sbatch_head_kwargs,
 ):
-    """Write the sbatch file for bias adjustment for a given model, scenario, and variable."""
-    train_path = input_dir.joinpath(
-        trained_qm_tmp_fn.format(var_id=var_id, model=model)
-    )
-    if not train_path.exists():
-        warnings.warn(
-            f"Trained QM object {train_path} not found. Skipping {model} {scenario} {var_id}.",
-            UserWarning,
-        )
-        return
-
-    sim_path = get_sim_path(input_dir, model, scenario, var_id)
+    """Write the sbatch file for QM training for a given model and variable."""
+    sim_path = get_hist_path(input_dir, model, var_id)
     if not sim_path.exists():
         warnings.warn(
-            f"GCM data {sim_path} not found. Skipping {model} {scenario} {var_id}.",
+            f"GCM data {sim_path} not found. Skipping {model} historical {var_id}.",
             UserWarning,
         )
         return
-
-    adj_path = target_dir.joinpath(
-        cmip6_adjusted_tmp_fn.format(var_id=var_id, model=model, scenario=scenario)
+    ref_path = input_dir.joinpath(ref_zarr_tmp_fn.format(var_id=var_id))
+    train_path = output_dir.joinpath(
+        trained_qm_tmp_fn.format(var_id=var_id, model=model)
     )
-
     # create the sbatch file
     sbatch_path = slurm_dir.joinpath(
-        biasadjust_sbatch_tmp_fn.format(model=model, scenario=scenario, var_id=var_id)
+        train_qm_sbatch_tmp_fn.format(model=model, var_id=var_id)
     )
     sbatch_out_path = slurm_dir.joinpath(sbatch_path.name.replace(".sbatch", "_%j.out"))
 
     sbatch_head_kwargs.update(
         {
             "sbatch_out_path": sbatch_out_path,
-            "job_name": f"bias_adjust_{model}_{scenario}_{var_id}",
+            "job_name": f"train_qm_{model}_{var_id}",
         }
     )
 
@@ -215,14 +196,14 @@ def write_sbatch_bias_adjust(
     pycommands = "\n"
     pycommands += (
         f"python {worker_script} "
-        f"--train_path {train_path} "
         f"--sim_path {sim_path} "
-        f"--adj_path {adj_path} "
+        f"--ref_path {ref_path} "
+        f"--train_path {train_path} "
     )
 
     pycommands += "\n\n"
 
-    pycommands += f"echo End {var_id} bias adjustment && date\n" "echo Job Completed"
+    pycommands += f"echo End {var_id} QM training && date\n" "echo Job Completed"
     commands = sbatch_head + pycommands
 
     with open(sbatch_path, "w") as f:
@@ -232,31 +213,30 @@ def write_sbatch_bias_adjust(
     return sbatch_path
 
 
-def write_all_sbatch_bias_adjust(
+def write_all_sbatch_train_qm(
     input_dir,
-    target_dir,
+    output_dir,
     slurm_dir,
     worker_script,
     models,
-    scenarios,
     variables,
     sbatch_head_kwargs,
 ):
-    """Write the sbatch file for bias adjustment."""
+    """Write the sbatch file for QM training."""
     # create a list of all the combinations of models, scenarios, and variables
     sbatch_kwargs = {
         "input_dir": input_dir,
         "slurm_dir": slurm_dir,
-        "target_dir": target_dir,
+        "output_dir": output_dir,
         "worker_script": worker_script,
         "sbatch_head_kwargs": sbatch_head_kwargs,
     }
-    combinations = list(product(models, scenarios, variables))
+    combinations = list(product(models, variables))
 
     sbatch_paths = []
-    for model, scenario, var_id in combinations:
-        sbatch_kwargs.update({"model": model, "scenario": scenario, "var_id": var_id})
-        sbatch_path = write_sbatch_bias_adjust(**sbatch_kwargs)
+    for model, var_id in combinations:
+        sbatch_kwargs.update({"model": model, "var_id": var_id})
+        sbatch_path = write_sbatch_train_qm(**sbatch_kwargs)
         sbatch_paths.append(sbatch_path)
 
     return sbatch_paths
@@ -270,20 +250,18 @@ if __name__ == "__main__":
         worker_script,
         input_dir,
         models,
-        scenarios,
         variables,
-        output_dir,
+        slurm_dir,
         clear_out_files,
     ) = parse_args()
 
-    output_dir.mkdir(exist_ok=True)
-    target_dir = output_dir.joinpath(target_dir_name)
-    target_dir.mkdir(exist_ok=True)
-
-    slurm_dir = output_dir.joinpath("slurm")
-    slurm_dir.mkdir(exist_ok=True)
+    output_dir = input_dir
     if clear_out_files:
-        for file in slurm_dir.glob("*.out"):
+        for file in slurm_dir.glob(
+            train_qm_sbatch_tmp_fn.format(model="*", var_id="*").replace(
+                ".sbatch", ".out"
+            )
+        ):
             file.unlink()
 
     sbatch_head_kwargs = {
@@ -293,14 +271,15 @@ if __name__ == "__main__":
     all_sbatch_kwargs = {
         "input_dir": input_dir,
         "slurm_dir": slurm_dir,
-        "target_dir": target_dir,
+        "output_dir": output_dir,
         "worker_script": worker_script,
         "sbatch_head_kwargs": sbatch_head_kwargs,
         "models": models,
-        "scenarios": scenarios,
         "variables": variables,
     }
-    sbatch_paths = write_all_sbatch_bias_adjust(**all_sbatch_kwargs)
 
-    job_ids = [submit_sbatch(sbatch_path) for sbatch_path in sbatch_paths]
+    sbatch_paths = write_all_sbatch_train_qm(**all_sbatch_kwargs)
+
+    # job_ids = [submit_sbatch(sbatch_path) for sbatch_path in sbatch_paths]
+    job_ids = [123456, 234567, 345678]  # Mock job IDs for testing
     print(job_ids)

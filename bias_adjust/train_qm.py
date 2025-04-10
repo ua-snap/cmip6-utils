@@ -1,7 +1,10 @@
 """Script to train a quantile mapping adjustment for a given model. Uses fixed historical reference years for training.
 
 Usage:
-    python train_qm.py --sim_path /beegfs/CMIP6/kmredilla/zarr_bias_adjust_inputs/zarr/pr_GFDL-ESM4_historical.zarr --ref_path /beegfs/CMIP6/kmredilla/zarr_bias_adjust_inputs/zarr/pr_era5.zarr --train_path /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted/trained/qdm_trained_pr_GFDL-ESM4.zarr
+    python train_qm.py \
+        --sim_path /beegfs/CMIP6/kmredilla/zarr_bias_adjust_inputs/zarr/pr_GFDL-ESM4_historical.zarr \
+        --ref_path /beegfs/CMIP6/kmredilla/zarr_bias_adjust_inputs/zarr/pr_era5.zarr \
+        --train_path /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted/trained/qdm_trained_pr_GFDL-ESM4.zarr
 """
 
 import argparse
