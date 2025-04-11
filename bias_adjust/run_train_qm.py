@@ -1,30 +1,30 @@
 """Script to build and submit slurm files that run train_qm.py on a suite of models, scenarios, and variables.
 
 Notes:
-- Writes the trained object to the input directory, as this remains the input directory for the bias adjustment effort.
-- only trains on historical GCM data, no other CMIP6 "experiments" (i.e. SSPs) are used.
+- Ought to be commonly used with output_directory == input_directory, as this remains the input directory for the bias adjustment effort.
+- only trains on "historical" GCM data, no other CMIP6 "experiments" (i.e. SSPs) are used.
 
 example usage:
     python run_train_qm.py \
         --partition t2small \
         --conda_env_name cmip6-utils \
-        --worker_script /home/kmredilla/repos/cmip6-utils/train_qm.py \
-        --input_dir /center1/CMIP6/kmredilla/cmip6_downscaling/optimized_inputs/ \
-        --output_dir /center1/CMIP6/kmredilla/cmip6_downscaling/optimized_inputs/ \
+        --worker_script /beegfs/CMIP6/kmredilla/cmip6-utils/bias_adjust/train_qm.py \
+        --input_dir /beegfs/CMIP6/kmredilla/cmip6_downscaling/optimized_inputs/ \
+        --output_dir /beegfs/CMIP6/kmredilla/cmip6_downscaling/optimized_inputs/ \
         --models 'GFDL-ESM4 CESM2' \
         --variables 'tasmax pr' \
-        --slurm_dir /center1/CMIP6/kmredilla/cmip6_downscaling/slurm
+        --slurm_dir /beegfs/CMIP6/kmredilla/cmip6_downscaling/slurm
 """
 
 import argparse
 import logging
-import warnings
 from itertools import product
 from pathlib import Path
 from slurm import (
     make_sbatch_head,
     submit_sbatch,
 )
+from utils import validate_path_arg, check_for_input_data
 from config import (
     cmip6_zarr_tmp_fn,
     ref_zarr_tmp_fn,
@@ -50,45 +50,20 @@ def validate_args(args):
     """Validate the arguments passed to the script."""
     args.worker_script = Path(args.worker_script)
     args.input_dir = Path(args.input_dir)
-    if not args.input_dir.exists():
-        raise FileNotFoundError(
-            f"Input directory, {args.input_dir}, does not exist. Aborting."
-        )
     args.output_dir = Path(args.output_dir)
-    if not args.output_dir.parent.exists():
-        raise FileNotFoundError(
-            f"Parent of output directory, {args.output_dir.parent}, does not exist. Aborting."
-        )
     args.slurm_dir = Path(args.slurm_dir)
-    if not args.slurm_dir.exists():
-        raise FileNotFoundError(
-            f"Slurm directory, {args.slurm_dir}, does not exist. Aborting."
-        )
+    validate_path_arg(args.worker_script, "worker_script")
+    validate_path_arg(args.input_dir, "input_dir")
+    validate_path_arg(args.output_dir.parent, "parent of output_dir")
+    validate_path_arg(args.slurm_dir, "slurm_dir")
 
     args.models = args.models.split(" ")
     args.variables = args.variables.split(" ")
-    expected_stores_in_input_dir = [
+    expected_stores = [
         get_hist_path(args.input_dir, model, var_id)
         for var_id, model in product(args.variables, args.models)
     ]
-    found_stores_in_input_dir = [
-        store for store in expected_stores_in_input_dir if store.exists()
-    ]
-    if not any(found_stores_in_input_dir):
-        raise ValueError(
-            f"No zarr stores in the input directory ({args.input_dir}) match the models / scenarios / variables supplied. Aborting."
-        )
-    else:
-        missing_stores = set(expected_stores_in_input_dir) - set(
-            found_stores_in_input_dir
-        )
-        if not len(missing_stores) == 0:
-            missing_stores_str = "\n".join(
-                [f"- {str(store)}" for store in list(missing_stores)]
-            )
-            logging.warning(
-                f"Some model / variable combinations were not found in the input directory and will be skipped: \n{missing_stores_str}\n"
-            )
+    check_for_input_data(expected_stores)
 
     return args
 
@@ -119,6 +94,12 @@ def parse_args():
         "--input_dir",
         type=str,
         help="Path to directory containing all input zarr stores (including trained QM objects)",
+        required=True,
+    )
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        help="Path to directory where converted zarr stores will be written.",
         required=True,
     )
     parser.add_argument(
@@ -153,6 +134,7 @@ def parse_args():
         args.conda_env_name,
         args.worker_script,
         args.input_dir,
+        args.output_dir,
         args.models,
         args.variables,
         args.slurm_dir,
@@ -172,9 +154,8 @@ def write_sbatch_train_qm(
     """Write the sbatch file for QM training for a given model and variable."""
     sim_path = get_hist_path(input_dir, model, var_id)
     if not sim_path.exists():
-        warnings.warn(
+        logging.info(
             f"GCM data {sim_path} not found. Skipping {model} historical {var_id}.",
-            UserWarning,
         )
         return
     ref_path = input_dir.joinpath(ref_zarr_tmp_fn.format(var_id=var_id))
@@ -201,7 +182,7 @@ def write_sbatch_train_qm(
         f"python {worker_script} \\\n"
         f"--sim_path {sim_path} \\\n"
         f"--ref_path {ref_path} \\\n"
-        f"--train_path {train_path} \\\n"
+        f"--train_path {train_path} \n"
     )
 
     pycommands += "\n\n"
@@ -253,13 +234,14 @@ if __name__ == "__main__":
         conda_env_name,
         worker_script,
         input_dir,
+        output_dir,
         models,
         variables,
         slurm_dir,
         clear_out_files,
     ) = parse_args()
 
-    output_dir = input_dir
+    output_dir.mkdir(exist_ok=True)
     if clear_out_files:
         for file in slurm_dir.glob(
             train_qm_sbatch_tmp_fn.format(model="*", var_id="*").replace(
@@ -284,5 +266,5 @@ if __name__ == "__main__":
 
     sbatch_paths = write_all_sbatch_train_qm(**all_sbatch_kwargs)
 
-    job_ids = [submit_sbatch(sbatch_path) for sbatch_path in sbatch_paths]
-    print(job_ids)
+    # job_ids = [submit_sbatch(sbatch_path) for sbatch_path in sbatch_paths]
+    # print(job_ids)

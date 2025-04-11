@@ -7,7 +7,7 @@ example usage:
         --partition t2small \
         --conda_env_name cmip6-utils \
         --worker_script /beegfs/CMIP6/kmredilla/cmip6-utils/bias_adjust/netcdf_to_zarr.py \
-        --netcdf_dir /beegfs/CMIP6/kmredilla/cmip6_downscaling/cmip6_4km_3338/ \
+        --netcdf_dir /beegfs/CMIP6/kmredilla/cmip6_4km_3338/regrid \
         --output_dir /beegfs/CMIP6/kmredilla/cmip6_downscaling/optimized_inputs/ \
         --models 'GFDL-ESM4 CESM2' \
         --scenarios 'historical ssp585' \
@@ -23,6 +23,7 @@ from slurm import (
     make_sbatch_head,
     submit_sbatch,
 )
+from utils import validate_path_arg
 from config import netcdf_to_zarr_sbatch_tmp_fn, cmip6_regrid_tmp_fn, cmip6_zarr_tmp_fn
 from luts import cmip6_year_ranges
 
@@ -37,16 +38,13 @@ logging.basicConfig(
 def validate_args(args):
     """Validate the arguments passed to the script."""
     args.worker_script = Path(args.worker_script)
-    args.output_dir = Path(args.output_dir)
-    if not args.output_dir.parent.exists():
-        raise FileNotFoundError(
-            f"Parent of output directory, {args.output_dir.parent}, does not exist. Aborting."
-        )
     args.netcdf_dir = Path(args.netcdf_dir)
-    if not args.netcdf_dir.exists():
-        raise FileNotFoundError(
-            f"Input directory, {args.netcdf_dir}, does not exist. Aborting."
-        )
+    args.output_dir = Path(args.output_dir)
+    args.slurm_dir = Path(args.slurm_dir)
+    validate_path_arg(args.worker_script, "worker_script")
+    validate_path_arg(args.netcdf_dir, "netcdf_dir")
+    validate_path_arg(args.output_dir.parent, "parent of output_dir")
+    validate_path_arg(args.slurm_dir.parent, "parent of slurm_dir")
 
     args.models = args.models.split(" ")
     models_in_input_dir = [
@@ -221,6 +219,8 @@ def write_netcdf_to_zarr_cmip6_config_file(
             )
             array_list.append(array_id)
 
+    logging.info(f"Wrote config file to {config_path}")
+
     array_range = f"{min(array_list)}-{max(array_list)}"
 
     return array_range
@@ -268,11 +268,11 @@ def write_sbatch_netcdf_to_zarr_cmip6(
         "variable=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $4}' $config)\n"
         "start_year=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $5}' $config)\n"
         "end_year=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $6}' $config)\n"
-        f"python {worker_script} "
-        f"--netcdf_dir {netcdf_dir} "
-        f"--year_str $model/$scenario/day/$variable/{format_for_slurm_array_config(cmip6_regrid_tmp_fn)} "
-        f"--start_year $start_year "
-        f"--end_year $end_year "
+        f"python {worker_script} \\\n"
+        f"--netcdf_dir {netcdf_dir} \\\n"
+        f"--year_str $model/$scenario/day/$variable/{format_for_slurm_array_config(cmip6_regrid_tmp_fn)} \\\n"
+        f"--start_year $start_year \\\n"
+        f"--end_year $end_year \\\n"
         # format this to get "${{variable}}${{model}}_${{scenario}}.zarr" for the slurm array
         f"--zarr_path {output_dir.joinpath(format_for_slurm_array_config(cmip6_zarr_tmp_fn))}\n"
     )
@@ -305,11 +305,12 @@ if __name__ == "__main__":
     ) = parse_args()
 
     output_dir.mkdir(exist_ok=True)
+    slurm_dir.mkdir(exist_ok=True)
     if clear_out_files:
         for file in slurm_dir.glob(
-            netcdf_to_zarr_sbatch_tmp_fn.format(model="*", var_id="*").replace(
-                ".sbatch", ".out"
-            )
+            netcdf_to_zarr_sbatch_tmp_fn.format(
+                model="*", scenario="*", var_id="*"
+            ).replace(".sbatch", ".out")
         ):
 
             file.unlink()
@@ -334,7 +335,7 @@ if __name__ == "__main__":
         "partition": partition,
         "sbatch_out_path": sbatch_out_path,
         "conda_env_name": conda_env_name,
-        "job_name": "netcdf_to_zarr",
+        "job_name": "cmip6_netcdf_to_zarr",
     }
     sbatch_head = make_sbatch_head(**sbatch_head_kwargs)
 
@@ -348,7 +349,8 @@ if __name__ == "__main__":
     }
     if chunks_dict is not None:
         sbatch_kwargs["chunks_dict"] = chunks_dict
-    write_sbatch_netcdf_to_zarr_cmip6(**sbatch_kwargs)
-    job_id = submit_sbatch(sbatch_path)
 
-    print(job_id)
+    write_sbatch_netcdf_to_zarr_cmip6(**sbatch_kwargs)
+    # job_id = submit_sbatch(sbatch_path)
+
+    # print(job_id)

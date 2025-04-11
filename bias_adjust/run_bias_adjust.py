@@ -4,8 +4,8 @@ example usage:
     python run_bias_adjust.py \
         --partition t2small \
         --conda_env_name cmip6-utils \
-        --worker_script /home/kmredilla/repos/cmip6-utils/bias_adjust.py \
-        --input_dir /beegfs/CMIP6/kmredilla/cmip6_downscaling/zarr_bias_adjust_inputs/ \
+        --worker_script /beegfs/CMIP6/kmredilla/cmip6-utils/bias_adjust/bias_adjust.py \
+        --input_dir /beegfs/CMIP6/kmredilla/cmip6_downscaling/optimized_inputs/ \
         --output_dir /beegfs/CMIP6/kmredilla/cmip6_downscaling/downscaled \
         --models 'GFDL-ESM4 CESM2' \
         --scenarios 'historical ssp245' \
@@ -16,7 +16,6 @@ example usage:
 
 import argparse
 import logging
-import warnings
 from itertools import product
 from pathlib import Path
 from slurm import (
@@ -29,6 +28,7 @@ from config import (
     trained_qm_tmp_fn,
     bias_adjust_sbatch_tmp_fn,
 )
+from utils import validate_path_arg, check_for_input_data
 
 logging.basicConfig(
     level=logging.INFO,
@@ -48,43 +48,23 @@ def validate_args(args):
     """Validate the arguments passed to the script."""
     args.worker_script = Path(args.worker_script)
     args.output_dir = Path(args.output_dir)
-    if not args.output_dir.parent.exists():
-        raise FileNotFoundError(
-            f"Parent of output directory, {args.output_dir.parent}, does not exist. Aborting."
-        )
     args.input_dir = Path(args.input_dir)
-    if not args.input_dir.exists():
-        raise FileNotFoundError(
-            f"Input directory, {args.input_dir}, does not exist. Aborting."
-        )
+    args.slurm_dir = Path(args.slurm_dir)
+    validate_path_arg(args.worker_script, "worker_script")
+    validate_path_arg(args.input_dir, "input_dir")
+    validate_path_arg(args.output_dir.parent, "parent of output_dir")
+    validate_path_arg(args.slurm_dir, "slurm_dir")
 
     args.models = args.models.split(" ")
     args.scenarios = args.scenarios.split(" ")
     args.variables = args.variables.split(" ")
-    expected_stores_in_input_dir = [
+    expected_stores = [
         get_sim_path(args.input_dir, model, scenario, var_id)
         for var_id, model, scenario in product(
             args.variables, args.models, args.scenarios
         )
     ]
-    found_stores_in_input_dir = [
-        store for store in expected_stores_in_input_dir if store.exists()
-    ]
-    if not any(found_stores_in_input_dir):
-        raise ValueError(
-            f"No zarr stores in the input directory ({args.input_dir}) match the models / scenarios / variables supplied. Aborting."
-        )
-    else:
-        missing_stores = set(expected_stores_in_input_dir) - set(
-            found_stores_in_input_dir
-        )
-        if not len(missing_stores) == 0:
-            missing_stores_str = "\n".join(
-                [f"- {str(store)}" for store in list(missing_stores)]
-            )
-            logging.warning(
-                f"Some model / scenario / variable combinations were not found in the input directory and will be skipped: \n{missing_stores_str}\n"
-            )
+    check_for_input_data(expected_stores)
 
     return args
 
@@ -185,17 +165,15 @@ def write_sbatch_bias_adjust(
         trained_qm_tmp_fn.format(var_id=var_id, model=model)
     )
     if not train_path.exists():
-        warnings.warn(
+        logging.info(
             f"Trained QM object {train_path} not found. Skipping {model} {scenario} {var_id}.",
-            UserWarning,
         )
         return
 
     sim_path = get_sim_path(input_dir, model, scenario, var_id)
     if not sim_path.exists():
-        warnings.warn(
+        logging.info(
             f"GCM data {sim_path} not found. Skipping {model} {scenario} {var_id}.",
-            UserWarning,
         )
         return
 
@@ -310,5 +288,5 @@ if __name__ == "__main__":
     }
     sbatch_paths = write_all_sbatch_bias_adjust(**all_sbatch_kwargs)
 
-    job_ids = [submit_sbatch(sbatch_path) for sbatch_path in sbatch_paths]
-    print(job_ids)
+    # job_ids = [submit_sbatch(sbatch_path) for sbatch_path in sbatch_paths]
+    # print(job_ids)
