@@ -18,25 +18,27 @@ expected_value_ranges = {
     "pr": {"minimum": 0, "maximum": 1},
 }
 
+future_start_year = 1965
+future_end_year = 2100
 cmip6_year_ranges = {
     "historical": {
-        "start_year": 1950,
+        "start_year": 1965,
         "end_year": 2014,
     },
     "ssp126": {
-        "start_year": 2015,
-        "end_year": 2100,
+        "start_year": future_start_year,
+        "end_year": future_end_year,
     },
     "ssp245": {
-        "start_year": 2015,
-        "end_year": 2100,
+        "start_year": future_start_year,
+        "end_year": future_end_year,
     },
     "ssp370": {
-        "start_year": 2015,
-        "end_year": 2100,
+        "start_year": future_start_year,
+        "end_year": future_end_year,
     },
     "ssp585": {
-        "start_year": 2015,
-        "end_year": 2100,
+        "start_year": future_start_year,
+        "end_year": future_end_year,
     },
 }
