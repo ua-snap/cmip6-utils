@@ -16,9 +16,7 @@ from pathlib import Path
 import xarray as xr
 import dask
 from dask.distributed import Client
-from dask_jobqueue import SLURMCluster
 from xclim import sdba
-from config import ref_tmp_fn, train_tmp_fn
 from luts import sim_ref_var_lu, varid_adj_kind_lu, jitter_under_lu
 
 logging.basicConfig(
