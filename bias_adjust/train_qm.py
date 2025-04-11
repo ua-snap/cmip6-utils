@@ -1,6 +1,9 @@
 """Script to train a quantile mapping adjustment for a given model. Uses fixed historical reference years for training.
 
-Usage:
+Notes:
+- Assumes time series of sim and ref are the same!
+
+Example usage:
     python train_qm.py \
         --sim_path /beegfs/CMIP6/kmredilla/zarr_bias_adjust_inputs/zarr/pr_GFDL-ESM4_historical.zarr \
         --ref_path /beegfs/CMIP6/kmredilla/zarr_bias_adjust_inputs/zarr/pr_era5.zarr \

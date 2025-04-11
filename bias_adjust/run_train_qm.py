@@ -166,7 +166,7 @@ def write_sbatch_train_qm(
     sbatch_path = slurm_dir.joinpath(
         train_qm_sbatch_tmp_fn.format(model=model, var_id=var_id)
     )
-    sbatch_out_path = slurm_dir.joinpath(sbatch_path.name.replace(".sbatch", "_%j.out"))
+    sbatch_out_path = slurm_dir.joinpath(sbatch_path.name.replace(".slurm", "_%j.out"))
 
     sbatch_head_kwargs.update(
         {
@@ -245,7 +245,7 @@ if __name__ == "__main__":
     if clear_out_files:
         for file in slurm_dir.glob(
             train_qm_sbatch_tmp_fn.format(model="*", var_id="*").replace(
-                ".sbatch", ".out"
+                ".slurm", ".out"
             )
         ):
             file.unlink()

@@ -2,7 +2,6 @@
 
 
 example usage:
-    python run_netcdf_to_zarr.py --netcdf_dir /beegfs/CMIP6/kmredilla/daily_era5_4km_3338/ --year_str t2max/t2max_{year}_era5_4km_3338.nc --start_year 1965 --end_year 2014 --output_dir /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted_test/optimized_inputs/
     python run_netcdf_to_zarr.py \
         --partition t2small \
         --conda_env_name cmip6-utils \
@@ -310,7 +309,7 @@ if __name__ == "__main__":
         for file in slurm_dir.glob(
             netcdf_to_zarr_sbatch_tmp_fn.format(
                 model="*", scenario="*", var_id="*"
-            ).replace(".sbatch", ".out")
+            ).replace(".slurm", ".out")
         ):
 
             file.unlink()
