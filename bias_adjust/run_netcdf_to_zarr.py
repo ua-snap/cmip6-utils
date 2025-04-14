@@ -234,7 +234,7 @@ def format_for_slurm_array_config(str):
     Returns:
         str: formatted string
     """
-    return str.replace("{", "${{").replace("}", "}}")
+    return str.replace("{", "${").replace("}", "}")
 
 
 def write_sbatch_netcdf_to_zarr_cmip6(
@@ -258,22 +258,31 @@ def write_sbatch_netcdf_to_zarr_cmip6(
     Returns:
         None, writes the commands to sbatch_path
     """
+    # format the filename templates with the slurm array config variables
+    regrid_fn_format = {
+        "model": "${model}",
+        "scenario": "${scenario}",
+        "var_id": "${var_id}",
+        "year": "{year}",
+    }
+    zarr_fn_format = regrid_fn_format.copy()
+    del zarr_fn_format["year"]
     pycommands = "\n"
     pycommands += (
         # Extract the attrs for the current $SLURM_ARRAY_TASK_ID
         f"config={config_file}\n"
         "model=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $2}' $config)\n"
         "scenario=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $3}' $config)\n"
-        "variable=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $4}' $config)\n"
+        "var_id=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $4}' $config)\n"
         "start_year=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $5}' $config)\n"
         "end_year=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $6}' $config)\n"
         f"python {worker_script} \\\n"
         f"--netcdf_dir {netcdf_dir} \\\n"
-        f"--year_str $model/$scenario/day/$variable/{format_for_slurm_array_config(cmip6_regrid_tmp_fn)} \\\n"
+        f"--year_str $model/$scenario/day/$var_id/{cmip6_regrid_tmp_fn.format(**regrid_fn_format)} \\\n"
         f"--start_year $start_year \\\n"
         f"--end_year $end_year \\\n"
         # format this to get "${{variable}}${{model}}_${{scenario}}.zarr" for the slurm array
-        f"--zarr_path {output_dir.joinpath(format_for_slurm_array_config(cmip6_zarr_tmp_fn))}\n"
+        f"--zarr_path {output_dir.joinpath(cmip6_zarr_tmp_fn.format(**zarr_fn_format))}\n"
     )
 
     pycommands += f"echo End netcdf-to-zarr conversion && date\n\n"
@@ -307,11 +316,8 @@ if __name__ == "__main__":
     slurm_dir.mkdir(exist_ok=True)
     if clear_out_files:
         for file in slurm_dir.glob(
-            netcdf_to_zarr_sbatch_tmp_fn.format(
-                model="*", scenario="*", var_id="*"
-            ).replace(".slurm", ".out")
+            netcdf_to_zarr_sbatch_tmp_fn.replace(".slurm", "*.out")
         ):
-
             file.unlink()
 
     # filepath for slurm script
