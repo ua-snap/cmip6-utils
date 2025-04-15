@@ -1,17 +1,18 @@
-"""Script to build a slurm file that runs netcdf_to_zarr.py on a suite of models and scenarios.
+"""Script to build a slurm file that runs netcdf_to_zarr.py on a suite of ERA5 data.
+
+Notes:
+- assumes that the netcdf files are in a directory structure like /path/to/era5_netcdf_dir/<var_id>/<var_id>_<year>_era5_4km_3338.nc
 
 
 example usage:
-    python run_netcdf_to_zarr.py \
+    python run_era5_netcdf_to_zarr.py \
         --partition t2small \
         --conda_env_name cmip6-utils \
         --worker_script /beegfs/CMIP6/kmredilla/cmip6-utils/bias_adjust/netcdf_to_zarr.py \
-        --netcdf_dir /beegfs/CMIP6/kmredilla/cmip6_4km_3338/regrid \
-        --output_dir /beegfs/CMIP6/kmredilla/cmip6_downscaling/optimized_inputs/ \
-        --models 'GFDL-ESM4 CESM2' \
-        --scenarios 'historical ssp585' \
-        --variables 'tasmax pr' \
-        --slurm_dir /beegfs/CMIP6/kmredilla/cmip6_downscaling/slurm
+        --netcdf_dir /center1/CMIP6/kmredilla/daily_era5_4km_3338/ \
+        --output_dir /center1/CMIP6/kmredilla/cmip6_downscaling/optimized_inputs/ \
+        --variables 't2max pr dtr' \
+        --slurm_dir /center1/CMIP6/kmredilla/cmip6_downscaling/slurm
 """
 
 import argparse
@@ -23,8 +24,8 @@ from slurm import (
     submit_sbatch,
 )
 from utils import validate_path_arg
-from config import netcdf_to_zarr_sbatch_tmp_fn, cmip6_regrid_tmp_fn, cmip6_zarr_tmp_fn
-from luts import cmip6_year_ranges
+from config import era5_tmp_fn, era5_zarr_tmp_fn, era5_netcdf_to_zarr_sbatch_tmp_fn
+from luts import era5_start_year, era5_end_year
 
 
 logging.basicConfig(
@@ -45,49 +46,23 @@ def validate_args(args):
     validate_path_arg(args.output_dir.parent, "parent of output_dir")
     validate_path_arg(args.slurm_dir.parent, "parent of slurm_dir")
 
-    args.models = args.models.split(" ")
-    models_in_input_dir = [
-        model
-        for model in args.models
-        if model
+    args.variables = args.variables.split(" ")
+    variables_in_input_dir = [
+        var_id
+        for var_id in args.variables
+        if var_id
         in next(args.netcdf_dir.walk())[
             1
         ]  # this gets the list of subdirectories in the input directory
     ]
-    if not any(models_in_input_dir):
+    if not any(variables_in_input_dir):
         raise ValueError(
-            f"No subdirectories in the input directory match the models provided. Aborting."
+            f"No subdirectories in the input directory match the variables provided. Aborting."
         )
-    elif not all([model in models_in_input_dir for model in args.models]):
+    elif not all([var_id in variables_in_input_dir for var_id in args.variables]):
         logging.warning(
-            f"Some models in the input directory do not have subdirectories: {models_in_input_dir}. Skipping these models."
+            f"Some variables were not found in the input directory: {list(set(args.variables) - set(variables_in_input_dir))}. Skipping these models."
         )
-
-    # get list of model/scenario combinations in input directory
-    args.scenarios = args.scenarios.split(" ")
-    modscens_from_args = list(product(args.models, args.scenarios))
-    modscens_from_input_dir = set(
-        [(d.parent.name, d.name) for d in list((args.netcdf_dir.glob("*/*")))]
-    )
-    model_scenarios_in_input_dir = [
-        (model, scenario)
-        for model, scenario in modscens_from_args
-        if (model, scenario) in modscens_from_input_dir
-    ]
-    if not any(model_scenarios_in_input_dir):
-        raise ValueError(
-            f"No subdirectories in the input directory match the scenarios provided. Model-scenario combinations specified in arguments: {modscens_from_args}. Model-scenario combinations in input directory: {modscens_from_input_dir}."
-        )
-    elif not all(
-        [
-            (model, scenario) in model_scenarios_in_input_dir
-            for (model, scenario) in modscens_from_args
-        ]
-    ):
-        logging.warning(
-            f"Some specified model/scenario combinations were not found in the input directory: {set(modscens_from_args) - set(model_scenarios_in_input_dir)}. Skipping these model/scenario combinations."
-        )
-    args.variables = args.variables.split(" ")
 
     return args
 
@@ -126,18 +101,6 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
-        "--models",
-        type=str,
-        help="' '-separated list of CMIP6 models to work on",
-        required=True,
-    )
-    parser.add_argument(
-        "--scenarios",
-        type=str,
-        help="' '-separated list of scenarios to work on",
-        required=True,
-    )
-    parser.add_argument(
         "--variables",
         type=str,
         help="' '-separated list of variables to work on",
@@ -171,8 +134,6 @@ def parse_args():
         args.worker_script,
         args.netcdf_dir,
         args.output_dir,
-        args.models,
-        args.scenarios,
         args.variables,
         args.chunks_dict,
         args.slurm_dir,
@@ -180,10 +141,8 @@ def parse_args():
     )
 
 
-def write_netcdf_to_zarr_cmip6_config_file(
+def write_netcdf_to_zarr_era5_config_file(
     config_path,
-    models,
-    scenarios,
     variables,
 ):
     """Write a config file for the Zarr conversion slurm job script.
@@ -193,10 +152,6 @@ def write_netcdf_to_zarr_cmip6_config_file(
     ----------
     config_path : pathlib.PosixPath
         path to write the config file
-    models : list of str
-        list of models to process
-    scenarios : list of str
-        list of scenarios to process
     variables : list of str
         list of variables to process
 
@@ -207,15 +162,11 @@ def write_netcdf_to_zarr_cmip6_config_file(
     """
     array_list = []
     with open(config_path, "w") as f:
-        f.write("array_id\tmodel\tscenario\tvariable\tstart_year\tend_year\n")
-        for array_id, (model, scenario, variable) in enumerate(
-            product(models, scenarios, variables), start=1
-        ):
-            start_year = cmip6_year_ranges[scenario]["start_year"]
-            end_year = cmip6_year_ranges[scenario]["end_year"]
-            f.write(
-                f"{array_id}\t{model}\t{scenario}\t{variable}\t{start_year}\t{end_year}\n"
-            )
+        f.write("array_id\tvariable\tstart_year\tend_year\n")
+        for array_id, var_id in enumerate(variables, start=1):
+            start_year = era5_start_year
+            end_year = era5_end_year
+            f.write(f"{array_id}\t{var_id}\t{start_year}\t{end_year}\n")
             array_list.append(array_id)
 
     logging.info(f"Wrote config file to {config_path}")
@@ -237,7 +188,7 @@ def format_for_slurm_array_config(str):
     return str.replace("{", "${").replace("}", "}")
 
 
-def write_sbatch_netcdf_to_zarr_cmip6(
+def write_sbatch_netcdf_to_zarr_era5(
     sbatch_path,
     worker_script,
     netcdf_dir,
@@ -259,30 +210,25 @@ def write_sbatch_netcdf_to_zarr_cmip6(
         None, writes the commands to sbatch_path
     """
     # format the filename templates with the slurm array config variables
-    regrid_fn_format = {
-        "model": "${model}",
-        "scenario": "${scenario}",
+    era5_fn_format = {
         "var_id": "${var_id}",
         "year": "{year}",
     }
-    zarr_fn_format = regrid_fn_format.copy()
+    zarr_fn_format = era5_fn_format.copy()
     del zarr_fn_format["year"]
     pycommands = "\n"
     pycommands += (
         # Extract the attrs for the current $SLURM_ARRAY_TASK_ID
         f"config={config_file}\n"
-        "model=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $2}' $config)\n"
-        "scenario=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $3}' $config)\n"
-        "var_id=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $4}' $config)\n"
-        "start_year=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $5}' $config)\n"
-        "end_year=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $6}' $config)\n"
+        "var_id=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $2}' $config)\n"
+        "start_year=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $3}' $config)\n"
+        "end_year=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $4}' $config)\n"
         f"python {worker_script} \\\n"
         f"--netcdf_dir {netcdf_dir} \\\n"
-        f"--year_str $model/$scenario/day/$var_id/{cmip6_regrid_tmp_fn.format(**regrid_fn_format)} \\\n"
+        f"--year_str $var_id/{era5_tmp_fn.format(**era5_fn_format)} \\\n"
         f"--start_year $start_year \\\n"
         f"--end_year $end_year \\\n"
-        # format this to get "${{variable}}${{model}}_${{scenario}}.zarr" for the slurm array
-        f"--zarr_path {output_dir.joinpath(cmip6_zarr_tmp_fn.format(**zarr_fn_format))}\n"
+        f"--zarr_path {output_dir.joinpath(era5_zarr_tmp_fn.format(**zarr_fn_format))}\n"
     )
 
     pycommands += f"echo End netcdf-to-zarr conversion && date\n\n"
@@ -304,8 +250,6 @@ if __name__ == "__main__":
         worker_script,
         netcdf_dir,
         output_dir,
-        models,
-        scenarios,
         variables,
         chunks_dict,
         slurm_dir,
@@ -316,22 +260,20 @@ if __name__ == "__main__":
     slurm_dir.mkdir(exist_ok=True)
     if clear_out_files:
         for file in slurm_dir.glob(
-            netcdf_to_zarr_sbatch_tmp_fn.replace(".slurm", "*.out")
+            era5_netcdf_to_zarr_sbatch_tmp_fn.replace(".slurm", "*.out")
         ):
             file.unlink()
 
     # filepath for slurm script
-    sbatch_path = slurm_dir.joinpath(f"convert_cmip6_netcdf_to_zarr.slurm")
+    sbatch_path = slurm_dir.joinpath(era5_netcdf_to_zarr_sbatch_tmp_fn)
     # filepath for slurm stdout
     sbatch_out_path = slurm_dir.joinpath(
         sbatch_path.name.replace(".slurm", "_%A-%a.out")
     )
 
-    config_path = slurm_dir.joinpath("config.txt")
-    array_range = write_netcdf_to_zarr_cmip6_config_file(
+    config_path = slurm_dir.joinpath("era5_netcdf_to_zarr_config.txt")
+    array_range = write_netcdf_to_zarr_era5_config_file(
         config_path=config_path,
-        models=models,
-        scenarios=scenarios,
         variables=variables,
     )
 
@@ -340,7 +282,7 @@ if __name__ == "__main__":
         "partition": partition,
         "sbatch_out_path": sbatch_out_path,
         "conda_env_name": conda_env_name,
-        "job_name": "cmip6_netcdf_to_zarr",
+        "job_name": "era5_netcdf_to_zarr",
     }
     sbatch_head = make_sbatch_head(**sbatch_head_kwargs)
 
@@ -355,7 +297,7 @@ if __name__ == "__main__":
     if chunks_dict is not None:
         sbatch_kwargs["chunks_dict"] = chunks_dict
 
-    write_sbatch_netcdf_to_zarr_cmip6(**sbatch_kwargs)
+    write_sbatch_netcdf_to_zarr_era5(**sbatch_kwargs)
     # job_id = submit_sbatch(sbatch_path)
 
     # print(job_id)

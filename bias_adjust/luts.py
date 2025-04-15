@@ -20,10 +20,12 @@ expected_value_ranges = {
 
 future_start_year = 2015
 future_end_year = 2100
+era5_start_year = 1965
+era5_end_year = 2014
 cmip6_year_ranges = {
     "historical": {
-        "start_year": 1965,
-        "end_year": 2014,
+        "start_year": era5_start_year,
+        "end_year": era5_end_year,
     },
     "ssp126": {
         "start_year": future_start_year,
