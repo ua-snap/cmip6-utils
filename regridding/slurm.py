@@ -260,6 +260,12 @@ def parse_args():
         help="list of scenarios used in generating batch files",
         required=True,
     )
+    parser.add_argument(
+        "--partition",
+        type=str,
+        help="partition to use for slurm jobs",
+        default="t2small",
+    )
     args = parser.parse_args()
 
     return (
@@ -278,6 +284,7 @@ def parse_args():
         args.freqs,
         args.models,
         args.scenarios,
+        args.partition,
     )
 
 
@@ -298,6 +305,7 @@ if __name__ == "__main__":
         freqs,
         models,
         scenarios,
+        partition,
     ) = parse_args()
 
     # make these dirs if they don't exist
@@ -331,7 +339,7 @@ if __name__ == "__main__":
                         )
 
                         sbatch_head = make_sbatch_head(
-                            conda_init_script, conda_env_name
+                            conda_init_script, conda_env_name, partition=partition
                         )
                         sbatch_regrid_kwargs = {
                             "sbatch_fp": sbatch_fp,
