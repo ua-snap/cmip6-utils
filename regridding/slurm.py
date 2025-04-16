@@ -6,7 +6,7 @@ from pathlib import Path
 from config import *
 
 
-def make_sbatch_head(conda_init_script, conda_env_name):
+def make_sbatch_head(conda_init_script, conda_env_name, partition="t2small"):
     """Make a string of SBATCH commands that can be written into a .slurm script.
 
     Parameters
@@ -15,6 +15,8 @@ def make_sbatch_head(conda_init_script, conda_env_name):
         path to a script that contains commands for initializing the shells on the compute nodes to use conda activate
     conda_env_name : str
         name of the conda environment to activate
+    partition : str
+        slurm partition to use, default is t2small
 
     Returns
     -------
@@ -26,7 +28,7 @@ def make_sbatch_head(conda_init_script, conda_env_name):
         "#!/bin/sh\n"
         "#SBATCH --nodes=1\n"
         f"#SBATCH --cpus-per-task=24\n"
-        f"#SBATCH -p t2small\n"
+        f"#SBATCH -p {partition}\n"
         f"#SBATCH --time=01:00:00\n"
         f"#SBATCH --output {sbatch_out_fp}\n"
         # print start time
