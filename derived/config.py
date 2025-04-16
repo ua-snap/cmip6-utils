@@ -5,6 +5,8 @@ dtr_tmp_fn = "dtr_day_{model}_{scenario}_regrid_{year}0101-{year}1231.nc"
 tasmax_tmp_fn = "tasmax_day_{model}_{scenario}_regrid_{year}0101-{year}1231.nc"
 tasmin_tmp_fn = "tasmin_day_{model}_{scenario}_regrid_{year}0101-{year}1231.nc"
 
+dtr_sbatch_tmp_fn = "process_cmip6_dtr.slurm"
+dtr_sbatch_config_tmp_fn = "process_cmip6_dtr_config.txt"
 
 # min / max possible ranges
 expected_value_ranges = {

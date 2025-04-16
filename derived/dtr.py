@@ -38,7 +38,7 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
-        "--target_dir",
+        "--output_dir",
         type=str,
         help="Directory for writing daily temperature range data",
         required=True,
@@ -54,7 +54,7 @@ def parse_args():
     return (
         Path(args.tmax_dir),
         Path(args.tmin_dir),
-        Path(args.target_dir),
+        Path(args.output_dir),
         args.dtr_tmp_fn,
     )
 
@@ -100,7 +100,7 @@ def get_start_end_dates(ds):
 
 
 if __name__ == "__main__":
-    tmax_dir, tmin_dir, target_dir, dtr_tmp_fn = parse_args()
+    tmax_dir, tmin_dir, output_dir, dtr_tmp_fn = parse_args()
 
     # assumes all files in one dir have corresponding file in the other
     tmax_fps, tmin_fps = get_tmax_tmin_fps(tmax_dir, tmin_dir)
@@ -134,11 +134,10 @@ if __name__ == "__main__":
     dtr_ds.attrs = {k: v for k, v in tmax_ds.attrs.items() & tmin_ds.attrs.items()}
 
     # write
-    target_dir.mkdir(exist_ok=True, parents=True)
     for year in np.unique(dtr_ds.time.dt.year):
         year_ds = dtr_ds.sel(time=str(year))
         start_date, end_date = get_start_end_dates(year_ds)
-        output_fp = target_dir.joinpath(
+        output_fp = output_dir.joinpath(
             dtr_tmp_fn.format(start_date=start_date, end_date=end_date)
         )
         logging.info(

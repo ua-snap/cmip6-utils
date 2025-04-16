@@ -1,11 +1,19 @@
 """Script for constructing slurm jobs for computing daily temperature range for CMIP6 data.
 
 Example usage:
-    python slurm_dtr.py --worker_script /import/beegfs/CMIP6/kmredilla/cmip6-utils/derived/dtr.py --conda_env_name cmip6-utils --models "GFDL-ESM4 CESM2" --scenarios "ssp245 ssp585" --input_dir /import/beegfs/CMIP6/arctic-cmip6/regrid --output_directory /import/beegfs/CMIP6/kmredilla/dtr_processing --partition debug
+    python slurm_dtr.py \
+        --worker_script /import/beegfs/CMIP6/kmredilla/cmip6-utils/derived/dtr.py \
+        --conda_env_name cmip6-utils \
+        --models "GFDL-ESM4 CESM2" \
+        --scenarios "ssp245 ssp585" \
+        --input_dir /center1/CMIP6/kmredilla/cmip6_4km_downscaling/regrid \
+        --output_dir /import/beegfs/CMIP6/kmredilla/cmip6_4km_downscaling/regrid \
+        --slurm_dir /import/beegfs/CMIP6/kmredilla/cmip6_4km_downscaling/slurm \
+        --partition t2small
 
 Returns:
-    Outputs are written in a dtr_processing directory created as a subdirectory in working_dir, following the model/scenario/variable/<files>*.nc convention.
-    e.g. files for GFDL-ESM4 ssp245 would be written to <working_dir>/dtr_processing/netcdf/GFDL-ESM4/ssp245/dtr/
+    Outputs are written in output_dir following the <model>/<scenario>/dtr/<files>*.nc convention.
+    e.g. files for GFDL-ESM4 ssp245 would be written to <output_dir>/GFDL-ESM4/ssp245/dtr/<output files>
 """
 
 import argparse
@@ -13,9 +21,7 @@ import subprocess
 import logging
 from pathlib import Path
 from itertools import product
-
-# this is the subdirectory name for the actual transformed data
-target_dir_name = "netcdf"
+from config import dtr_sbatch_tmp_fn, dtr_sbatch_config_tmp_fn
 
 logging.basicConfig(
     level=logging.INFO,
@@ -27,15 +33,21 @@ logging.basicConfig(
 def validate_args(args):
     """Validate the arguments passed to the script."""
     args.worker_script = Path(args.worker_script)
-    args.output_directory = Path(args.output_directory)
-    if not args.output_directory.parent.exists():
+
+    args.input_dir = Path(args.input_dir)
+    if not args.input_dir.exists():
         raise FileNotFoundError(
-            f"Parent of output directory, {args.output_directory.parent}, does not exist. Aborting."
+            f"Input directory, {args.input_dir}, does not exist. Aborting."
         )
-    args.input_directory = Path(args.input_directory)
-    if not args.input_directory.exists():
+    args.output_dir = Path(args.output_dir)
+    if not args.output_dir.parent.exists():
         raise FileNotFoundError(
-            f"Input directory, {args.input_directory}, does not exist. Aborting."
+            f"Parent of output directory, {args.output_dir.parent}, does not exist. Aborting."
+        )
+    args.slurm_dir = Path(args.slurm_dir)
+    if not args.outpuslurm_dirt_dir.parent.exists():
+        raise FileNotFoundError(
+            f"Parent of slurm directory, {args.slurm_dir.parent}, does not exist. Aborting."
         )
 
     args.models = args.models.split(" ")
@@ -43,7 +55,7 @@ def validate_args(args):
         model
         for model in args.models
         if model
-        in next(args.input_directory.walk())[
+        in next(args.input_dir.walk())[
             1
         ]  # this gets the list of subdirectories in the input directory
     ]
@@ -61,7 +73,7 @@ def validate_args(args):
     args.scenarios = args.scenarios.split(" ")
     modscens_from_args = list(product(args.models, args.scenarios))
     modscens_from_input_dir = set(
-        [(d.parent.name, d.name) for d in list((args.input_directory.glob("*/*")))]
+        [(d.parent.name, d.name) for d in list((args.input_dir.glob("*/*")))]
     )
     model_scenarios_in_input_dir = [
         (model, scenario)
@@ -113,15 +125,21 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
-        "--input_directory",
+        "--input_dir",
         type=str,
         help="Path to directory of simulated data files to be adjusted, with filepath structure <model>/<scenario>/day/<variable ID>/<files>",
         required=True,
     )
     parser.add_argument(
-        "--output_directory",
+        "--output_dir",
         type=str,
         help="Path to directory where outputs will be written.",
+        required=True,
+    )
+    parser.add_argument(
+        "--slurm_dir",
+        type=str,
+        help="Path to directory where slurm stuff will be written.",
         required=True,
     )
     parser.add_argument(
@@ -133,7 +151,7 @@ def parse_args():
     parser.add_argument(
         "--clear_out_files",
         action="store_true",
-        help="Remove output files in the output directory before running the job",
+        help="Remove output files in the slurm output files in slurm directory before running the job",
         default=True,
     )
     args = parser.parse_args()
@@ -144,22 +162,12 @@ def parse_args():
         args.conda_env_name,
         args.models,
         args.scenarios,
-        args.input_directory,
-        args.output_directory,
+        args.input_dir,
+        args.output_dir,
+        args.slurm_dir,
         args.partition,
         args.clear_out_files,
     )
-
-
-def get_dtr_script_directory_args(input_dir, output_dir, models, scenarios):
-    input_directories = []
-    for model, scenario in product(models, scenarios):
-        tasmax_dir = input_dir.joinpath(model, scenario, "day", "tasmax")
-        tasmin_dir = input_dir.joinpath(model, scenario, "day", "tasmin")
-        target_dir = output_dir.joinpath("netcdf", model, scenario, "day", "dtr")
-        input_directories.append((tasmax_dir, tasmin_dir, target_dir))
-
-    return input_directories
 
 
 def write_config_file(
@@ -236,7 +244,7 @@ def write_sbatch_dtr(
     sbatch_out_fp,
     worker_script,
     input_dir,
-    target_dir,
+    output_dir,
     sbatch_head,
     config_file,
 ):
@@ -247,7 +255,7 @@ def write_sbatch_dtr(
         sbatch_out_fp (path_like): path to where sbatch stdout should be written
         worker_script (path_like): path to the script to be called to run the dtr processing
         input_dir (path-like): path to directory of tasmax and tasmin files for all models and scenarios
-        target_dir (path-like): directory to write the dtr data
+        output_dir (path-like): directory to write the dtr data
         sbatch_head (dict): string for sbatch head script
         config_file (path_like): path to the config file for the slurm job array
     Returns:
@@ -262,7 +270,7 @@ def write_sbatch_dtr(
         f"python {worker_script} "
         f"--tmax_dir {input_dir}/$model/$scenario/day/tasmax "
         f"--tmin_dir {input_dir}/$model/$scenario/day/tasmin "
-        f"--target_dir {target_dir}/$model/$scenario/day/dtr "
+        f"--output_dir {output_dir}/$model/$scenario/day/dtr "
         f"--dtr_tmp_fn dtr_$model_$scenario_{{start_date}}_{{end_date}}.nc\n"
     )
 
@@ -299,29 +307,24 @@ if __name__ == "__main__":
         models,
         scenarios,
         input_dir,
-        output_directory,
+        output_dir,
+        slurm_dir,
         partition,
         clear_out_files,
     ) = parse_args()
 
-    output_directory.mkdir(exist_ok=True)
-    target_directory = output_directory.joinpath(target_dir_name)
-    target_directory.mkdir(exist_ok=True)
-
-    slurm_directory = output_directory.joinpath("slurm")
-    slurm_directory.mkdir(exist_ok=True)
+    output_dir.mkdir(exist_ok=True)
+    slurm_dir.mkdir(exist_ok=True)
     if clear_out_files:
-        for file in slurm_directory.glob("*.out"):
+        for file in slurm_dir.glob(dtr_sbatch_tmp_fn.replace(".slurm", "*.out")):
             file.unlink()
 
     # filepath for slurm script
-    sbatch_fp = slurm_directory.joinpath(f"process_cmip6_dtr.slurm")
+    sbatch_fp = slurm_dir.joinpath(dtr_sbatch_tmp_fn)
     # filepath for slurm stdout
-    sbatch_out_fp = slurm_directory.joinpath(
-        sbatch_fp.name.replace(".slurm", "_%A-%a.out")
-    )
+    sbatch_out_fp = slurm_dir.joinpath(sbatch_fp.name.replace(".slurm", "_%A-%a.out"))
 
-    config_path = slurm_directory.joinpath("config.txt")
+    config_path = slurm_dir.joinpath(dtr_sbatch_config_tmp_fn)
     array_range = write_config_file(
         config_path=config_path,
         models=models,
@@ -341,7 +344,7 @@ if __name__ == "__main__":
         "sbatch_out_fp": sbatch_out_fp,
         "worker_script": worker_script,
         "input_dir": input_dir,
-        "target_dir": target_directory,
+        "output_dir": output_dir,
         "sbatch_head": sbatch_head,
         "config_file": config_path,
     }
