@@ -5,7 +5,7 @@ doy_summary_dir_name = "doy_summaries"
 doy_summary_tmp_fn = "{var_id}_{model}_{scenario}_{kind}.nc"
 
 
-era5_tmp_fn = "era5_{var_id}_{year}_3338.nc"
+era5_tmp_fn = "{var_id}_{year}_era5_4km_3338.nc"
 
 cmip6_regrid_tmp_fn = "{var_id}_day_{model}_{scenario}_regrid_{year}0101-{year}1231.nc"
 
