@@ -21,7 +21,12 @@ import subprocess
 import logging
 from pathlib import Path
 from itertools import product
-from config import dtr_sbatch_tmp_fn, dtr_sbatch_config_tmp_fn, dtr_tmp_dir_structure
+from config import (
+    dtr_sbatch_tmp_fn,
+    dtr_sbatch_config_tmp_fn,
+    dtr_tmp_fn,
+    dtr_tmp_dir_structure,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -261,6 +266,11 @@ def write_sbatch_dtr(
     Returns:
         None, writes the commands to sbatch_fp
     """
+    dtr_fn_format = {
+        "model": "${model}",
+        "scenario": "${scenario}",
+        "year": "{year}",
+    }
     pycommands = "\n"
     pycommands += (
         # Extract the model and scenario to process for the current $SLURM_ARRAY_TASK_ID
@@ -271,7 +281,7 @@ def write_sbatch_dtr(
         f"--tmax_dir {input_dir}/$model/$scenario/day/tasmax "
         f"--tmin_dir {input_dir}/$model/$scenario/day/tasmin "
         f"--output_dir {output_dir}/$model/$scenario/day/dtr "
-        f"--dtr_tmp_fn dtr_$model_$scenario_{{start_date}}_{{end_date}}.nc\n"
+        f"--dtr_tmp_fn {dtr_tmp_fn.format(**dtr_fn_format)}\n"
     )
 
     pycommands += f"echo End dtr processing && date\n\n"
