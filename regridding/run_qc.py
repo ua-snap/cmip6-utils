@@ -10,7 +10,7 @@ def parse_args():
 
     Returns
     -------
-    output_directory : pathlib.Path
+    working_dir : pathlib.Path
         Path to directory where regridded files are written
     cmip6_directory : pathlib.Path
         Path to directory where CMIP6 files are stored
@@ -33,7 +33,7 @@ def parse_args():
     """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--output_directory",
+        "--working_dir",
         type=str,
         help="Path to directory where regridded files are written",
         required=True,
@@ -112,7 +112,7 @@ def parse_args():
 if __name__ == "__main__":
 
     (
-        output_directory,
+        working_dir,
         cmip6_directory,
         repo_regridding_directory,
         conda_init_script,
@@ -126,7 +126,7 @@ if __name__ == "__main__":
 
     # Create QC directory
 
-    qc_dir = output_directory.joinpath("qc")
+    qc_dir = working_dir.joinpath("qc")
     qc_dir.mkdir(exist_ok=True)
 
     # Create and submit notebook script
@@ -156,7 +156,7 @@ if __name__ == "__main__":
         # run the notebook
         f"cd {repo_regridding_directory}\n"
         f"papermill {qc_notebook} {output_nb} -r output_directory"
-        f" '{output_directory}' -r cmip6_directory '{cmip6_directory}'"
+        f" '{working_dir}' -r cmip6_directory '{cmip6_directory}'"
         f" -r vars '{vars}' -r freqs '{freqs}' -r models '{models}' -r scenarios '{scenarios}'\n"
         f"jupyter nbconvert --to html {output_nb}"
     )
