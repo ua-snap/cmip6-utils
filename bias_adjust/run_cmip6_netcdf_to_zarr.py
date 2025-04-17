@@ -321,7 +321,7 @@ if __name__ == "__main__":
     slurm_dir.mkdir(exist_ok=True)
     if clear_out_files:
         for file in slurm_dir.glob(
-            netcdf_to_zarr_sbatch_tmp_fn.replace(".slurm", "*.out")
+            cmip6_netcdf_to_zarr_sbatch_tmp_fn.replace(".slurm", "*.out")
         ):
             file.unlink()
 
