@@ -298,6 +298,6 @@ if __name__ == "__main__":
         sbatch_kwargs["chunks_dict"] = chunks_dict
 
     write_sbatch_netcdf_to_zarr_era5(**sbatch_kwargs)
-    # job_id = submit_sbatch(sbatch_path)
+    job_id = submit_sbatch(sbatch_path)
 
-    # print(job_id)
+    print(job_id)
