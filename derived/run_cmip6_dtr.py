@@ -21,7 +21,7 @@ import subprocess
 import logging
 from pathlib import Path
 from itertools import product
-from config import dtr_sbatch_tmp_fn, dtr_sbatch_config_tmp_fn
+from config import dtr_sbatch_tmp_fn, dtr_sbatch_config_tmp_fn, dtr_tmp_dir_structure
 
 logging.basicConfig(
     level=logging.INFO,
@@ -314,6 +314,13 @@ if __name__ == "__main__":
     ) = parse_args()
 
     output_dir.mkdir(exist_ok=True)
+    # make the output directories
+    for model in models:
+        for scenario in scenarios:
+            output_dir.joinpath(
+                dtr_tmp_dir_structure.format(model=model, scenario=scenario)
+            ).mkdir(parents=True, exist_ok=True)
+
     slurm_dir.mkdir(exist_ok=True)
     if clear_out_files:
         for file in slurm_dir.glob(dtr_sbatch_tmp_fn.replace(".slurm", "*.out")):
