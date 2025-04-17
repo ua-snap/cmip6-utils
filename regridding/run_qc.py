@@ -96,7 +96,7 @@ def parse_args():
     args = parser.parse_args()
 
     return (
-        Path(args.output_directory),
+        Path(args.working_dir),
         Path(args.cmip6_directory),
         Path(args.repo_regridding_directory),
         Path(args.conda_init_script),
