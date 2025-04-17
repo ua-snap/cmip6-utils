@@ -269,7 +269,9 @@ def write_sbatch_dtr(
     dtr_fn_format = {
         "model": "${model}",
         "scenario": "${scenario}",
-        "year": "{year}",
+        # simply replacing these with the same value for formatting in the worker script
+        "start_date": "{start_date}",
+        "end_date": "{end_date}",
     }
     pycommands = "\n"
     pycommands += (
