@@ -24,7 +24,7 @@ from slurm import (
 )
 from utils import validate_path_arg
 from config import (
-    netcdf_to_zarr_sbatch_tmp_fn,
+    cmip6_netcdf_to_zarr_sbatch_tmp_fn,
     cmip6_regrid_tmp_fn,
     cmip6_zarr_tmp_fn,
     cmip6_netcdf_to_zarr_sbatch_tmp_fn,
