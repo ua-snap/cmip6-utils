@@ -27,7 +27,7 @@ from slurm import (
 from utils import validate_path_arg, check_for_input_data
 from config import (
     cmip6_zarr_tmp_fn,
-    ref_zarr_tmp_fn,
+    era5_zarr_tmp_fn,
     trained_qm_tmp_fn,
     train_qm_sbatch_tmp_fn,
 )
@@ -168,7 +168,7 @@ def write_sbatch_train_qm(
             f"GCM data {sim_path} not found. Skipping {model} historical {var_id}.",
         )
         return
-    ref_path = ref_dir.joinpath(ref_zarr_tmp_fn.format(var_id=var_id))
+    ref_path = ref_dir.joinpath(era5_zarr_tmp_fn.format(var_id=var_id))
     train_path = output_dir.joinpath(
         trained_qm_tmp_fn.format(var_id=var_id, model=model)
     )
