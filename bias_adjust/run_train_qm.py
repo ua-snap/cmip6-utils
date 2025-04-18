@@ -283,4 +283,4 @@ if __name__ == "__main__":
     sbatch_paths = write_all_sbatch_train_qm(**all_sbatch_kwargs)
 
     job_ids = [submit_sbatch(sbatch_path) for sbatch_path in sbatch_paths]
-    print(job_ids)
+    _ = [print(job_id, end=" ") for job_id in job_ids]
