@@ -5,8 +5,9 @@ example usage:
         --partition t2small \
         --conda_env_name cmip6-utils \
         --worker_script /beegfs/CMIP6/kmredilla/cmip6-utils/bias_adjust/bias_adjust.py \
-        --input_dir /beegfs/CMIP6/kmredilla/cmip6_downscaling/optimized_inputs/ \
-        --output_dir /beegfs/CMIP6/kmredilla/cmip6_downscaling/downscaled \
+        --sim_dir /beegfs/CMIP6/kmredilla/cmip6_4km_downscaling/cmip6_zarr/ \
+        --train_dir /beegfs/CMIP6/kmredilla/cmip6_4km_downscaling/trained_datasets/ \
+        --output_dir /beegfs/CMIP6/kmredilla/cmip6_4km_downscaling/adjusted \
         --models 'GFDL-ESM4 CESM2' \
         --scenarios 'historical ssp245' \
         --variables 'tasmax pr' \
@@ -37,9 +38,9 @@ logging.basicConfig(
 )
 
 
-def get_sim_path(input_dir, model, scenario, var_id):
-    """Get the filepath to a cmip6 file in input_dir given the attributes."""
-    return input_dir.joinpath(
+def get_sim_path(sim_dir, model, scenario, var_id):
+    """Get the filepath to a cmip6 file in sim_dir given the attributes."""
+    return sim_dir.joinpath(
         cmip6_zarr_tmp_fn.format(model=model, scenario=scenario, var_id=var_id),
     )
 
@@ -48,10 +49,12 @@ def validate_args(args):
     """Validate the arguments passed to the script."""
     args.worker_script = Path(args.worker_script)
     args.output_dir = Path(args.output_dir)
-    args.input_dir = Path(args.input_dir)
+    args.sim_dir = Path(args.sim_dir)
+    args.train_dir = Path(args.train_dir)
     args.slurm_dir = Path(args.slurm_dir)
     validate_path_arg(args.worker_script, "worker_script")
-    validate_path_arg(args.input_dir, "input_dir")
+    validate_path_arg(args.sim_dir, "sim_dir")
+    validate_path_arg(args.train_dir, "train_dir")
     validate_path_arg(args.output_dir.parent, "parent of output_dir")
     validate_path_arg(args.slurm_dir, "slurm_dir")
 
@@ -59,7 +62,7 @@ def validate_args(args):
     args.scenarios = args.scenarios.split(" ")
     args.variables = args.variables.split(" ")
     expected_stores = [
-        get_sim_path(args.input_dir, model, scenario, var_id)
+        get_sim_path(args.sim_dir, model, scenario, var_id)
         for var_id, model, scenario in product(
             args.variables, args.models, args.scenarios
         )
@@ -92,9 +95,15 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
-        "--input_dir",
+        "--sim_dir",
         type=str,
-        help="Path to directory containing all input zarr stores (including trained QM objects)",
+        help="Path to directory containing sim (e.g. GCM) zarr stores",
+        required=True,
+    )
+    parser.add_argument(
+        "--train_dir",
+        type=str,
+        help="Path to directory containing trained datasets zarr stores",
         required=True,
     )
     parser.add_argument(
@@ -140,7 +149,8 @@ def parse_args():
         args.partition,
         args.conda_env_name,
         args.worker_script,
-        args.input_dir,
+        args.sim_dir,
+        args.train_dir,
         args.output_dir,
         args.models,
         args.scenarios,
@@ -151,7 +161,8 @@ def parse_args():
 
 
 def write_sbatch_bias_adjust(
-    input_dir,
+    sim_dir,
+    train_dir,
     slurm_dir,
     output_dir,
     model,
@@ -161,7 +172,7 @@ def write_sbatch_bias_adjust(
     sbatch_head_kwargs,
 ):
     """Write the sbatch file for bias adjustment for a given model, scenario, and variable."""
-    train_path = input_dir.joinpath(
+    train_path = train_dir.joinpath(
         trained_qm_tmp_fn.format(var_id=var_id, model=model)
     )
     if not train_path.exists():
@@ -170,7 +181,7 @@ def write_sbatch_bias_adjust(
         )
         return
 
-    sim_path = get_sim_path(input_dir, model, scenario, var_id)
+    sim_path = get_sim_path(sim_dir, model, scenario, var_id)
     if not sim_path.exists():
         logging.info(
             f"GCM data {sim_path} not found. Skipping {model} {scenario} {var_id}.",
@@ -217,7 +228,8 @@ def write_sbatch_bias_adjust(
 
 
 def write_all_sbatch_bias_adjust(
-    input_dir,
+    sim_dir,
+    train_dir,
     output_dir,
     slurm_dir,
     worker_script,
@@ -229,7 +241,8 @@ def write_all_sbatch_bias_adjust(
     """Write the sbatch file for bias adjustment."""
     # create a list of all the combinations of models, scenarios, and variables
     sbatch_kwargs = {
-        "input_dir": input_dir,
+        "sim_dir": sim_dir,
+        "train_dir": train_dir,
         "slurm_dir": slurm_dir,
         "output_dir": output_dir,
         "worker_script": worker_script,
@@ -253,7 +266,8 @@ if __name__ == "__main__":
         partition,
         conda_env_name,
         worker_script,
-        input_dir,
+        sim_dir,
+        train_dir,
         output_dir,
         models,
         scenarios,
@@ -277,7 +291,8 @@ if __name__ == "__main__":
         "conda_env_name": conda_env_name,
     }
     all_sbatch_kwargs = {
-        "input_dir": input_dir,
+        "sim_dir": sim_dir,
+        "train_dir": train_dir,
         "slurm_dir": slurm_dir,
         "output_dir": output_dir,
         "worker_script": worker_script,
@@ -288,5 +303,5 @@ if __name__ == "__main__":
     }
     sbatch_paths = write_all_sbatch_bias_adjust(**all_sbatch_kwargs)
 
-    # job_ids = [submit_sbatch(sbatch_path) for sbatch_path in sbatch_paths]
-    # print(job_ids)
+    job_ids = [submit_sbatch(sbatch_path) for sbatch_path in sbatch_paths]
+    print(job_ids)
