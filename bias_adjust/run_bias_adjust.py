@@ -280,9 +280,9 @@ if __name__ == "__main__":
     slurm_dir.mkdir(exist_ok=True)
     if clear_out_files:
         for file in slurm_dir.glob(
-            bias_adjust_sbatch_tmp_fn.format(model="*", var_id="*").replace(
-                ".slurm", ".out"
-            )
+            bias_adjust_sbatch_tmp_fn.format(
+                model="*", var_id="*", scenario="*"
+            ).replace(".slurm", ".out")
         ):
             file.unlink()
 
