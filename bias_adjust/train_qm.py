@@ -195,7 +195,7 @@ if __name__ == "__main__":
             if var_id not in ref_ds.data_vars:
                 ref_var_id = sim_ref_var_lu[var_id]
                 # keep the variable names the same
-                ref = ref_ds.rename({ref_var_id: var_id})
+                ref_ds = ref_ds.rename({ref_var_id: var_id})
 
             # get dataarrays
             ref = ref_ds[var_id]
