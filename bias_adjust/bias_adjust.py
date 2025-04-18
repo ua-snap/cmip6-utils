@@ -16,7 +16,6 @@ import xarray as xr
 import dask
 from dask.distributed import Client
 from xclim import sdba
-from config import ref_tmp_fn, cmip6_tmp_fn, train_tmp_fn
 
 # from luts import jitter_under_lu
 from train_qm import get_var_id
@@ -27,68 +26,6 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[logging.StreamHandler()],
 )
-
-
-def generate_adjusted_filepaths(adj_dir, var_ids, models, scenarios, years):
-    """Generate the adjusted filepaths. Args are lists to allow multiple combinations
-
-    Args:
-        adj_dir (pathlib.Path): path to parent output directory
-        var_ids (list): list of variable IDs (str)
-        models (list): list of models (str)
-        scenarios (list): list of scenarios (str)
-        years (list): list of years because the data will be written to one file per year
-
-    Returns:
-        list of adjusted filepaths
-    """
-    tmp_fn = "{var_id}_day_{model}_{scenario}_adjusted_{year}0101-{year}1231.nc"
-    adj_fps = [
-        adj_dir.joinpath(
-            model,
-            scenario,
-            "day",
-            var_id,
-            tmp_fn.format(model=model, scenario=scenario, var_id=var_id, year=year),
-        )
-        for model, scenario, var_id, year in product(models, scenarios, var_ids, years)
-    ]
-
-    return adj_fps
-
-
-def generate_cmip6_fp(input_dir, model, scenario, var_id, year):
-    """Get the filepath to a cmip6 file in input_dir given the attributes
-
-    Args:
-        input_dir (pathlib.Path): path to the input directory
-        model (str): model being processed
-        scenario (str): scenario being processed
-        var_id (str): variable ID being processed
-        year (int/str): year being processed
-
-    Returns:
-        src_fp (pathlib.Path): Path to the source CMIP6 file
-    """
-    src_fp = input_dir.joinpath(
-        model,
-        scenario,
-        "day",
-        var_id,
-        cmip6_tmp_fn.format(var_id=var_id, model=model, scenario=scenario, year=year),
-    )
-
-    return src_fp
-
-
-def get_sim_fps(input_dir, model, scenario, var_id, start_year, end_year):
-    """Get the filepaths to the simulated data to be adjusted"""
-    sim_years = list(range(start_year, end_year + 1))
-    sim_fps = [
-        generate_cmip6_fp(input_dir, model, scenario, var_id, year)
-        for year in sim_years
-    ]
-    return sim_fps
 
 
 def add_global_attrs(ds, src_fp):
@@ -134,15 +71,6 @@ def drop_non_coord_vars(ds):
     ds = ds.drop_vars(coords_to_drop + vars_to_drop)
 
     return ds
-
-
-def parse_sim_filename(sim_tmp_fn, sim_path):
-    """Parse the filename of a simulated data file to get the variable ID, model, and scenario"""
-
-    sim_fp_attrs = extract_values_from_format(
-        sim_tmp_fn, sim_path.name, ["var_id", "model", "scenario"]
-    )
-    return sim_fp_attrs["var_id"], sim_fp_attrs["model"], sim_fp_attrs["scenario"]
 
 
 def parse_args():
