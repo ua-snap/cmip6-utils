@@ -1,7 +1,6 @@
 """Script to build and submit slurm files that run train_qm.py on a suite of models, scenarios, and variables.
 
 Notes:
-- Ought to be commonly used with output_directory == input_directory, as this remains the input directory for the bias adjustment effort.
 - only trains on "historical" GCM data, no other CMIP6 "experiments" (i.e. SSPs) are used.
 
 example usage:
@@ -9,7 +8,8 @@ example usage:
         --partition t2small \
         --conda_env_name cmip6-utils \
         --worker_script /beegfs/CMIP6/kmredilla/cmip6-utils/bias_adjust/train_qm.py \
-        --input_dir /beegfs/CMIP6/kmredilla/cmip6_downscaling/optimized_inputs/ \
+        --sim_dir /beegfs/CMIP6/kmredilla/cmip6_4km_downscaling/cmip6_zarr/ \
+        --ref_dir /beegfs/CMIP6/kmredilla/cmip6_4km_downscaling/era5_zarr/ \
         --output_dir /beegfs/CMIP6/kmredilla/cmip6_downscaling/optimized_inputs/ \
         --models 'GFDL-ESM4 CESM2' \
         --variables 'tasmax pr' \
@@ -39,9 +39,9 @@ logging.basicConfig(
 )
 
 
-def get_hist_path(input_dir, model, var_id):
-    """Get the filepath to a historical cmip6 file in input_dir given the attributes."""
-    return input_dir.joinpath(
+def get_hist_path(sim_dir, model, var_id):
+    """Get the filepath to a historical cmip6 file in sim_dir given the attributes."""
+    return sim_dir.joinpath(
         cmip6_zarr_tmp_fn.format(model=model, scenario="historical", var_id=var_id),
     )
 
@@ -49,18 +49,20 @@ def get_hist_path(input_dir, model, var_id):
 def validate_args(args):
     """Validate the arguments passed to the script."""
     args.worker_script = Path(args.worker_script)
-    args.input_dir = Path(args.input_dir)
+    args.sim_dir = Path(args.sim_dir)
+    args.ref_dir = Path(args.ref_dir)
     args.output_dir = Path(args.output_dir)
     args.slurm_dir = Path(args.slurm_dir)
     validate_path_arg(args.worker_script, "worker_script")
-    validate_path_arg(args.input_dir, "input_dir")
+    validate_path_arg(args.sim_dir, "sim_dir")
+    validate_path_arg(args.ref_dir, "ref_dir")
     validate_path_arg(args.output_dir.parent, "parent of output_dir")
     validate_path_arg(args.slurm_dir, "slurm_dir")
 
     args.models = args.models.split(" ")
     args.variables = args.variables.split(" ")
     expected_stores = [
-        get_hist_path(args.input_dir, model, var_id)
+        get_hist_path(args.sim_dir, model, var_id)
         for var_id, model in product(args.variables, args.models)
     ]
     check_for_input_data(expected_stores)
@@ -91,15 +93,21 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
-        "--input_dir",
+        "--sim_dir",
         type=str,
-        help="Path to directory containing all input zarr stores (including trained QM objects)",
+        help="Path to directory containing all biased/sim zarr stores",
+        required=True,
+    )
+    parser.add_argument(
+        "--ref_dir",
+        type=str,
+        help="Path to directory containing reference data zarr stores",
         required=True,
     )
     parser.add_argument(
         "--output_dir",
         type=str,
-        help="Path to directory where converted zarr stores will be written.",
+        help="Path to directory where trained adjustment object datasets will be written.",
         required=True,
     )
     parser.add_argument(
@@ -133,7 +141,8 @@ def parse_args():
         args.partition,
         args.conda_env_name,
         args.worker_script,
-        args.input_dir,
+        args.sim_dir,
+        args.ref_dir,
         args.output_dir,
         args.models,
         args.variables,
@@ -143,7 +152,8 @@ def parse_args():
 
 
 def write_sbatch_train_qm(
-    input_dir,
+    sim_dir,
+    ref_dir,
     slurm_dir,
     output_dir,
     model,
@@ -152,13 +162,13 @@ def write_sbatch_train_qm(
     sbatch_head_kwargs,
 ):
     """Write the sbatch file for QM training for a given model and variable."""
-    sim_path = get_hist_path(input_dir, model, var_id)
+    sim_path = get_hist_path(sim_dir, model, var_id)
     if not sim_path.exists():
         logging.info(
             f"GCM data {sim_path} not found. Skipping {model} historical {var_id}.",
         )
         return
-    ref_path = input_dir.joinpath(ref_zarr_tmp_fn.format(var_id=var_id))
+    ref_path = ref_dir.joinpath(ref_zarr_tmp_fn.format(var_id=var_id))
     train_path = output_dir.joinpath(
         trained_qm_tmp_fn.format(var_id=var_id, model=model)
     )
@@ -198,7 +208,8 @@ def write_sbatch_train_qm(
 
 
 def write_all_sbatch_train_qm(
-    input_dir,
+    sim_dir,
+    ref_dir,
     output_dir,
     slurm_dir,
     worker_script,
@@ -209,7 +220,8 @@ def write_all_sbatch_train_qm(
     """Write the sbatch file for QM training."""
     # create a list of all the combinations of models, scenarios, and variables
     sbatch_kwargs = {
-        "input_dir": input_dir,
+        "sim_dir": sim_dir,
+        "ref_dir": ref_dir,
         "slurm_dir": slurm_dir,
         "output_dir": output_dir,
         "worker_script": worker_script,
@@ -233,7 +245,8 @@ if __name__ == "__main__":
         partition,
         conda_env_name,
         worker_script,
-        input_dir,
+        sim_dir,
+        ref_dir,
         output_dir,
         models,
         variables,
@@ -255,7 +268,8 @@ if __name__ == "__main__":
         "conda_env_name": conda_env_name,
     }
     all_sbatch_kwargs = {
-        "input_dir": input_dir,
+        "sim_dir": sim_dir,
+        "ref_dir": ref_dir,
         "slurm_dir": slurm_dir,
         "output_dir": output_dir,
         "worker_script": worker_script,
@@ -266,5 +280,5 @@ if __name__ == "__main__":
 
     sbatch_paths = write_all_sbatch_train_qm(**all_sbatch_kwargs)
 
-    # job_ids = [submit_sbatch(sbatch_path) for sbatch_path in sbatch_paths]
-    # print(job_ids)
+    job_ids = [submit_sbatch(sbatch_path) for sbatch_path in sbatch_paths]
+    print(job_ids)
