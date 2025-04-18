@@ -198,14 +198,15 @@ if __name__ == "__main__":
 
     fps = get_input_filepaths(netcdf_dir, glob_str, year_str, start_year, end_year)
 
-    with Client(n_workers=12, threads_per_worker=2, memory_limit="3GB") as client:
-        # the data_vars="minimal" argument is a workaround for behavior in
-        # xarray.open_mfdataset that will assign concat dimension to dimensionless
-        # data variables (such as spatial_ref)
-        with xr.open_mfdataset(
-            fps, parallel=True, engine="h5netcdf", data_vars="minimal"
-        ) as ds:
-            ds = ds.load()
+    # with Client(n_workers=12, threads_per_worker=2, memory_limit="3GB") as client:
+    # with Client(n_workers=12, threads_per_worker=2, memory_limit="3GB") as client:
+    # the data_vars="minimal" argument is a workaround for behavior in
+    # xarray.open_mfdataset that will assign concat dimension to dimensionless
+    # data variables (such as spatial_ref)
+    with xr.open_mfdataset(
+        fps, parallel=True, engine="h5netcdf", data_vars="minimal"
+    ) as ds:
+        ds = ds.load()
 
     var_id = list(ds.data_vars)[0]
     # hardcoding chunks stuff for now
