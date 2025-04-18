@@ -31,6 +31,7 @@ from config import (
     trained_qm_tmp_fn,
     train_qm_sbatch_tmp_fn,
 )
+from luts import sim_ref_var_lu
 
 logging.basicConfig(
     level=logging.INFO,
@@ -168,7 +169,8 @@ def write_sbatch_train_qm(
             f"GCM data {sim_path} not found. Skipping {model} historical {var_id}.",
         )
         return
-    ref_path = ref_dir.joinpath(era5_zarr_tmp_fn.format(var_id=var_id))
+    ref_var_id = sim_ref_var_lu.get(var_id)
+    ref_path = ref_dir.joinpath(era5_zarr_tmp_fn.format(var_id=ref_var_id))
     train_path = output_dir.joinpath(
         trained_qm_tmp_fn.format(var_id=var_id, model=model)
     )
