@@ -1,7 +1,7 @@
 """Script for constructing slurm jobs for computing daily temperature range for CMIP6 data.
 
 Example usage:
-    python slurm_dtr.py \
+    python run_cmip6_dtr.py \
         --worker_script /import/beegfs/CMIP6/kmredilla/cmip6-utils/derived/dtr.py \
         --conda_env_name cmip6-utils \
         --models "GFDL-ESM4 CESM2" \

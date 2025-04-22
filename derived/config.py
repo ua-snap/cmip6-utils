@@ -9,6 +9,9 @@ tasmin_tmp_fn = "tasmin_day_{model}_{scenario}_regrid_{year}0101-{year}1231.nc"
 dtr_sbatch_tmp_fn = "process_cmip6_dtr.slurm"
 dtr_sbatch_config_tmp_fn = "process_cmip6_dtr_config.txt"
 
+era5_dtr_tmp_fn = "dtr_{year}_era5_4km_3338.nc"
+era5_dtr_sbatch_fn = "process_era5_dtr.slurm"
+
 # min / max possible ranges
 expected_value_ranges = {
     # this value was determined in exploration

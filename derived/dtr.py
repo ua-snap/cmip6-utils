@@ -6,7 +6,26 @@ The only requirement is that the gridded daily data is in a flat file structure 
 and can be opened with xarray.open_mfdataset.
 
 Example usage:
-    python dtr.py --tmax_dir /import/beegfs/CMIP6/arctic-cmip6/regrid/GFDL-ESM4/historical/day/tasmax --tmin_dir /import/beegfs/CMIP6/arctic-cmip6/regrid/GFDL-ESM4/historical/day/tasmin --target_dir /import/beegfs/CMIP6/snapdata/dtr_processing/netcdf/GFDL-ESM4/historical/day/dtr --dtr_tmp_fn dtr_GFDL-ESM4_historical_{start_date}_{end_date}.nc
+    python dtr.py \
+        --tmax_dir /import/beegfs/CMIP6/arctic-cmip6/regrid/GFDL-ESM4/historical/day/tasmax \
+        --tmin_dir /import/beegfs/CMIP6/arctic-cmip6/regrid/GFDL-ESM4/historical/day/tasmin \
+        --output_dir /import/beegfs/CMIP6/snapdata/dtr_processing/netcdf/GFDL-ESM4/historical/day/dtr \
+        --dtr_tmp_fn dtr_GFDL-ESM4_historical_{start_date}_{end_date}.nc
+
+    or ERA5 e.g.:
+
+    python dtr.py \
+        --tmax_dir /import/beegfs/CMIP6/arctic-cmip6/daily_era5_4km_3338/netcdf/t2max \
+        --tmin_dir /import/beegfs/CMIP6/arctic-cmip6/daily_era5_4km_3338/netcdf/t2min \
+        --output_dir /import/beegfs/CMIP6/snapdata/dtr_processing/era5_dtr \
+        --dtr_tmp_fn dtr_{year}_4km_3338.nc
+
+
+    python dtr.py \
+        --tmax_dir /center1/CMIP6/kmredilla/daily_era5_4km_3338/netcdf/t2max \
+        --tmin_dir /center1/CMIP6/kmredilla/daily_era5_4km_3338/netcdf/t2min \
+        --output_dir /import/beegfs/CMIP6/kmredilla/dtr_processing/era5_dtr/dtr \
+        --dtr_tmp_fn dtr_{year}_4km_3338.nc
 """
 
 import argparse
@@ -14,6 +33,8 @@ import logging
 from pathlib import Path
 import numpy as np
 import xarray as xr
+import string
+from datetime import datetime
 
 logging.basicConfig(
     level=logging.INFO,
@@ -87,8 +108,12 @@ def get_var_id(ds):
         var_id = ds.attrs["variable_id"]
         assert var_id in ds.data_vars, f"{var_id} not in {ds.data_vars}"
     else:
-        assert len(ds.data_vars) == 1, "Dataset must have exactly one variable"
-        var_id = list(ds.data_vars.keys())[0]
+        valid_vars = [var for var in ds.data_vars if set(ds[var].dims) == set(ds.dims)]
+        assert (
+            len(valid_vars) == 1
+        ), f"Dataset must have exactly one variable indexed by all dimensions. Found: {valid_vars}"
+        var_id = valid_vars[0]
+
     return var_id
 
 
@@ -97,6 +122,44 @@ def get_start_end_dates(ds):
     start_date = ds.time.min().dt.strftime("%Y%m%d").values.item()
     end_date = ds.time.max().dt.strftime("%Y%m%d").values.item()
     return start_date, end_date
+
+
+def extract_format_keys(template):
+    """Extract keys from a string to be formatted."""
+    formatter = string.Formatter()
+    return list(
+        set([key for _, key, _, _ in formatter.parse(template) if key is not None])
+    )
+
+
+def make_output_filepath(output_dir, dtr_tmp_fn, start_date, end_date):
+    """Make the output file path from the template and start and end dates."""
+    keys = extract_format_keys(dtr_tmp_fn)
+
+    if "start_date" in keys:
+        start_date = datetime.strptime(start_date, "%Y%m%d").year
+    if "end_date" in keys:
+        end_date = datetime.strptime(end_date, "%Y%m%d").year
+
+    if keys == ["start_date", "end_date"]:
+        output_dir.joinpath(dtr_tmp_fn.format(start_date=start_date, end_date=end_date))
+        output_fp = output_dir.joinpath(
+            dtr_tmp_fn.format(start_date=start_date, end_date=end_date)
+        )
+    elif keys == ["year"]:
+        start_year = datetime.strptime(start_date, "%Y%m%d").year
+        end_year = datetime.strptime(end_date, "%Y%m%d").year
+        if start_year != end_year:
+            raise ValueError(
+                f"Start and end dates must be in the same year for template {dtr_tmp_fn}"
+            )
+        output_fp = output_dir.joinpath(dtr_tmp_fn.format(year=start_year))
+    else:
+        raise ValueError(
+            f"Template DTR filename, {dtr_tmp_fn}, must have either start_date and end_date or year as keys"
+        )
+
+    return output_fp
 
 
 if __name__ == "__main__":
@@ -137,9 +200,7 @@ if __name__ == "__main__":
     for year in np.unique(dtr_ds.time.dt.year):
         year_ds = dtr_ds.sel(time=str(year))
         start_date, end_date = get_start_end_dates(year_ds)
-        output_fp = output_dir.joinpath(
-            dtr_tmp_fn.format(start_date=start_date, end_date=end_date)
-        )
+        output_fp = make_output_filepath(output_dir, dtr_tmp_fn, start_date, end_date)
         logging.info(
             f"Writing {year_ds.dtr.name} for {start_date} to {end_date} to {output_fp}"
         )
