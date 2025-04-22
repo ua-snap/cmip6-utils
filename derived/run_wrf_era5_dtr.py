@@ -175,7 +175,7 @@ def write_sbatch_dtr(
         f"--tmax_dir {era5_dir.joinpath(era5_tmax_var_id)} "
         f"--tmin_dir {era5_dir.joinpath(era5_tmin_var_id)} "
         f"--output_dir {output_dir} "
-        f"--dtr_tmp_fn {era5_dtr_tmp_fn} "
+        f"--dtr_tmp_fn {era5_dtr_tmp_fn}\n\n"
     )
 
     pycommands += f"echo End dtr processing && date\n\n"
