@@ -98,9 +98,7 @@ if __name__ == "__main__":
 
             transfer_paths = []
             for i, row in freq_df.iterrows():
-                # we are just skipping E3SM models here for now since there are permissions issues
-                if row["model"] not in e3sm_models_of_interest:
-                    transfer_paths.append(generate_transfer_paths(row, table_id))
+                transfer_paths.append(generate_transfer_paths(row, table_id))
 
             # only write batch file if transfer paths were found
             if transfer_paths != []:
