@@ -2,7 +2,7 @@
 
 This script is used to generate the batch_files/batch_<ESGF node>_(day|Amon)_<variable ID>.txt files that contain the filepaths (<source filepath (on ESGF node)> <destination filepath (on ACDN)>) to transfer to the Arctic Climate Data Node.
 
-Sample usage: 
+Sample usage:
     python generate_batch_files.py
 """
 
@@ -63,7 +63,11 @@ def generate_transfer_paths(row, table_id):
 
     fn = row["filename"]
     fp = group_path.joinpath(fn)
-    transfer_tpl = (llnl_prefix.joinpath(fp), acdn_prefix.joinpath(fp))
+
+    if "E3SM" in model:
+        transfer_tpl = (e3sm_prefix.joinpath(fp), acdn_prefix.joinpath(fp))
+    else:
+        transfer_tpl = (llnl_prefix.joinpath(fp), acdn_prefix.joinpath(fp))
 
     return transfer_tpl
 
