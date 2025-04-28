@@ -1027,7 +1027,7 @@ def regrid_dataset(fp, regridder, out_fp, src_mask=None, rasdafy=False):
     # this should never occur because only daily and monthly frequency data should be regridded,
     # but technically possible if the prefect parameters ever include "fx", "Ofx", or "orog" frequencies
     if not any(fixed_freq_var in str(out_fp) for fixed_freq_var in ["sftlf", "sftof"]):
-        out_ds = fix_time(regrid_ds, src_ds)
+        regrid_ds = fix_time(regrid_ds, src_ds)
 
     # add CRS info
     if "lon" in regrid_ds.dims:
@@ -1040,7 +1040,7 @@ def regrid_dataset(fp, regridder, out_fp, src_mask=None, rasdafy=False):
     # fix attributes
     regrid_ds = fix_attrs(regrid_ds)
     # write
-    out_fp = write_regridded_files(out_ds, out_fp)
+    out_fp = write_regridded_files(regrid_ds, out_fp)
 
     return out_fp
 
