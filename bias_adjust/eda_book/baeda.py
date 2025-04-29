@@ -16,6 +16,9 @@ cmip6_tmp_fn = "{var_id}_day_{model}_{scenario}_regrid_{year}0101-{year}1231.nc"
 era5_dir = Path("/import/beegfs/CMIP6/arctic-cmip6/era5/daily_regrid")
 cmip6_dir = Path("/beegfs/CMIP6/kmredilla/cmip6_regridding/regrid")
 
+tmp_era5_discrete_idx_fp = "{var_id}_idx_era5_discrete.zarr"
+
+
 # lookups for functions and indices
 doy_func_lu = {"min": np.min, "max": np.max, "mean": np.mean}
 
@@ -33,6 +36,8 @@ detrend_configs = {
 # simply window sizes
 window_configs = [31, 61, 91, 121]
 
+quantile_sizes = [50, 75, 100, 150, 200]
+
 # This is a dict of locations with lat/lon coords for rapid testing
 coords = {
     "Fairbanks": {"lat": 64.8401, "lon": -147.72},
@@ -40,6 +45,25 @@ coords = {
     "Nome": {"lat": 64.5006, "lon": -165.4086},
     "Yakutat": {"lat": 59.5453, "lon": -139.7268},
     "Utqiagvik": {"lat": 71.2906, "lon": -156.7886},
+}
+
+
+# projected coordinates for discrete analysis, copied and pasted from setup notebook
+projected_coords = {
+    "warmest": {"x": 599436.2987255983, "y": 1730624.4491167169},
+    "coldest": {"x": 880053.9955060182, "y": 1321724.3766652476},
+    "avg_warmest": {"x": 407012.7352190246, "y": 1197450.8252339188},
+    "avg_coldest": {"x": 731727.4986363677, "y": 1265600.8373091638},
+    "wettest": {"x": 723709.850156927, "y": 1229521.419151681},
+    "driest": {"x": 739745.1471158082, "y": 2428159.8668280467},
+    "extra_1": {"x": 483900.0, "y": 1265000.0},
+    "Fairbanks": {"x": 297504.537742375, "y": 1667301.4672914068},
+    "Anchorage": {"x": 219385.09124775976, "y": 1255247.7055300924},
+    "Nome": {"x": -545085.3109182257, "y": 1662288.1529547903},
+    "Yakutat": {"x": 798186.4505862442, "y": 1147549.237487728},
+    "Utqiagvik": {"x": -102347.93849425799, "y": 2368027.8649091986},
+    "near_McGrath": {"x": -158391.91330927753, "y": 1377871.2528303924},
+    "near_Arctic_Village": {"x": 340012.1339986391, "y": 2118363.789483479},
 }
 
 
@@ -596,15 +620,67 @@ def run_bias_adjustment_profile_window(hist_extr, era5_extr):
     return adj_da
 
 
-def run_indicators(da, hist_da=None):
+def run_bias_adjustment_profile_quantiles(hist_extr, era5_extr):
+    """returns bias adjusted data and non-adjusted data relevant for plotting comparisons.
+    assumes all relevant zarr stores are in the same directory.
+    """
+    var_id = hist_extr.name
+    # need to supply the correct variable to the train function
+    if isinstance(era5_extr, xr.Dataset):
+        era5_extr = era5_extr[var_id]
+
+    hist = hist_extr.isel(Method=0, experiment=0).drop_vars(["Method", "experiment"])
+
+    adj_das = []
+    for n_quantiles in quantile_sizes:
+        train_kwargs = dict(
+            ref=era5_extr,
+            # think having experiment coordinate may quietly prevent
+            # adjustment of data with different coordinates (e.g. ssp's)
+            hist=hist_extr.isel(Method=0, experiment=0).drop_vars(
+                ["Method", "experiment"]
+            ),
+            nquantiles=n_quantiles,
+            group="time.dayofyear",
+            window=31,
+            kind=varid_adj_kind_lu[var_id],
+        )
+        if var_id in adapt_freq_thresh_lu:
+            # do the adapt frequency thingy for precipitation data
+            train_kwargs.update(
+                adapt_freq_thresh=adapt_freq_thresh_lu[var_id],
+                jitter_under_thresh_value=jitter_under_thresh_lu[var_id],
+            )
+
+        # will only do QDM for this window analysis
+        qdm_train = sdba.QuantileDeltaMapping.train(**train_kwargs)
+
+        qdm_da = qdm_train.adjust(
+            hist,
+            extrapolation="constant",
+            interp="nearest",
+        )
+        adj_das.append(qdm_da)
+
+    # combine the DQM and QDM data
+    adj_da = xr.concat(adj_das, dim="n_quantiles").rename(hist.name)
+    adj_da["n_quantiles"] = [str(w) for w in quantile_sizes]
+
+    return adj_da
+
+
+def run_indicators(da, hist_da=None, indices=None):
     """Run a set of indicators on the given dataframe."""
     var_id = da.name
     # if hist_da is not provided, use the same as da
     if hist_da is None:
         hist_da = da
 
+    if indices == None:
+        indices = indices_lu[var_id]
+
     indicator_das = []
-    for index in indices_lu[var_id]:
+    for index in indices:
         if index in hist_ref_indices:
             indicator_das.append(indices_lu[var_id][index](da, hist_da))
         else:
