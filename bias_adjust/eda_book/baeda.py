@@ -828,3 +828,64 @@ def run_window_profile_adjustment_and_summarize(hist_extr, era5_extr, results):
     results[model][var_id][tmp_name]["indicators"] = indicators_dict
 
     return results
+
+
+def run_quantile_profile_adjustment_and_summarize(hist_extr, era5_extr, results):
+    """Run the full adjustment and summarize the results."""
+    adj_da = run_bias_adjustment_profile_quantiles(hist_extr, era5_extr)
+
+    var_id = hist_extr.name
+    tmp_name = "qdm_quantiles"
+    model = adj_da.attrs["source_id"]
+    results[model][var_id][tmp_name] = {"historical": adj_da}
+
+    # run the historical indicators separate so we can merge with ERA5 indicators for later steps
+    historical_indicators = run_indicators(
+        results[model][var_id][tmp_name]["historical"],
+    )
+    era5_indicators = results["ERA5"][var_id]["indicators"]
+    historical_indicators = xr.concat(
+        [
+            era5_indicators.rename(Method="n_quantiles"),
+            historical_indicators,
+        ],
+        dim="n_quantiles",
+    )
+
+    indicators_dict = {
+        "historical": historical_indicators,
+    }
+    results[model][var_id][tmp_name]["indicators"] = indicators_dict
+
+    return results
+
+
+def plot_sxs(da1, da2, title1, title2, plot1_kwargs, plot2_kwargs, main_title):
+
+    fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(15, 7), sharey=True)
+    da1.load()
+    da2.load()
+    # Determine the common color scale
+    vmin = min(da1.min().values, da2.min().values)
+    vmax = max(da1.max().values, da2.max().values)
+
+    # Plot first time slice from cmip6_ds
+    im1 = da1.plot(ax=axes[0], vmin=vmin, vmax=vmax, **plot1_kwargs)
+    axes[0].set_title(title1)
+
+    # Plot first time slice from down_ds
+    im2 = da2.plot(ax=axes[1], vmin=vmin, vmax=vmax, **plot2_kwargs)
+    axes[1].set_title(title2)
+
+    # Adjust layout to make space for the colorbar
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+
+    # Add a single colorbar for all subplots
+    cbar = fig.colorbar(
+        im1, ax=axes.ravel().tolist(), orientation="vertical", fraction=0.02, pad=0.04
+    )
+    cbar.set_label(f'{da1.attrs["units"]}')
+
+    axes[1].yaxis.set_visible(False)
+    plt.suptitle(main_title)
+    plt.show()
