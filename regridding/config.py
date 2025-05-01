@@ -1,4 +1,4 @@
-"""Lookup tables for CMIP6 regridding. 
+"""Lookup tables for CMIP6 regridding.
 Since we are providing our config via Prefect, these were copied from the transfers/config.py file
 to avoid using system environment variables.
 """
@@ -32,6 +32,10 @@ model_inst_lu = {
     # Another oddity - MPI-ESM1-2-* models have different representation among the institutions, or "Institution ID".
     # the -HR version was run by "DKRZ" for ScenarioMIP data and MPI-M for CMIP experiment
     "MPI-ESM1-2-HR": "DKRZ",
+    "E3SM-1-0": "E3SM-Project",
+    "E3SM-1-1": "E3SM-Project",
+    "E3SM-1-1-ECA": "E3SM-Project",
+    "E3SM-2-0": "E3SM-Project",
 }
 
 variables = {
