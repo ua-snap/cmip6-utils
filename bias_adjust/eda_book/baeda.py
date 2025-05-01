@@ -19,6 +19,17 @@ cmip6_dir = Path("/beegfs/CMIP6/kmredilla/cmip6_regridding/regrid")
 tmp_era5_discrete_idx_fp = "{var_id}_idx_era5_discrete.zarr"
 
 
+# full domain config stuff
+# template filename for downscaled outputs
+tmp_window_fn = "qmw{qm_window}_{var_id}_{model}_{scenario}.zarr"
+tmp_adapt_freq_fn = "{adapt_freq}_{var_id}_{model}_{scenario}.zarr"
+tmp_nquantiles_fn = "nq{nquantiles}_{var_id}_{model}_{scenario}.zarr"
+# parameter values for profiling
+window_sizes = [31, 45, 61, 91]
+adapt_freq_threhsolds = ["0.05 mm d-1", "0.254 mm d-1", "1 mm d-1", "2 mm d-1"]
+n_quantiles_list = [50, 100, 150, 200, 250]
+
+
 # lookups for functions and indices
 doy_func_lu = {"min": np.min, "max": np.max, "mean": np.mean}
 
@@ -129,6 +140,14 @@ def rx5day(pr):
     return da
 
 
+def dpi(pr):
+    """Daily precipitation intensity."""
+    da = indices.daily_pr_intensity(pr)
+    da.name = "dpi"
+    da.attrs["long_name"] = "Daily precipitation intensity"
+    return da
+
+
 def cdd(pr):
     """Consecutive dry days."""
     da = indices.maximum_consecutive_dry_days(pr)
@@ -149,6 +168,7 @@ indices_lu = {
     "pr": {
         "rx1day": rx1day,
         "rx5day": rx5day,
+        "dpi": dpi,
         "cdd": cdd,
         "cwd": cwd,
     },
