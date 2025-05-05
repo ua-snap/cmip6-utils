@@ -195,6 +195,8 @@ if __name__ == "__main__":
     # the list here at the end is just making sure we have a matching dim order
     dtr_ds = dtr.to_dataset().transpose(*list(tmax_ds[tmax_var_id].dims))
     dtr_ds.attrs = {k: v for k, v in tmax_ds.attrs.items() & tmin_ds.attrs.items()}
+    # give this a variable_id attribute for consistency (helps with e.g. regridding with regrid.py)
+    dtr_ds.attrs["variable_id"] = "dtr"
 
     # write
     for year in np.unique(dtr_ds.time.dt.year):
