@@ -5,11 +5,12 @@ Example usage:
     python run_regrid_again.py \
         --partition t2small \
         --conda_env_name cmip6-utils \
-        --slurm_dir /beegfs/CMIP6/kmredilla/cmip6_4km_downscaling/slurm \
-        --regrid_script /beegfs/CMIP6/kmredilla/cmip6-utils/regridding/regrid.py \
+        --slurm_dir /center1/CMIP6/kmredilla/cmip6_4km_downscaling/slurm \
+        --regrid_script /center1/CMIP6/kmredilla/cmip6-utils/regridding/regrid.py \
+        --interp_method bilinear \
         --target_grid_file /beegfs/CMIP6/kmredilla/downscaling/era5_target_slice.nc \
         --regridded_dir /center1/CMIP6/kmredilla/cmip6_4km_downscaling/regrid \
-        --regrid_again_batch_dir /center1/CMIP6/kmredilla/cmip6_4km_downscaling/slurm/regrid_again_batch.txt \
+        --regrid_again_batch_dir /center1/CMIP6/kmredilla/cmip6_4km_downscaling/slurm/regrid_again_batch \
         --output_dir /center1/CMIP6/kmredilla/cmip6_4km_downscaling/final_regrid
 """
 
@@ -17,7 +18,7 @@ import argparse
 import logging
 from pathlib import Path
 from itertools import islice
-from slurm import make_sbatch_head, submit_sbatch
+from slurm import submit_sbatch
 
 logging.basicConfig(
     level=logging.INFO,
@@ -52,6 +53,11 @@ def parse_args():
         help="Path to the regrid.py script",
     )
     parser.add_argument(
+        "--interp_method",
+        type=str,
+        help="Interpolation method to use",
+    )
+    parser.add_argument(
         "--target_grid_file",
         type=str,
         help="Path to the target grid file",
@@ -77,6 +83,7 @@ def parse_args():
         args.conda_env_name,
         Path(args.slurm_dir),
         Path(args.regrid_script),
+        args.interp_method,
         Path(args.target_grid_file),
         Path(args.regridded_dir),
         Path(args.regrid_again_batch_dir),
@@ -86,7 +93,9 @@ def parse_args():
 
 def write_batch_files(src_fps, regrid_again_batch_dir):
     """Write the batch files for the regrid again job."""
-    logging.info(f"Writing regrid again batch file to {regrid_again_batch_dir}")
+    logging.info(
+        f"Writing batch files for regridding again to {regrid_again_batch_dir}"
+    )
     batch_size = 200
     batch_files = []
     for i, start in enumerate(range(0, len(src_fps), batch_size), start=1):
@@ -133,6 +142,39 @@ def write_config_file(
     return array_range
 
 
+def make_sbatch_head(array_range, partition, sbatch_out_file, conda_env_name):
+    """Make a string of SBATCH commands that can be written into a .slurm script
+
+    Args:
+        array_range (str): string to use in the SLURM array
+        partition (str): name of the partition to use
+        sbatch_out_file (path_like): path to where sbatch stdout should be written
+        conda_env_name (str): name of the conda environment to activate
+
+    Returns:
+        sbatch_head (str): string of SBATCH commands ready to be used as parameter in sbatch-writing functions.
+        The following keys are left for filling with str.format:
+
+            - output slurm filename
+    """
+    sbatch_head = (
+        "#!/bin/sh\n"
+        f"#SBATCH --array={array_range}%10\n"  # don't run more than 10 tasks
+        f"#SBATCH --job-name=cmip6_dtr\n"
+        "#SBATCH --nodes=1\n"
+        f"#SBATCH -p {partition}\n"
+        f"#SBATCH --output {sbatch_out_file}\n"
+        # print start time
+        "echo Start slurm && date\n"
+        # prepare shell for using activate - Chinook requirement
+        # this seems to work to initialize conda without init script
+        'eval "$($HOME/miniconda3/bin/conda shell.bash hook)"\n'
+        f"conda activate {conda_env_name}\n"
+    )
+
+    return sbatch_head
+
+
 def write_sbatch_regrid_again(
     partition,
     conda_env_name,
@@ -142,13 +184,15 @@ def write_sbatch_regrid_again(
     target_grid_file,
     output_dir,
     interp_method,
+    array_range,
 ):
     """Write the sbatch file for the regrid again job."""
-    logging.info(f"Writing sbatch file to {slurm_dir}")
     sbatch_file = slurm_dir.joinpath("regrid_again.sbatch")
     sbatch_out_file = slurm_dir.joinpath("regrid_again_%j.out")
 
-    sbatch_head = make_sbatch_head(partition, sbatch_out_file, conda_env_name)
+    sbatch_head = make_sbatch_head(
+        array_range, partition, sbatch_out_file, conda_env_name
+    )
 
     pycommands = "\n"
     pycommands += (
@@ -159,7 +203,7 @@ def write_sbatch_regrid_again(
         f"-b $batch_file "
         f"-d {target_grid_file} "
         f"-o {output_dir} "
-        f"--interp_method {interp_method}"
+        f"--interp_method {interp_method}\n\n"
     )
 
     pycommands += f"echo End re-regridding && date\n\n"
@@ -179,6 +223,7 @@ if __name__ == "__main__":
         conda_env_name,
         slurm_dir,
         regrid_script,
+        interp_method,
         target_grid_file,
         regridded_dir,
         regrid_again_batch_dir,
@@ -205,7 +250,8 @@ if __name__ == "__main__":
         "config_file": config_path,
         "target_grid_file": target_grid_file,
         "output_dir": output_dir,
-        "interp_method": "linear",
+        "interp_method": interp_method,
+        "array_range": array_range,
     }
     sbatch_file = write_sbatch_regrid_again(**sbatch_kwargs)
 
