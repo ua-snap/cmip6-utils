@@ -16,8 +16,6 @@ def parse_args():
         Path to directory where CMIP6 files are stored
     repo_regridding_directory : pathlib.Path
         Path to regridding directory in cmip6-utils repo
-    conda_init_script : pathlib.Path
-        Path to script that initiates conda
     conda_env_name : str
         Name of conda environment to activate
     qc_notebook : pathlib.Path
@@ -48,12 +46,6 @@ def parse_args():
         "--repo_regridding_directory",
         type=str,
         help="Path to regridding directory in cmip6-utils repo",
-        required=True,
-    )
-    parser.add_argument(
-        "--conda_init_script",
-        type=str,
-        help="Path to script that initiates conda",
         required=True,
     )
     parser.add_argument(
@@ -99,7 +91,6 @@ def parse_args():
         Path(args.working_dir),
         Path(args.cmip6_directory),
         Path(args.repo_regridding_directory),
-        Path(args.conda_init_script),
         args.conda_env_name,
         Path(args.qc_notebook),
         args.vars,
@@ -115,7 +106,6 @@ if __name__ == "__main__":
         working_dir,
         cmip6_directory,
         repo_regridding_directory,
-        conda_init_script,
         conda_env_name,
         qc_notebook,
         vars,
@@ -151,7 +141,7 @@ if __name__ == "__main__":
         # print start time
         "echo Start slurm && date\n"
         # prepare shell for using activate
-        f"source {conda_init_script}\n"
+        'eval "$($HOME/miniconda3/bin/conda shell.bash hook)"\n'
         f"conda activate {conda_env_name}\n"
         # run the notebook
         f"cd {repo_regridding_directory}\n"
