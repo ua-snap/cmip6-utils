@@ -187,7 +187,7 @@ def write_sbatch_regrid_again(
     array_range,
 ):
     """Write the sbatch file for the regrid again job."""
-    sbatch_file = slurm_dir.joinpath("regrid_again.sbatch")
+    sbatch_file = slurm_dir.joinpath("regrid_again.slurm")
     sbatch_out_file = slurm_dir.joinpath("regrid_again_%j.out")
 
     sbatch_head = make_sbatch_head(
@@ -257,7 +257,6 @@ if __name__ == "__main__":
 
     # submit the sbatch job
     logging.info(f"Submitting sbatch job to {partition} partition")
-    # job_id = submit_sbatch(sbatch_file)
+    job_id = submit_sbatch(sbatch_file)
 
-    job_id = "12345"
     print(job_id)

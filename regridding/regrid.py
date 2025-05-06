@@ -180,6 +180,41 @@ def parse_cmip6_fp(fp):
     return attr_di
 
 
+def parse_regrid_fp(fp):
+    """Parse a previously regridded filepath"""
+    model, scenario, frequency, variable_id = fp.parts[-5:-1]
+    timeframe = fp.name.split("_")[-1].split(".nc")[0]
+
+    attr_di = {
+        "model": model,
+        "scenario": scenario,
+        "variant": None,
+        "frequency": frequency,
+        "variable_id": variable_id,
+        "grid_type": None,
+        "timeframe": timeframe,
+    }
+
+    return attr_di
+
+
+def check_if_regrid(fp):
+    """Check if a filepath is for a regridded file.
+
+    Parameters
+    ----------
+    fp : pathlib.Path
+        CMIP6 filepath to check
+
+    Returns
+    -------
+    is_regrid : bool
+        Whether the filepath is for a regridded file
+    """
+    # check if the filename contains "_regrid_"
+    return "_regrid_" in fp.name
+
+
 def generate_regrid_filepath(fp, out_dir):
     """Generates the name for a regridded file using info parsed from source filepath.
 
@@ -195,12 +230,18 @@ def generate_regrid_filepath(fp, out_dir):
     regrid_fp : pathlib.Path
         path for a regridded file that would be generated from the input CMIP6 filepath
     """
-    fp_attrs = parse_cmip6_fp(fp)
+    is_regrid = check_if_regrid(fp)
+    if is_regrid:
+        # if the file is already regridded, we will just return the original filepath with modified out_dir
+        fp_attrs = parse_regrid_fp(fp)
+        fn = fp.name
+    else:
+        fp_attrs = parse_cmip6_fp(fp)
+        # drop the variant and grid type from existing filename to get the regrid filename
+        fn = fp.name.replace(f"_{fp_attrs['variant']}_", "_").replace(
+            f"_{fp_attrs['grid_type']}_", "_regrid_"
+        )
 
-    # drop the variant and grid type from existing filename to get the regrid filename
-    fn = fp.name.replace(f"_{fp_attrs['variant']}_", "_").replace(
-        f"_{fp_attrs['grid_type']}_", "_regrid_"
-    )
     # construct the output filepath
     regrid_fp = out_dir.joinpath(
         *(fp_attrs[k] for k in ["model", "scenario", "frequency", "variable_id"])
@@ -1099,8 +1140,8 @@ if __name__ == "__main__":
     no_clobbers = []
 
     for fp in src_fps:
-
         out_fp = generate_regrid_filepath(fp, out_dir)
+
         # make sure the parent dirs exist
         out_fp.parent.mkdir(exist_ok=True, parents=True)
 
