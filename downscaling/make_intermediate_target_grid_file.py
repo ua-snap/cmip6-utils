@@ -5,7 +5,7 @@
 
 Example usage:
     python make_intermediate_target_grid_file.py \
-        --src_file /beegfs/CMIP6/arctic-cmip6/CMIP6/ScenarioMIP/NCAR/CESM2/ssp370/r11i1p1f1/Amon/tas/gn/v20200528/tas_Amon_CESM2_ssp370_r11i1p1f1_gn_206501-210012.nc" \
+        --src_file /beegfs/CMIP6/arctic-cmip6/CMIP6/ScenarioMIP/NCAR/CESM2/ssp370/r11i1p1f1/Amon/tas/gn/v20200528/tas_Amon_CESM2_ssp370_r11i1p1f1_gn_206501-210012.nc \
         --out_file /center1/CMIP6/kmredilla/cmip6_4km_downscaling/intermediate_target.nc
 """
 
@@ -80,6 +80,7 @@ def create_intermediate_target_grid(src_file, out_file):
     mid_res_ds = ds.isel(time=0, drop=True).interp(
         lat=new_lat, lon=new_lon, method="linear"
     )
+    del mid_res_ds.encoding["unlimited_dims"]
 
     logger.info(
         f"Creating intermediate target grid file at {out_file} with {lon_num} lon and {lat_num} lat points at {0.5} degree resolution"
