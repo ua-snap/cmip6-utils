@@ -2,6 +2,11 @@
 
 # ERA5 extent is slightly smaller than this: (-177, 54, -128, 73)
 # so we will create a grid with 0.5 degree resolution on 0-360 degree longitude
+
+Example usage:
+    python make_intermediate_target_grid_file.py \
+        --src_file /beegfs/CMIP6/arctic-cmip6/CMIP6/ScenarioMIP/NCAR/CESM2/ssp370/r11i1p1f1/Amon/tas/gn/v20200528/tas_Amon_CESM2_ssp370_r11i1p1f1_gn_206501-210012.nc" \
+        --out_file /center1/CMIP6/kmredilla/cmip6_4km_downscaling/intermediate_target.nc
 """
 
 import argparse
