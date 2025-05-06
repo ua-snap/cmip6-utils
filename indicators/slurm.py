@@ -168,21 +168,22 @@ if __name__ == "__main__":
         no_clobber,
     ) = parse_args()
 
-    # update working dir to be subir with this name
-    working_dir = working_dir.joinpath("cmip6_indicators")
-    working_dir.mkdir(exist_ok=True)
+    # create working subdir with this name
+    working_subdir = working_dir.joinpath("cmip6_indicators")
+    working_subdir.mkdir(exist_ok=True)
 
     # make output_dir the place where we actually write indicators data
-    output_dir = working_dir.joinpath("netcdf")
+    output_dir = working_subdir.joinpath("netcdf")
+    output_dir.mkdir(exist_ok=True)
 
     # make batch files for each model / scenario / variable combination
-    sbatch_dir = working_dir.joinpath("slurm")
+    sbatch_dir = working_subdir.joinpath("slurm")
     sbatch_dir.mkdir(exist_ok=True)
     _ = [fp.unlink() for fp in sbatch_dir.glob("*.slurm")]
 
     # make QC dir and "to-do" list for each model / scenario / indicator combination
     # the "w" accessor should overwrite any previous qc.txt files encountered
-    qc_dir = working_dir.joinpath("qc")
+    qc_dir = working_subdir.joinpath("qc")
     qc_dir.mkdir(exist_ok=True)
     qc_file = qc_dir.joinpath("qc.csv")
     with open(qc_file, "w") as q:
