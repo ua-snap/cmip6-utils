@@ -77,7 +77,9 @@ def create_intermediate_target_grid(src_file, out_file):
     assert (
         ds.lon.values[0] < ds.lon.values[-1]
     ), "Longitude values are not in increasing order"
-    mid_res_ds = ds.isel(time=0).interp(lat=new_lat, lon=new_lon, method="linear")
+    mid_res_ds = ds.isel(time=0, drop=True).interp(
+        lat=new_lat, lon=new_lon, method="linear"
+    )
 
     logger.info(
         f"Creating intermediate target grid file at {out_file} with {lon_num} lon and {lat_num} lat points at {0.5} degree resolution"
