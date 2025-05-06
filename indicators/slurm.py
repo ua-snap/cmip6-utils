@@ -5,7 +5,7 @@ import subprocess
 from config import *
 
 
-def make_sbatch_head(slurm_email, partition, conda_init_script, exclude_nodes):
+def make_sbatch_head(slurm_email, partition, conda_init_script, exclude_nodes, ncpus):
     """Make a string of SBATCH commands that can be written into a .slurm script
 
     Args:
