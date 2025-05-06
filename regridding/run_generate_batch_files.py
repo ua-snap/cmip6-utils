@@ -6,6 +6,8 @@ from pathlib import Path
 # project
 from slurm import submit_sbatch
 
+batch_file_dir_name = "regrid_batch_files"
+
 
 def parse_args():
     """Parse some command line arguments.
@@ -49,7 +51,7 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
-        "--regrid_batch_dir",
+        "--slurm_dir",
         type=str,
         help="Path to directory where batch files are written",
         required=True,
@@ -85,7 +87,7 @@ def parse_args():
         args.conda_env_name,
         Path(args.generate_batch_files_script),
         Path(args.cmip6_directory),
-        Path(args.regrid_batch_dir),
+        Path(args.slurm_dir),
         args.vars,
         args.freqs,
         args.models,
@@ -99,17 +101,18 @@ if __name__ == "__main__":
         conda_env_name,
         generate_batch_files_script,
         cmip6_directory,
-        regrid_batch_dir,
+        slurm_dir,
         vars,
         freqs,
         models,
         scenarios,
     ) = parse_args()
 
-    regrid_batch_dir.mkdir(exist_ok=True, parents=True)
-    slurm_dir = regrid_batch_dir.parent.joinpath("slurm")
-    slurm_dir.mkdir(exist_ok=True)
-    generate_batch_files_sbatch_fp = slurm_dir.joinpath("generate_batch_files.slurm")
+    regrid_batch_dir = slurm_dir.joinpath(batch_file_dir_name)
+    regrid_batch_dir.mkdir(exist_ok=True)
+    generate_batch_files_sbatch_fp = slurm_dir.joinpath(
+        "generate_regrid_batch_files.slurm"
+    )
     generate_batch_files_sbatch_out_fp = str(generate_batch_files_sbatch_fp).replace(
         ".slurm", "_%j.out"
     )
@@ -128,7 +131,10 @@ if __name__ == "__main__":
         'eval "$($HOME/miniconda3/bin/conda shell.bash hook)"\n'
         f"conda activate {conda_env_name}\n"
         # run the generate batch files script
-        f"python {generate_batch_files_script} --cmip6_directory '{cmip6_directory}' --regrid_batch_dir '{regrid_batch_dir}' --vars '{vars}' --freqs '{freqs}' --models '{models}' --scenarios '{scenarios}' \n"
+        f"python {generate_batch_files_script} \
+            --cmip6_directory '{cmip6_directory}' \
+            --regrid_batch_dir '{regrid_batch_dir}' \
+            --vars '{vars}' --freqs '{freqs}' --models '{models}' --scenarios '{scenarios}' \n"
     )
 
     # save the sbatch text as a new slurm file in the repo directory
