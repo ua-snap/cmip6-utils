@@ -20,8 +20,8 @@ def parse_args():
         Path to script that generates batch files
     cmip6_directory : str
         Path to directory where CMIP6 files are stored
-    regrid_batch_dir : str
-        Path to directory where batch files are written
+    slurm_dir : str
+        Path to directory where slurm-related files are written
     vars : str
         List of variables to generate batch files for
     freqs : str
