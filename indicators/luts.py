@@ -104,6 +104,14 @@ model_lu = {
         "institution": "CNRM-CERFACS",
         "institution_name": "Centre National de Recherches Meteorologiques, Centre Europeen de Recherche et de Formation Avancee en Calcul Scientifique",
     },
+    "E3SM-1-1": {
+        "institution": "U.S. Department of Energy",
+        "institution_name": "U.S. Department of Energy, Office of Science, Office of Biological and Environmental Research Earth Systems Model Development Program area of Earth and Environmental System Modeling",
+    },
+    "E3SM-2-0": {
+        "institution": "U.S. Department of Energy",
+        "institution_name": "U.S. Department of Energy, Office of Science, Office of Biological and Environmental Research Earth Systems Model Development Program area of Earth and Environmental System Modeling",
+    },
     "EC-Earth3-Veg": {
         "institution": "EC-Earth-Consortium",
         "institution_name": "EC-Earth, Rossby Center, Swedish Meteorological and Hydrological Institute",
