@@ -66,7 +66,7 @@ def create_intermediate_target_grid(src_file, out_file):
     # hardcoded values for just larger than the 4km ERA5 WRF data
     min_lon, max_lon = 183, 232
     lon_num = get_num(min_lon, max_lon, 0.5)
-    min_lat, max_lat = 64, 73
+    min_lat, max_lat = 54, 73
     lat_num = get_num(min_lat, max_lat, 0.5)
 
     new_lon = np.linspace(min_lon, max_lon, lon_num)
