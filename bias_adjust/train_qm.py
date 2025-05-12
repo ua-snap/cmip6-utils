@@ -212,14 +212,14 @@ if __name__ == "__main__":
             train_kwargs = dict(
                 ref=ref,
                 hist=hist,
-                nquantiles=50,
+                nquantiles=100,
                 group="time.dayofyear",
                 window=31,
                 kind=varid_adj_kind_lu[var_id],
             )
             if var_id == "pr":
                 # do the adapt frequency thingy for precipitation data
-                train_kwargs.update(adapt_freq_thresh="1 mm d-1")
+                train_kwargs.update(adapt_freq_thresh="0.254 mm d-1")
 
             qm_train = sdba.QuantileDeltaMapping.train(**train_kwargs)
 
