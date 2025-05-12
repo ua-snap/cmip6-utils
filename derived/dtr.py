@@ -141,7 +141,7 @@ def make_output_filepath(output_dir, dtr_tmp_fn, start_date, end_date):
     if "end_date" in keys:
         end_date = datetime.strptime(end_date, "%Y%m%d").year
 
-    if keys == ["start_date", "end_date"]:
+    if keys == ["end_date", "start_date"]:
         output_dir.joinpath(dtr_tmp_fn.format(start_date=start_date, end_date=end_date))
         output_fp = output_dir.joinpath(
             dtr_tmp_fn.format(start_date=start_date, end_date=end_date)
@@ -156,7 +156,7 @@ def make_output_filepath(output_dir, dtr_tmp_fn, start_date, end_date):
         output_fp = output_dir.joinpath(dtr_tmp_fn.format(year=start_year))
     else:
         raise ValueError(
-            f"Template DTR filename, {dtr_tmp_fn}, must have either start_date and end_date or year as keys"
+            f"Template DTR filename, {dtr_tmp_fn}, must have either start_date and end_date or year as keys. Found: {keys}"
         )
 
     return output_fp
