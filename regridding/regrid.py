@@ -226,7 +226,7 @@ def init_regridder(src_ds, dst_ds, interp_method):
         "unmapped_to_nan": True,
         "periodic": periodic,
         "ignore_degenerate": True,
-        interp_method: interp_method,
+        "method": interp_method,
     }
     logging.info(
         f"Initializing regridder with the following arguments: {regridder_kwargs}"
