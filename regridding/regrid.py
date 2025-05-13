@@ -1,6 +1,6 @@
 """Script for regridding a batch of files listed in a text file
 
-Note - this script first crops the dataset to the panarctic domain of 50N and up. 
+Note - this script first crops the dataset to the panarctic domain of 50N and up.
 """
 
 import argparse
@@ -546,7 +546,10 @@ def fix_time(out_ds, src_ds):
     out_ds.time.encoding["calendar"] = "noleap"
     # also ensure time axis encoding dtype is removed,
     # sometimes the incorrect dtype is assigned? perhaps at regridding?
-    del out_ds.time.encoding["dtype"]
+    try:
+        del out_ds.time.encoding["dtype"]
+    except KeyError:
+        pass
 
     # make sure bnds variables are out, we probably don't need for this dataset
     # just makes things simpler.
