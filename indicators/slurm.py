@@ -23,6 +23,7 @@ def make_sbatch_head(slurm_email, partition, conda_init_script, exclude_nodes, n
         "#!/bin/sh\n"
         "#SBATCH --nodes=1\n"
         f"#SBATCH --exclude={exclude_nodes}\n"
+        f"#SBATCH --time=04:00:00\n"
         f"#SBATCH --exclusive\n"
         f"#SBATCH -p {partition}\n"
         "#SBATCH --output {sbatch_out_fp}\n"
