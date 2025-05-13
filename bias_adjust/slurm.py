@@ -11,7 +11,12 @@ logging.basicConfig(
 
 
 def make_sbatch_head(
-    partition, sbatch_out_path, conda_env_name, job_name, array_range=None
+    partition,
+    sbatch_out_path,
+    conda_env_name,
+    job_name,
+    array_range=None,
+    time_limit="04:00:00",
 ):
     """Make a string of SBATCH commands that can be written into a .slurm script
 
@@ -21,6 +26,7 @@ def make_sbatch_head(
         conda_env_name (str): name of the conda environment to activate
         job_name (str): name of the job to use in sbatch
         array_range (str): string to use in the SLURM array
+        time_limit (str): time limit for the job in HH:MM:SS format
 
     Returns:
         sbatch_head (str): string of SBATCH commands ready to be used as parameter in sbatch-writing functions.
@@ -31,6 +37,7 @@ def make_sbatch_head(
         "#SBATCH --nodes=1\n"
         f"#SBATCH -p {partition}\n"
         f"#SBATCH --output {sbatch_out_path}\n"
+        f"#SBATCH --time={time_limit}\n"
     )
     if array_range is not None:
         sbatch_head += f"#SBATCH --array={array_range}%10\n"
