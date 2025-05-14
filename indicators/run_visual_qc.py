@@ -11,7 +11,6 @@ python run_visual_qc.py \
 
 import argparse
 import logging
-from itertools import product
 from pathlib import Path
 from slurm import (
     make_sbatch_head,
@@ -69,7 +68,7 @@ def parse_args():
         args.repo_indicators_dir,
         args.working_dir,
         args.input_dir,
-        args.slurm_dir,
+        Path(args.slurm_dir),
     )
 
 
