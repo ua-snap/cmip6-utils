@@ -1,8 +1,8 @@
-"""Script for computing a set of indicators for a given set of files. 
+"""Script for computing a set of indicators for a given set of files.
 This means a set of indicators that share the same source variable or variables, and for a given model and scenario.
 Handling of missing data (e.g. a model-scenario-variable combination that does not exist) should be done outside of this script.
 
-Usage: 
+Usage:
     python indicators.py --indicators rx1day --model CESM2 --scenario ssp585 --input_dir /beegfs/CMIP6/kmredilla/cmip6_regridding/regrid --out_dir /beegfs/CMIP6/kmredilla/indicators
 """
 
@@ -12,6 +12,9 @@ import cftime
 import numpy as np
 import xarray as xr
 import xclim.indices as xci
+from xclim.core.calendar import percentile_doy
+from xclim.core.units import convert_units_to, to_agg_units
+from xclim.indices.generic import threshold_count
 import shutil
 import sys
 import datetime
@@ -103,6 +106,163 @@ def ftc(tasmax, tasmin):
     ftc = ftc.astype(np.int64)
 
     return ftc
+
+
+# TODO: test this function
+def take_sorted(arr, axis, idx):
+    """Helper function for the 'hot day' and 'cold day' indices to slice a numpy array after sorting it. Done in favor of fixed, []-based indexing.
+
+    Args:
+        arr (numpy.ndarray): array
+        axis (int): axis to sort and slice according to
+        idx (int): index value to slice arr at across all other axes
+
+    Returns:
+        array of values at position idx of arr sorted along axis
+    """
+    return np.take(np.sort(arr, axis), idx, axis)
+
+
+# TODO: test this function
+def hd(tasmax):
+    """'Hot Day' - the 6th hottest day of the year
+
+    Args:
+        tasmax (xarray.DataArray): daily maximum temperature values for a year
+
+    Returns:
+        Hot Day values for each year
+    """
+
+    def func(tasmax):
+        # np.sort defaults to ascending..
+        #   hd is simply "6th hottest" day
+        return tasmax.reduce(take_sorted, dim="time", idx=-6)
+
+    # hardcoded unit conversion
+    out = tasmax.resample(time="1Y").map(func)
+    out.attrs["units"] = "C"
+    out.attrs["comment"] = "'hot day': 6th hottest day of the year"
+
+    return out
+
+
+# TODO: test this function
+def cd(tasmin):
+    """'Cold Day' - the 6th coldest day of the year
+
+    Args:
+        tasmin (xarray.DataArray): daily minimum temperature values
+
+    Returns:
+        Cold Day values for each year
+    """
+
+    def func(tasmin):
+        # time_ax = np.where(np.array(tasmin.dims) == "time")[0][0]
+        # np.sort defaults to ascending..
+        #   cd is simply "6th coldest" day
+        return tasmin.reduce(take_sorted, dim="time", idx=5)
+
+    # hardcoded unit conversion
+    out = tasmin.resample(time="1Y").map(func)
+    out.attrs["units"] = "C"
+    out.attrs["comment"] = "'cold day': 6th coldest day of the year"
+
+    return out
+
+
+# TODO: test this function
+def rx5day(pr):
+    """'Max 5-day precip' - the max 5-day precip value recorded for a year.
+
+    Args:
+        pr (xarray.DataArray): daily total precip values
+
+    Returns:
+        Max 5-day precip for each year
+    """
+    out = xci.max_n_day_precipitation_amount(pr, 5, freq="YS")
+    out.attrs["units"] = "mm"
+
+    return out
+
+
+# TODO: test this function
+def wsdi(tasmax, hist_da):
+    """'Warm spell duration index' - Annual count of occurrences of at least 5 consecutive days with daily max T above 90th percentile of historical values for the date
+
+    Args:
+        tasmax (xarray.DataArray): daily maximum temperature values
+        hist_da (xarray.DataArray): historical daily maximum temperature values
+
+    Returns:
+        Warm spell duration index for each year
+    """
+    tasmax_per = percentile_doy(hist_da, per=90).sel(percentiles=90)
+    return xci.warm_spell_duration_index(tasmax, tasmax_per, window=6, freq="YS").drop(
+        "percentiles"
+    )
+
+
+# TODO: test this function
+def csdi(tasmin, hist_da):
+    """'Cold spell duration index' - Annual count of occurrences of at least 5 consecutive days with daily min T below 10th percentile of historical values for the date
+
+    Args:
+        tasmin (xarray.DataArray): daily minimum temperature values for a year
+        hist_da (xarray.DataArray): historical daily minimum temperature values
+
+    Returns:
+        Cold spell duration index for each year
+    """
+    tasmin_per = percentile_doy(hist_da, per=10).sel(percentiles=10)
+    return xci.cold_spell_duration_index(tasmin, tasmin_per, window=6, freq="YS").drop(
+        "percentiles"
+    )
+
+
+# TODO: test this function
+def r10mm(pr):
+    """'Heavy precip days' - number of days in a year with over 10mm of precip
+
+    Args:
+        pr (xarray.DataArray): daily total precip values
+
+    Returns:
+        Number of heavy precip days for each year
+    """
+    # code based on xclim.indices._threshold.tg_days_above
+    thresh = "10 mm/day"
+    thresh = convert_units_to(thresh, pr)
+    f = threshold_count(pr, ">", thresh, freq="YS")
+    return to_agg_units(f, pr, "count")
+
+
+# TODO: test this function
+def cwd(pr):
+    """'Consecutive wet days' - number of the most consecutive days with precip > 1 mm
+
+    Args:
+        pr (xarray.DataArray): daily total precip values
+
+    Returns:
+        Max number of consecutive wet days for each year
+    """
+    return xci.maximum_consecutive_wet_days(pr, thresh=f"1 mm/day", freq="YS")
+
+
+# TODO: test this function
+def cdd(pr):
+    """'Consecutive dry days' - number of the most consecutive days with precip < 1 mm
+
+    Args:
+        pr (xarray.DataArray): daily total precip values
+
+    Returns:
+        Max number of consecutive dry days for each year
+    """
+    return xci.maximum_consecutive_dry_days(pr, thresh=f"1 mm/day", freq="YS")
 
 
 def convert_times_to_years(time_da):
