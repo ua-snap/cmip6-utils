@@ -83,10 +83,10 @@ def write_sbatch_run_visual_qc(
     """Write the sbatch file for the indicators visual QC."""
     # create the sbatch file
     sbatch_path = slurm_dir.joinpath(tmp_vis_qc_sbatch_fn)
-    sbatch_out_path = slurm_dir.joinpath(sbatch_path.name.replace(".slurm", "_%j.out"))
+    sbatch_out_fp = slurm_dir.joinpath(sbatch_path.name.replace(".slurm", "_%j.out"))
 
     sbatch_head_kwargs = {
-        "sbatch_out_path": sbatch_out_path,
+        "sbatch_out_fp": sbatch_out_fp,
         "partition": f"t2small",
     }
     sbatch_head = make_sbatch_head(**sbatch_head_kwargs)
