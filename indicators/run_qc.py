@@ -9,7 +9,6 @@ python run_qc.py \
 
 import argparse
 import logging
-from itertools import product
 from pathlib import Path
 from slurm import (
     make_sbatch_head,
@@ -53,7 +52,7 @@ def parse_args():
         args.qc_script,
         args.in_dir,
         args.out_dir,
-        args.slurm_dir,
+        Path(args.slurm_dir),
     )
 
 
