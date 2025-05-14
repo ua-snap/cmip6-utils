@@ -2,7 +2,7 @@
 
 python run_qc.py \
     --qc_script /beegfs/CMIP6/kmredilla/cmip6-utils/indicators/qc.py \
-    --in_dir /beegfs/CMIP6/kmredilla/cmip6_zarr/ \
+    --in_dir /beegfs/CMIP6/arctic-cmip6/CMIP6_common_regrid/ \
     --out_dir /beegfs/CMIP6/kmredilla/cmip6_indicators/netcdf/ \
     --slurm_dir /beegfs/CMIP6/kmredilla/cmip6_indicators/slurm
 """
@@ -32,7 +32,7 @@ def parse_args():
     parser.add_argument(
         "--in_dir",
         type=str,
-        help="Path to direcotry containing inputs for indicators",
+        help="Path to directory containing inputs for indicators",
         required=True,
     )
     parser.add_argument(
@@ -63,7 +63,7 @@ def write_sbatch_run_qc(
     slurm_dir,
     qc_script,
 ):
-    """Write the sbatch file for QM training for a given model and variable."""
+    """Write the sbatch file for the indicators QC."""
     # create the sbatch file
     sbatch_path = slurm_dir.joinpath(tmp_qc_sbatch_fn)
     sbatch_out_path = slurm_dir.joinpath(sbatch_path.name.replace(".slurm", "_%j.out"))
@@ -79,7 +79,7 @@ def write_sbatch_run_qc(
 
     pycommands += "\n\n"
 
-    pycommands += f"echo End Inidcators QC && date\n" "echo Job Completed"
+    pycommands += f"echo End indicators QC && date\n" "echo Job Completed"
     commands = sbatch_head + pycommands
 
     with open(sbatch_path, "w") as f:
