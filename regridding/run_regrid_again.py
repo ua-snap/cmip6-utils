@@ -161,6 +161,7 @@ def make_sbatch_head(array_range, partition, sbatch_out_file, conda_env_name):
         "#!/bin/sh\n"
         f"#SBATCH --array={array_range}%10\n"  # don't run more than 10 tasks
         f"#SBATCH --job-name=regrid_cmip6_again\n"
+        f"#SBATCH --time=04:00:00\n"
         "#SBATCH --nodes=1\n"
         f"#SBATCH -p {partition}\n"
         f"#SBATCH --output {sbatch_out_file}\n"
