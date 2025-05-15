@@ -1,7 +1,6 @@
 # map from model variable names to possible index variable names
 # helps with possible optimization of computing indicators that rely on the same datasets
 varid_idx_lu = {
-    # "pr": ["rx1day", "rx5day", "r10mm", "cwd", "cdd"],
     "pr": ["rx1day", "rx5day", "r10mm", "cwd", "cdd"],
     # "prsn": ["hsd"],
     "tasmax": ["hd", "su", "wsdi"],
@@ -16,10 +15,17 @@ idx_varid_lu = {
     "dw": ["tasmin"],
     "ftc": ["tasmax", "tasmin"],
     "rx1day": ["pr"],
+    "hd": ["tasmax"],
 }
 
 # units str for each indicator, used for QC
-units_lu = {"rx1day": "mm", "su": "d", "dw": "d", "ftc": "d"}
+units_lu = {
+    "rx1day": "mm", 
+    "su": "d", 
+    "dw": "d", 
+    "ftc": "d",
+    "hd": "degrees C",
+    }
 
 # ranges dict for each indicator, used for QC
 # range references:
@@ -29,6 +35,7 @@ ranges_lu = {
     "su": {"min": 0, "max": 200},
     "dw": {"min": 0, "max": 275},
     "ftc": {"min": 0, "max": 250},
+    "hd": {},
 }
 
 # lookup table of frequencies by variable id
@@ -92,6 +99,11 @@ indicator_lu = {
         "title": "Yearly Number of Freeze-Thaw Cycles",
         "long_name": "yearly_freeze_thaw_cycles",
         "description": "Number of Freeze Thaw Cycles, calculated over a yearly frequency using xclim.indicators.atmos.daily_freezethaw_cycles().",
+    },
+    "hd": {
+        "title": "Hot Day Threshold",
+        "long_name": "hot_day_threshold",
+        "description": "the highest observed daily maximum 2m air temperature such that there are 5 other observations equal to or greater than this value.",
     },
 }
 

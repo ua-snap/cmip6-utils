@@ -136,7 +136,7 @@ def hd(tasmax):
 
     def func(tasmax):
         # np.sort defaults to ascending..
-        #   hd is simply "6th hottest" day
+        # hd is simply "6th hottest" day
         return tasmax.reduce(take_sorted, dim="time", idx=-6)
 
     # hardcoded unit conversion
