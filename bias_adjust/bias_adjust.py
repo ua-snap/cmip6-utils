@@ -28,45 +28,62 @@ logging.basicConfig(
 )
 
 
-def add_global_attrs(ds, src_fp):
+def add_global_attrs(adj_ds, src_ds):
     """Add global attributes to a new adjusted dataset
 
     Args:
-        ds (xarray.Dataset): dataset of a adjusted data
-        src_fp (path-like): path to file where source data was pulled from
+        adj_ds (xarray.Dataset): dataset of a adjusted data
+        src_ds (xarray.Dataset): dataset of source data
 
     Returns:
         xarray.Dataset with updated global attributes
     """
-    with xr.open_dataset(src_fp) as src_ds:
-        # create new global attributes
-        new_attrs = {
-            "history": "File was processed by Scenarios Network for Alaska and Arctic Planning (SNAP) using xclim",
-            "contact": "uaf-snap-data-tools@alaska.edu",
-            "Conventions": "CF-1.7",
-            "creation_date": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
-            # experimental idea - store attributes from source file in an attribute for reference
-            # use a string as netcdf cannot be serialized if this is a dict
-            # (it can be reconstructed with eval() if desired later)
-            "parent_attributes": str(src_ds.attrs),
-        }
+    # create new global attributes
+    new_attrs = {
+        "history": "File was processed by Scenarios Network for Alaska and Arctic Planning (SNAP) using xclim",
+        "contact": "uaf-snap-data-tools@alaska.edu",
+        "Conventions": "CF-1.7",
+        "creation_date": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+        # experimental idea - store attributes from source file in an attribute for reference
+        # use a string as netcdf cannot be serialized if this is a dict
+        # (it can be reconstructed with eval() if desired later)
+        "parent_attributes": str(src_ds.attrs),
+    }
+    for attr in [
+        "variable_id",
+        "source_id",
+        "institution_id",
+        "mip_era",
+        "activity_id",
+        "experiment_id",
+        "table_id",
+    ]:
+        if attr in src_ds.attrs:
+            new_attrs[attr] = src_ds.attrs[attr]
 
-    ds.attrs = new_attrs
+    adj_ds.attrs = new_attrs
 
-    return ds
+    return adj_ds
 
 
-def drop_non_coord_vars(ds):
+def drop_non_coord_vars(ds, keep_spatial_ref=True, keep_latlon=True):
     """Function to drop all coordinates from xarray dataset which are not coordinate variables, i.e. which are not solely indexed by a dimension of the same name
 
     Args:
         ds (xarray.Dataset): dataset to drop non-coordinate-variables from
+        keep_spatial_ref (bool): whether to keep the spatial_ref variable, which is not a coordinate variable but is useful for some applications
+        keep_latlon (bool): whether to keep the lat and lon coordinates if present, which are not coordinate variables but are useful for some applications
 
     Returns:
         ds (xarray.Dataset): dataset with only dimension coordinates
     """
     coords_to_drop = [coord for coord in ds.coords if ds[coord].dims != (coord,)]
-    # some datasets have a variables such as spatial_ref that are indexed by time and should be dropped.
+    if keep_spatial_ref:
+        coords_to_drop.remove("spatial_ref")
+    if keep_latlon:
+        coords_to_drop.remove("lat")
+        coords_to_drop.remove("lon")
+
     vars_to_drop = [var for var in ds.data_vars if len(ds[var].dims) < 3]
     ds = ds.drop_vars(coords_to_drop + vars_to_drop)
 
@@ -136,6 +153,8 @@ if __name__ == "__main__":
             interp="nearest",
         )
         scen_ds = scen.to_dataset(name=var_id)
+        scen_ds = drop_non_coord_vars(scen_ds)
+        scen_ds = add_global_attrs(scen_ds, sim_ds)
         logging.info(f"Running adjustment and writing to {adj_path}")
 
         if adj_path.exists():
