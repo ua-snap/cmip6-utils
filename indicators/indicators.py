@@ -212,7 +212,6 @@ def csdi(tasmin, hist_da):
     )
 
 
-# TODO: test this function
 def r10mm(pr):
     """'Heavy precip days' - number of days in a year with over 10mm of precip
 
@@ -243,7 +242,6 @@ def cwd(pr):
     return xci.maximum_consecutive_wet_days(pr, thresh=f"1 mm/day", freq="YS")
 
 
-# TODO: test this function
 def cdd(pr):
     """'Consecutive dry days' - number of the most consecutive days with precip < 1 mm
 
@@ -253,6 +251,7 @@ def cdd(pr):
     Returns:
         Max number of consecutive dry days for each year
     """
+    pr = fix_pr_units(pr)
     return xci.maximum_consecutive_dry_days(pr, thresh=f"1 mm/day", freq="YS")
 
 
