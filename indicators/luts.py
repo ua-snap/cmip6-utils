@@ -13,6 +13,7 @@ idx_varid_lu = {
     "ftc": ["tasmax", "tasmin"],
     "rx1day": ["pr"],
     "rx5day": ["pr"],
+    "r10mm": ["pr"],
     "hd": ["tasmax"],
     "cd": ["tasmin"],
 }
@@ -21,6 +22,7 @@ idx_varid_lu = {
 units_lu = {
     "rx1day": "mm",
     "rx5day": "mm",
+    "r10mm": "days",
     "su": "d",
     "dw": "d",
     "ftc": "d",
@@ -32,12 +34,14 @@ units_lu = {
 # range references:
 # rx1day: max recorded in historical record is <400mm(16") https://journals.ametsoc.org/view/journals/bams/95/8/bams-d-13-00027.1.xml#:~:text=The%20National%20Climatic%20Data%20Center,single%20calendar%2Dday%20precipitation%20amount.
 # rx5day: use 5 times the rx1day value
+# r10mm: Yakutat is the rainiest place in AK, and ~7 months of the year (~210 days) would average >10mm of rain per day https://en.wikipedia.org/wiki/Yakutat,_Alaska#Climate
 # hd: highest temp recorded in the Arctic is 38C https://wmo.int/media/news/wmo-recognizes-new-arctic-temperature-record-of-380c#:~:text=A%20temperature%20of%2038%C2%B0,World%20Meteorological%20Organization%20(WMO).
 # cd: lowest temp ever recorded in the northern hemisphere is -69.6C https://wmo.int/asu-map?map=Temp_005#:~:text=Discussion,%25C2%25B0c%2Dgr%E2%80%A6
 
 ranges_lu = {
     "rx1day": {"min": 0, "max": 500},
     "rx5day": {"min": 0, "max": 2500},
+    "r10mm": {"min": 0, "max": 250},
     "su": {"min": 0, "max": 200},
     "dw": {"min": 0, "max": 275},
     "ftc": {"min": 0, "max": 250},
@@ -96,6 +100,11 @@ indicator_lu = {
         "title": "Yearly Maximum 5-day Precipitation",
         "long_name": "yearly_maximum_5_day_precipitation",
         "description": "Maximum 5-day Precipitation, calculated over a yearly frequency using xclim.indices.max_n_day_precipitation_amount().",
+    },
+    "r10mm": {
+        "title": "Yearly Number of Days with Precipitation >= 10mm",
+        "long_name": "yearly_days_with_precipitation_10mm",
+        "description": "Number of Days with Precipitation >= 10mm, calculated over a yearly frequency using xclim.indices._threshold.tg_days_above().",
     },
     "dw": {
         "title": "Yearly Number of Deep Winter Days (-30C threshold)",

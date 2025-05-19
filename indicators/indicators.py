@@ -11,19 +11,16 @@ from pathlib import Path
 import cftime
 import numpy as np
 import xarray as xr
+from xclim.indicators import atmos
 import xclim.indices as xci
 from xclim.core.calendar import percentile_doy
 from xclim.core.units import convert_units_to, to_agg_units
 from xclim.indices.generic import threshold_count
-import shutil
-import sys
+
+# import shutil
+# import sys
 import datetime
 
-# needed for other indicators but not yet
-# from xclim.core.calendar import percentile_doy
-# from xclim.core.units import convert_units_to, to_agg_units
-# from xclim.indices.generic import threshold_count
-from xclim.indicators import atmos  # , icclim
 from config import *
 from luts import *
 
@@ -165,7 +162,6 @@ def cd(tasmin):
     return out
 
 
-# TODO: test this function
 def rx5day(pr):
     """'Max 5-day precip' - the max 5-day precip value recorded for a year.
 
@@ -227,6 +223,7 @@ def r10mm(pr):
         Number of heavy precip days for each year
     """
     # code based on xclim.indices._threshold.tg_days_above
+    pr = fix_pr_units(pr)
     thresh = "10 mm/day"
     thresh = convert_units_to(thresh, pr)
     f = threshold_count(pr, ">", thresh, freq="YS")
