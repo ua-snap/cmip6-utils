@@ -2,40 +2,43 @@
 # helps with possible optimization of computing indicators that rely on the same datasets
 varid_idx_lu = {
     "pr": ["rx1day", "rx5day", "r10mm", "cwd", "cdd"],
-    # "prsn": ["hsd"],
     "tasmax": ["hd", "su", "wsdi"],
     "tasmin": ["cd", "dw", "csdi"],
-    # "sfcWind": ["wndd"],
 }
 
 # this is the reverse lookup, for mapping indicators to the list of CMIP6 variable ID's that are needed
 idx_varid_lu = {
     "su": ["tasmax"],
-    "su2": ["tasmax"],
     "dw": ["tasmin"],
     "ftc": ["tasmax", "tasmin"],
     "rx1day": ["pr"],
     "hd": ["tasmax"],
+    "cd": ["tasmin"],
 }
 
 # units str for each indicator, used for QC
 units_lu = {
-    "rx1day": "mm", 
-    "su": "d", 
-    "dw": "d", 
+    "rx1day": "mm",
+    "su": "d",
+    "dw": "d",
     "ftc": "d",
     "hd": "degrees C",
-    }
+    "cd": "degrees C",
+}
 
 # ranges dict for each indicator, used for QC
 # range references:
 # rx1day: max recorded in historical record is <400mm(16") https://journals.ametsoc.org/view/journals/bams/95/8/bams-d-13-00027.1.xml#:~:text=The%20National%20Climatic%20Data%20Center,single%20calendar%2Dday%20precipitation%20amount.
+# hd: highest temp recorded in the Arctic is 38C https://wmo.int/media/news/wmo-recognizes-new-arctic-temperature-record-of-380c#:~:text=A%20temperature%20of%2038%C2%B0,World%20Meteorological%20Organization%20(WMO).
+# cd: lowest temp ever recorded in the northern hemisphere is -69.6C https://wmo.int/asu-map?map=Temp_005#:~:text=Discussion,%25C2%25B0c%2Dgr%E2%80%A6
+
 ranges_lu = {
     "rx1day": {"min": 0, "max": 500},
     "su": {"min": 0, "max": 200},
     "dw": {"min": 0, "max": 275},
     "ftc": {"min": 0, "max": 250},
-    "hd": {},
+    "hd": {"min": 0, "max": 45},
+    "cd": {"min": -80, "max": 20},
 }
 
 # lookup table of frequencies by variable id
@@ -104,6 +107,11 @@ indicator_lu = {
         "title": "Hot Day Threshold",
         "long_name": "hot_day_threshold",
         "description": "the highest observed daily maximum 2m air temperature such that there are 5 other observations equal to or greater than this value.",
+    },
+    "cd": {
+        "title": "Cold Day Threshold",
+        "long_name": "cold_day_threshold",
+        "description": "the lowest observed daily minimum 2m air temperature such that there are 5 other observations equal to or less than this value.",
     },
 }
 

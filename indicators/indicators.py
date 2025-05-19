@@ -108,7 +108,6 @@ def ftc(tasmax, tasmin):
     return ftc
 
 
-# TODO: test this function
 def take_sorted(arr, axis, idx):
     """Helper function for the 'hot day' and 'cold day' indices to slice a numpy array after sorting it. Done in favor of fixed, []-based indexing.
 
@@ -120,10 +119,10 @@ def take_sorted(arr, axis, idx):
     Returns:
         array of values at position idx of arr sorted along axis
     """
+    # np.sort defaults to ascending...
     return np.take(np.sort(arr, axis), idx, axis)
 
 
-# TODO: test this function
 def hd(tasmax):
     """'Hot Day' - the 6th hottest day of the year
 
@@ -135,11 +134,9 @@ def hd(tasmax):
     """
 
     def func(tasmax):
-        # np.sort defaults to ascending..
         # hd is simply "6th hottest" day
         return tasmax.reduce(take_sorted, dim="time", idx=-6)
 
-    # hardcoded unit conversion
     out = tasmax.resample(time="1Y").map(func)
     out.attrs["units"] = "C"
     out.attrs["comment"] = "'hot day': 6th hottest day of the year"
@@ -147,7 +144,6 @@ def hd(tasmax):
     return out
 
 
-# TODO: test this function
 def cd(tasmin):
     """'Cold Day' - the 6th coldest day of the year
 
@@ -159,12 +155,9 @@ def cd(tasmin):
     """
 
     def func(tasmin):
-        # time_ax = np.where(np.array(tasmin.dims) == "time")[0][0]
-        # np.sort defaults to ascending..
-        #   cd is simply "6th coldest" day
+        # cd is simply "6th coldest" day
         return tasmin.reduce(take_sorted, dim="time", idx=5)
 
-    # hardcoded unit conversion
     out = tasmin.resample(time="1Y").map(func)
     out.attrs["units"] = "C"
     out.attrs["comment"] = "'cold day': 6th coldest day of the year"
