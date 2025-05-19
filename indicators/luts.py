@@ -18,20 +18,24 @@ idx_varid_lu = {
     "cwd": ["pr"],
     "hd": ["tasmax"],
     "cd": ["tasmin"],
+    "wsdi": ["tasmax"],
+    "csdi": ["tasmin"],
 }
 
 # units str for each indicator, used for QC
 units_lu = {
     "rx1day": "mm",
     "rx5day": "mm",
-    "r10mm": "days",
-    "cdd": "days",
-    "cwd": "days",
+    "r10mm": "d",
+    "cdd": "d",
+    "cwd": "d",
     "su": "d",
     "dw": "d",
     "ftc": "d",
     "hd": "degrees C",
     "cd": "degrees C",
+    "wsdi": "count",
+    "csdi": "count",
 }
 
 # ranges dict for each indicator, used for QC
@@ -53,6 +57,8 @@ ranges_lu = {
     "ftc": {"min": 0, "max": 250},
     "hd": {"min": 0, "max": 45},
     "cd": {"min": -80, "max": 20},
+    "wsdi": {"min": 0, "max": 10},
+    "csdi": {"min": 0, "max": 10},
 }
 
 # lookup table of frequencies by variable id
@@ -146,6 +152,16 @@ indicator_lu = {
         "title": "Cold Day Threshold",
         "long_name": "cold_day_threshold",
         "description": "the lowest observed daily minimum 2m air temperature such that there are 5 other observations equal to or less than this value.",
+    },
+    "wsdi": {
+        "title": "Warm Spell Duration Index",
+        "long_name": "warm_spell_duration_index",
+        "description": "Annual count of occurrences of at least 5 consecutive days with daily maximum temperature above 90th percentile of historical values for the date, calculated over a yearly frequency using xclim.indices.warm_spell_duration_index().",
+    },
+    "csdi": {
+        "title": "Cold Spell Duration Index",
+        "long_name": "cold_spell_duration_index",
+        "description": "Annual count of occurrences of at least 5 consecutive days with daily minimum temperature below 10th percentile of historical values for the date, calculated over a yearly frequency using xclim.indices.cold_spell_duration_index().",
     },
 }
 
