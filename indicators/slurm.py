@@ -161,6 +161,7 @@ def parse_args():
         args.models.split(" "),
         args.scenarios.split(" "),
         Path(args.input_dir),
+        Path(args.daymet_dir),
         Path(args.working_dir),
         args.no_clobber,
     )
