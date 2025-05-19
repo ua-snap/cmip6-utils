@@ -28,9 +28,6 @@ def make_sbatch_head(partition, sbatch_out_fp):
         "echo Start slurm && date\n"
         # prepare shell for using activate - Chinook requirement
         'eval "$($HOME/miniconda3/bin/conda shell.bash hook)"\n'
-        # okay this is not the desired way to do this, but Chinook compute
-        # nodes are not working with anaconda-project, so we activate
-        # this manually then run the python command
         f"conda activate cmip6-utils\n"
     )
 
@@ -44,6 +41,7 @@ def write_sbatch_indicators(
     model,
     scenario,
     input_dir,
+    daymet_dir,
     indicators_script,
     indicators_dir,
     no_clobber,
@@ -54,8 +52,13 @@ def write_sbatch_indicators(
     Args:
         sbatch_fp (path_like): path to .slurm script to write sbatch commands to
         sbatch_out_fp (path_like): path to where sbatch stdout should be written
+        indicator (str): name of the indicator to be computed
+        model (str): name of the model to be used
+        scenario (str): name of the scenario to be used
+        input_dir (pathlib.PosixPath): directory where input data is stored
+        daymet_dir (pathlib.PosixPath): directory where Daymet data is stored
         indicators_script (path_like): path to the script to be called to run the indicators
-        regrid_dir (pathlib.PosixPath): directory to write the regridded data to
+        indicators_dir (pathlib.PosixPath): directory where output data should be written
         no_clobber (bool): do not overwrite regridded files if they exist in regrid_dir
         sbatch_head (dict): string for sbatch head script
 
@@ -72,6 +75,7 @@ def write_sbatch_indicators(
         f"--model {model} "
         f"--scenario {scenario} "
         f"--input_dir {input_dir} "
+        f"--daymet_dir {daymet_dir} "
         f"--out_dir {indicators_dir} "
     )
     if no_clobber:
@@ -133,6 +137,12 @@ def parse_args():
         default=str(regrid_dir),
     )
     parser.add_argument(
+        "--daymet_dir",
+        type=str,
+        help="Path to input directory with Daymet data",
+        default=str(daymet_dir),
+    )
+    parser.add_argument(
         "--working_dir",
         type=str,
         help="Path to directory where all underlying directories and files are written. Must have an up-to-date clone of cmip6-utils repo.",
@@ -162,6 +172,7 @@ if __name__ == "__main__":
         models,
         scenarios,
         input_dir,
+        daymet_dir,
         working_dir,
         no_clobber,
     ) = parse_args()
@@ -187,19 +198,15 @@ if __name__ == "__main__":
     with open(qc_file, "w") as q:
         pass
 
-    # sbatch head - replaces config.py params for now!
     sbatch_head_kwargs = {
         "partition": "t2small",
     }
 
-    # indicator script - replaces config.py params for now!
     indicators_script = f"{working_dir}/cmip6-utils/indicators/indicators.py"
 
-    # TODO Make this utilize the luts.py file when indicators use the same data loaded as a single job
     for model in models:
         for scenario in scenarios:
             for indicator in indicators:
-                # filepath for batch file
 
                 # filepath for slurm script
                 sbatch_fp = sbatch_dir.joinpath(
@@ -210,7 +217,6 @@ if __name__ == "__main__":
                     sbatch_fp.name.replace(".slurm", "_%j.out")
                 )
                 sbatch_head_kwargs.update({"sbatch_out_fp": sbatch_out_fp})
-                # excluding node 138 until issue resolved
                 sbatch_head = make_sbatch_head(**sbatch_head_kwargs)
                 sbatch_indicators_kwargs = {
                     "sbatch_fp": sbatch_fp,
@@ -219,6 +225,7 @@ if __name__ == "__main__":
                     "model": model,
                     "scenario": scenario,
                     "input_dir": input_dir,
+                    "daymet_dir": daymet_dir,
                     "indicators_script": indicators_script,
                     "indicators_dir": output_dir,
                     "no_clobber": no_clobber,
