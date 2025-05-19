@@ -175,6 +175,7 @@ def rx5day(pr):
     Returns:
         Max 5-day precip for each year
     """
+    pr = fix_pr_units(pr)
     out = xci.max_n_day_precipitation_amount(pr, 5, freq="YS")
     out.attrs["units"] = "mm"
 

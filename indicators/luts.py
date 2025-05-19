@@ -12,6 +12,7 @@ idx_varid_lu = {
     "dw": ["tasmin"],
     "ftc": ["tasmax", "tasmin"],
     "rx1day": ["pr"],
+    "rx5day": ["pr"],
     "hd": ["tasmax"],
     "cd": ["tasmin"],
 }
@@ -19,6 +20,7 @@ idx_varid_lu = {
 # units str for each indicator, used for QC
 units_lu = {
     "rx1day": "mm",
+    "rx5day": "mm",
     "su": "d",
     "dw": "d",
     "ftc": "d",
@@ -29,11 +31,13 @@ units_lu = {
 # ranges dict for each indicator, used for QC
 # range references:
 # rx1day: max recorded in historical record is <400mm(16") https://journals.ametsoc.org/view/journals/bams/95/8/bams-d-13-00027.1.xml#:~:text=The%20National%20Climatic%20Data%20Center,single%20calendar%2Dday%20precipitation%20amount.
+# rx5day: use 5 times the rx1day value
 # hd: highest temp recorded in the Arctic is 38C https://wmo.int/media/news/wmo-recognizes-new-arctic-temperature-record-of-380c#:~:text=A%20temperature%20of%2038%C2%B0,World%20Meteorological%20Organization%20(WMO).
 # cd: lowest temp ever recorded in the northern hemisphere is -69.6C https://wmo.int/asu-map?map=Temp_005#:~:text=Discussion,%25C2%25B0c%2Dgr%E2%80%A6
 
 ranges_lu = {
     "rx1day": {"min": 0, "max": 500},
+    "rx5day": {"min": 0, "max": 2500},
     "su": {"min": 0, "max": 200},
     "dw": {"min": 0, "max": 275},
     "ftc": {"min": 0, "max": 250},
@@ -87,6 +91,11 @@ indicator_lu = {
         "title": "Yearly Maxmimum 1-day Precipitation",
         "long_name": "yearly_maximum_1_day_precipitation",
         "description": "Maxmimum 1-day Precipitation, calculated over a yearly frequency using xclim.indices.max_n_day_precipitation_amount().",
+    },
+    "rx5day": {
+        "title": "Yearly Maximum 5-day Precipitation",
+        "long_name": "yearly_maximum_5_day_precipitation",
+        "description": "Maximum 5-day Precipitation, calculated over a yearly frequency using xclim.indices.max_n_day_precipitation_amount().",
     },
     "dw": {
         "title": "Yearly Number of Deep Winter Days (-30C threshold)",
