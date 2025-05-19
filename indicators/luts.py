@@ -15,6 +15,7 @@ idx_varid_lu = {
     "rx5day": ["pr"],
     "r10mm": ["pr"],
     "cdd": ["pr"],
+    "cwd": ["pr"],
     "hd": ["tasmax"],
     "cd": ["tasmin"],
 }
@@ -25,6 +26,7 @@ units_lu = {
     "rx5day": "mm",
     "r10mm": "days",
     "cdd": "days",
+    "cwd": "days",
     "su": "d",
     "dw": "d",
     "ftc": "d",
@@ -45,6 +47,7 @@ ranges_lu = {
     "rx5day": {"min": 0, "max": 2500},
     "r10mm": {"min": 0, "max": 250},
     "cdd": {"min": 0, "max": 365},
+    "cwd": {"min": 0, "max": 365},
     "su": {"min": 0, "max": 200},
     "dw": {"min": 0, "max": 275},
     "ftc": {"min": 0, "max": 250},
@@ -112,7 +115,12 @@ indicator_lu = {
     "cdd": {
         "title": "Yearly Number of Consecutive Days with Precipitation < 1mm",
         "long_name": "yearly_consecutive_dry_days",
-        "description": "Number of Consecutive Dry Days, calculated over a yearly frequency using xclim.indices.maximum_consecutive_dry_days().",
+        "description": "Number of Consecutive Days with Precipitation < 1mm, calculated over a yearly frequency using xclim.indices.maximum_consecutive_dry_days().",
+    },
+    "cwd": {
+        "title": "Yearly Number of Consecutive Days with Precipitation > 1mm",
+        "long_name": "yearly_consecutive_wet_days",
+        "description": "Number of Consecutive Days with Precipitation > 1mm, calculated over a yearly frequency using xclim.indices.maximum_consecutive_wet_days().",
     },
     "dw": {
         "title": "Yearly Number of Deep Winter Days (-30C threshold)",

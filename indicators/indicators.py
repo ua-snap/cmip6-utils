@@ -229,7 +229,6 @@ def r10mm(pr):
     return to_agg_units(f, pr, "count")
 
 
-# TODO: test this function
 def cwd(pr):
     """'Consecutive wet days' - number of the most consecutive days with precip > 1 mm
 
@@ -239,6 +238,7 @@ def cwd(pr):
     Returns:
         Max number of consecutive wet days for each year
     """
+    pr = fix_pr_units(pr)
     return xci.maximum_consecutive_wet_days(pr, thresh=f"1 mm/day", freq="YS")
 
 
