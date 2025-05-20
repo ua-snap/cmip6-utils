@@ -125,30 +125,28 @@ def get_start_end_dates(ds):
 
 
 def extract_format_keys(template):
-    """Extract keys from a string to be formatted."""
+    """Extract keys from a string to be formatted. Returns a set of keys."""
     formatter = string.Formatter()
-    return list(
-        set([key for _, key, _, _ in formatter.parse(template) if key is not None])
-    )
+    return set([key for _, key, _, _ in formatter.parse(template) if key is not None])
 
 
 def make_output_filepath(output_dir, dtr_tmp_fn, start_date, end_date):
     """Make the output file path from the template and start and end dates."""
     keys = extract_format_keys(dtr_tmp_fn)
 
-    if "start_date" in keys:
-        start_date = datetime.strptime(start_date, "%Y%m%d").year
-    if "end_date" in keys:
-        end_date = datetime.strptime(end_date, "%Y%m%d").year
+    start_date = datetime.strptime(start_date, "%Y%m%d")
+    end_date = datetime.strptime(end_date, "%Y%m%d")
 
-    if keys == ["end_date", "start_date"]:
-        output_dir.joinpath(dtr_tmp_fn.format(start_date=start_date, end_date=end_date))
+    if keys == {"end_date", "start_date"}:
         output_fp = output_dir.joinpath(
-            dtr_tmp_fn.format(start_date=start_date, end_date=end_date)
+            dtr_tmp_fn.format(
+                start_date=start_date.strftime("%Y%m%d"),
+                end_date=end_date.strftime("%Y%m%d"),
+            )
         )
     elif keys == ["year"]:
-        start_year = datetime.strptime(start_date, "%Y%m%d").year
-        end_year = datetime.strptime(end_date, "%Y%m%d").year
+        start_year = start_date.year
+        end_year = end_date.year
         if start_year != end_year:
             raise ValueError(
                 f"Start and end dates must be in the same year for template {dtr_tmp_fn}"
@@ -206,4 +204,4 @@ if __name__ == "__main__":
         logging.info(
             f"Writing {year_ds.dtr.name} for {start_date} to {end_date} to {output_fp}"
         )
-        year_ds.to_netcdf(output_fp)
+        # year_ds.to_netcdf(output_fp)
