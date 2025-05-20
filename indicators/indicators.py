@@ -1,7 +1,7 @@
 """Script for computing a set of indicators for a given set of files.
 This means a set of indicators that share the same source variable or variables, and for a given model and scenario.
 Handling of missing data (e.g. a model-scenario-variable combination that does not exist) should be done outside of this script.
-The Daymet data is used for historical values of the warm and cold spell duration indices; default directory is in config.py or can be set with --daymet_dir.
+The historical data is used for the warm and cold spell duration indices; default directory is in config.py or can be set with --hist_dir.
 
 Usage:
     python indicators.py --indicators rx1day --model CESM2 --scenario ssp585 --input_dir /beegfs/CMIP6/kmredilla/cmip6_regridding/regrid --out_dir /beegfs/CMIP6/kmredilla/indicators
@@ -18,6 +18,7 @@ from xclim.core.calendar import percentile_doy
 from xclim.core.units import convert_units_to, to_agg_units
 from xclim.indices.generic import threshold_count
 import datetime
+from dask.distributed import Client
 
 from config import *
 from luts import *
@@ -187,6 +188,7 @@ def wsdi(tasmax, hist_da):
         Warm spell duration index for each year
     """
     tasmax_per = percentile_doy(hist_da, per=90).sel(percentiles=90)
+
     return xci.warm_spell_duration_index(
         tasmax, tasmax_per, window=6, freq="YS"
     ).drop_vars("percentiles")
@@ -311,7 +313,7 @@ def compute_indicator(da, idx, coord_labels, kwargs={}):
     return new_da
 
 
-def run_compute_indicators(fp_di, indicators, coord_labels, daymet_dir, kwargs={}):
+def run_compute_indicators(fp_di, indicators, coord_labels, hist_dir, kwargs={}):
     """Open connections to data files for a particular model variable, scenario, and model and compute all requested indicators.
 
     Args:
@@ -338,18 +340,22 @@ def run_compute_indicators(fp_di, indicators, coord_labels, daymet_dir, kwargs={
                     )
 
         elif idx in ["wsdi"]:
-            daymet_ds = xr.open_mfdataset(
+            # TODO: open 1980-2010 historical dataset
+            hist_ds = xr.open_mfdataset(
                 [
-                    daymet_dir.joinpath(f"daymet_met_{year}.nc")
+                    hist_dir.joinpath(f"historical_met_{year}.nc")
                     for year in range(1980, 2010)
                 ]
             )
-            daymet_ds = daymet_ds.load()
-            # drop underscore from units in tmin/tmax, for xclim to be happy
-            daymet_ds["tmin"].attrs["units"] = "degC"
-            daymet_ds["tmax"].attrs["units"] = "degC"
-            with xr.open_mfdataset(fp_di["tasmax"]) as tasmax_ds:
-                kwargs = {"hist_da": daymet_ds["tmax"]}
+
+            with xr.open_mfdataset(
+                fp_di["tasmax"],
+                chunks="auto",
+                parallel=True,
+                engine="h5netcdf",
+            ) as tasmax_ds:
+
+                kwargs = {"hist_da": hist_ds["tmax"]}
                 out.append(
                     compute_indicator(
                         da=tasmax_ds["tasmax"],
@@ -360,18 +366,16 @@ def run_compute_indicators(fp_di, indicators, coord_labels, daymet_dir, kwargs={
                 )
 
         elif idx in ["csdi"]:
-            daymet_ds = xr.open_mfdataset(
+            # TODO: open 1980-2010 historical dataset
+            hist_ds = xr.open_mfdataset(
                 [
-                    daymet_dir.joinpath(f"daymet_met_{year}.nc")
+                    hist_dir.joinpath(f"historical_met_{year}.nc")
                     for year in range(1980, 2010)
                 ]
             )
-            daymet_ds = daymet_ds.load()
-            # drop underscore from units in tmin/tmax, for xclim to be happy
-            daymet_ds["tmin"].attrs["units"] = "degC"
-            daymet_ds["tmax"].attrs["units"] = "degC"
+
             with xr.open_mfdataset(fp_di["tasmin"]) as tasmin_ds:
-                kwargs = {"hist_da": daymet_ds["tmin"]}
+                kwargs = {"hist_da": hist_ds["tmin"]}
                 out.append(
                     compute_indicator(
                         da=tasmin_ds["tasmin"],
@@ -575,7 +579,7 @@ def find_var_files_and_create_fp_dict(model, scenario, var_ids, input_dir):
     return fp_di
 
 
-def generate_base_kwargs(model, scenario, indicators, var_ids, input_dir, daymet_dir):
+def generate_base_kwargs(model, scenario, indicators, var_ids, input_dir, hist_dir):
     """Function for creating some kwargs for the run_compute_indicators function.
     Contains a validation routine to ensure input files exist, and attempts to copy them from the backup directory if they don't.
 
@@ -585,7 +589,7 @@ def generate_base_kwargs(model, scenario, indicators, var_ids, input_dir, daymet
         indicators (list): indicators to derive using data in provided filepaths
         var_ids (list): list of CMIP6 variable IDs needed for that
         input_dir (pathlib.Path): path to main directory containing regridded files
-        daymet_dir (pathlib.Path): path to main directory containing Daymet files
+        hist_dir (pathlib.Path): path to main directory containing historical files
     """
     check_varid_indicator_compatibility(indicators, var_ids)
 
@@ -599,7 +603,7 @@ def generate_base_kwargs(model, scenario, indicators, var_ids, input_dir, daymet
         fp_di=fp_di,
         indicators=indicators,
         coord_labels=coord_labels,
-        daymet_dir=daymet_dir,
+        hist_dir=hist_dir,
     )
 
     return kwargs
@@ -633,10 +637,10 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
-        "--daymet_dir",
+        "--hist_dir",
         type=str,
-        help="Path to input directory with Daymet files.",
-        default=str(daymet_dir),
+        help="Path to input directory with historical files.",
+        default=str(hist_dir),
     )
     parser.add_argument(
         "--out_dir",
@@ -657,19 +661,22 @@ def parse_args():
         args.model,
         args.scenario,
         Path(args.input_dir),
-        Path(args.daymet_dir),
+        Path(args.hist_dir),
         Path(args.out_dir),
         args.no_clobber,
     )
 
 
 if __name__ == "__main__":
+
+    # client = Client(n_workers=1, threads_per_worker=4, memory_limit="4GB")
+
     (
         indicators,
         model,
         scenario,
         input_dir,
-        daymet_dir,
+        hist_dir,
         out_dir,
         no_clobber,
     ) = parse_args()
@@ -682,7 +689,7 @@ if __name__ == "__main__":
         indicators=indicators,
         var_ids=var_ids,
         input_dir=input_dir,
-        daymet_dir=daymet_dir,
+        hist_dir=hist_dir,
     )
 
     indicators_ds = xr.merge(run_compute_indicators(**kwargs))
