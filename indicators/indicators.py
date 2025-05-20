@@ -177,6 +177,7 @@ def rx5day(pr):
     return out
 
 
+# TODO: make this function not use up all memory!
 def wsdi(tasmax, hist_da):
     """'Warm spell duration index' - Annual count of occurrences of at least 5 consecutive days with daily max T above 90th percentile of historical values for the date
 
@@ -194,6 +195,7 @@ def wsdi(tasmax, hist_da):
     ).drop_vars("percentiles")
 
 
+# TODO: make this function not use up all memory!
 def csdi(tasmin, hist_da):
     """'Cold spell duration index' - Annual count of occurrences of at least 5 consecutive days with daily min T below 10th percentile of historical values for the date
 
@@ -340,7 +342,7 @@ def run_compute_indicators(fp_di, indicators, coord_labels, hist_dir, kwargs={})
                     )
 
         elif idx in ["wsdi"]:
-            # TODO: open 1980-2010 historical dataset
+            # TODO: find a 1980-2010 historical dataset
             hist_ds = xr.open_mfdataset(
                 [
                     hist_dir.joinpath(f"historical_met_{year}.nc")
@@ -366,7 +368,7 @@ def run_compute_indicators(fp_di, indicators, coord_labels, hist_dir, kwargs={})
                 )
 
         elif idx in ["csdi"]:
-            # TODO: open 1980-2010 historical dataset
+            # TODO: find a 1980-2010 historical dataset
             hist_ds = xr.open_mfdataset(
                 [
                     hist_dir.joinpath(f"historical_met_{year}.nc")
@@ -374,7 +376,12 @@ def run_compute_indicators(fp_di, indicators, coord_labels, hist_dir, kwargs={})
                 ]
             )
 
-            with xr.open_mfdataset(fp_di["tasmin"]) as tasmin_ds:
+            with xr.open_mfdataset(
+                fp_di["tasmin"],
+                chunks="auto",
+                parallel=True,
+                engine="h5netcdf",
+            ) as tasmin_ds:
                 kwargs = {"hist_da": hist_ds["tmin"]}
                 out.append(
                     compute_indicator(
