@@ -177,39 +177,37 @@ def rx5day(pr):
     return out
 
 
-# TODO: make this function not use up all memory!
-def wsdi(tasmax, hist_da):
-    """'Warm spell duration index' - Annual count of occurrences of at least 5 consecutive days with daily max T above 90th percentile of historical values for the date
+# def wsdi(tasmax, hist_da):
+#     """'Warm spell duration index' - Annual count of occurrences of at least 5 consecutive days with daily max T above 90th percentile of historical values for the date
 
-    Args:
-        tasmax (xarray.DataArray): daily maximum temperature values
-        hist_da (xarray.DataArray): historical daily maximum temperature values
+#     Args:
+#         tasmax (xarray.DataArray): daily maximum temperature values
+#         hist_da (xarray.DataArray): historical daily maximum temperature values
 
-    Returns:
-        Warm spell duration index for each year
-    """
-    tasmax_per = percentile_doy(hist_da, per=90).sel(percentiles=90)
+#     Returns:
+#         Warm spell duration index for each year
+#     """
+#     tasmax_per = percentile_doy(hist_da, per=90).sel(percentiles=90)
 
-    return xci.warm_spell_duration_index(
-        tasmax, tasmax_per, window=6, freq="YS"
-    ).drop_vars("percentiles")
+#     return xci.warm_spell_duration_index(
+#         tasmax, tasmax_per, window=6, freq="YS"
+#     ).drop_vars("percentiles")
 
 
-# TODO: make this function not use up all memory!
-def csdi(tasmin, hist_da):
-    """'Cold spell duration index' - Annual count of occurrences of at least 5 consecutive days with daily min T below 10th percentile of historical values for the date
+# def csdi(tasmin, hist_da):
+#     """'Cold spell duration index' - Annual count of occurrences of at least 5 consecutive days with daily min T below 10th percentile of historical values for the date
 
-    Args:
-        tasmin (xarray.DataArray): daily minimum temperature values for a year
-        hist_da (xarray.DataArray): historical daily minimum temperature values
+#     Args:
+#         tasmin (xarray.DataArray): daily minimum temperature values for a year
+#         hist_da (xarray.DataArray): historical daily minimum temperature values
 
-    Returns:
-        Cold spell duration index for each year
-    """
-    tasmin_per = percentile_doy(hist_da, per=10).sel(percentiles=10)
-    return xci.cold_spell_duration_index(
-        tasmin, tasmin_per, window=6, freq="YS"
-    ).drop_vars("percentiles")
+#     Returns:
+#         Cold spell duration index for each year
+#     """
+#     tasmin_per = percentile_doy(hist_da, per=10).sel(percentiles=10)
+#     return xci.cold_spell_duration_index(
+#         tasmin, tasmin_per, window=6, freq="YS"
+#     ).drop_vars("percentiles")
 
 
 def r10mm(pr):
@@ -342,7 +340,7 @@ def run_compute_indicators(fp_di, indicators, coord_labels, hist_dir, kwargs={})
                     )
 
         elif idx in ["wsdi"]:
-            # TODO: find a 1980-2010 historical dataset
+            # TODO: find a 1980-2010 daily pan-Arctic historical dataset
             hist_ds = xr.open_mfdataset(
                 [
                     hist_dir.joinpath(f"historical_met_{year}.nc")
@@ -368,7 +366,7 @@ def run_compute_indicators(fp_di, indicators, coord_labels, hist_dir, kwargs={})
                 )
 
         elif idx in ["csdi"]:
-            # TODO: find a 1980-2010 historical dataset
+            # TODO: find a 1980-2010 daily pan-Arctic historical dataset
             hist_ds = xr.open_mfdataset(
                 [
                     hist_dir.joinpath(f"historical_met_{year}.nc")
