@@ -338,7 +338,7 @@ def run_compute_indicators(fp_di, indicators, coord_labels, kwargs={}):
                     )
 
         elif idx in ["wsdi", "csdi"]:
-            # get historical variable files for normal years of the model and open as single dataset
+            # get normal years of the variable data as single dataset
             hist_fp_di = find_var_files_and_create_fp_dict(
                 model, "historical", idx_varid_lu[idx], input_dir
             )
@@ -350,16 +350,19 @@ def run_compute_indicators(fp_di, indicators, coord_labels, kwargs={}):
                     if f"regrid_{year}" in fp.name:
                         hist_fps.append(fp)
 
-            with xr.open_mfdataset(hist_fps) as hist_ds:
+            with xr.open_mfdataset(
+                hist_fps,
+                chunks="auto",
+                parallel=True,
+            ) as hist_ds:
 
-                # open all the the variable data as a single dataset
+                # open all years of the the variable data as a single dataset
                 with xr.open_mfdataset(
                     fp_di[
                         idx_varid_lu[idx][0]
                     ],  # 0 index since there is only one var used in these indicators
                     chunks="auto",
                     parallel=True,
-                    engine="h5netcdf",
                 ) as var_ds:
 
                     if "height" in var_ds.coords:
