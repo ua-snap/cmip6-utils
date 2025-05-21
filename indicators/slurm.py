@@ -41,7 +41,6 @@ def write_sbatch_indicators(
     model,
     scenario,
     input_dir,
-    hist_dir,
     indicators_script,
     indicators_dir,
     no_clobber,
@@ -56,7 +55,6 @@ def write_sbatch_indicators(
         model (str): name of the model to be used
         scenario (str): name of the scenario to be used
         input_dir (pathlib.PosixPath): directory where input data is stored
-        hist_dir (pathlib.PosixPath): directory where historical data is stored
         indicators_script (path_like): path to the script to be called to run the indicators
         indicators_dir (pathlib.PosixPath): directory where output data should be written
         no_clobber (bool): do not overwrite regridded files if they exist in regrid_dir
@@ -75,7 +73,6 @@ def write_sbatch_indicators(
         f"--model {model} "
         f"--scenario {scenario} "
         f"--input_dir {input_dir} "
-        f"--hist_dir {hist_dir} "
         f"--out_dir {indicators_dir} "
     )
     if no_clobber:
@@ -137,12 +134,6 @@ def parse_args():
         default=str(regrid_dir),
     )
     parser.add_argument(
-        "--hist_dir",
-        type=str,
-        help="Path to input directory with historical data",
-        default=str(hist_dir),
-    )
-    parser.add_argument(
         "--working_dir",
         type=str,
         help="Path to directory where all underlying directories and files are written. Must have an up-to-date clone of cmip6-utils repo.",
@@ -161,7 +152,6 @@ def parse_args():
         args.models.split(" "),
         args.scenarios.split(" "),
         Path(args.input_dir),
-        Path(args.hist_dir),
         Path(args.working_dir),
         args.no_clobber,
     )
@@ -173,7 +163,6 @@ if __name__ == "__main__":
         models,
         scenarios,
         input_dir,
-        hist_dir,
         working_dir,
         no_clobber,
     ) = parse_args()
@@ -226,7 +215,6 @@ if __name__ == "__main__":
                     "model": model,
                     "scenario": scenario,
                     "input_dir": input_dir,
-                    "hist_dir": hist_dir,
                     "indicators_script": indicators_script,
                     "indicators_dir": output_dir,
                     "no_clobber": no_clobber,

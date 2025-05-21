@@ -6,7 +6,6 @@ python run_visual_qc.py \
     --repo_indicators_dir /beegfs/CMIP6/kmredilla/cmip6-utils/indicators/ \
     --working_dir /beegfs/CMIP6/kmredilla/cmip6_indicators/ \
     --input_dir /beegfs/CMIP6/arctic-cmip6/CMIP6_common_regrid/ \
-    --hist_dir /beegfs/CMIP6/arctic-cmip6/daymet \
     --slurm_dir /beegfs/CMIP6/kmredilla/cmip6_indicators/slurm
 """
 
@@ -56,12 +55,6 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
-        "--hist_dir",
-        type=str,
-        help="Path to directory containing historical data",
-        required=True,
-    )
-    parser.add_argument(
         "--slurm_dir",
         type=str,
         help="Path to directory where slurm scripts and logs will be written.",
@@ -75,7 +68,6 @@ def parse_args():
         args.repo_indicators_dir,
         args.working_dir,
         args.input_dir,
-        args.hist_dir,
         Path(args.slurm_dir),
     )
 
@@ -86,7 +78,6 @@ def write_sbatch_run_visual_qc(
     repo_indicators_dir,
     working_dir,
     input_dir,
-    hist_dir,
     slurm_dir,
 ):
     """Write the sbatch file for the indicators visual QC."""
@@ -108,7 +99,6 @@ def write_sbatch_run_visual_qc(
         f"papermill {visual_qc_nb} {output_nb} "
         f"-r working_directory '{working_dir}' "
         f"-r input_directory '{input_dir}'\n"
-        f"-r hist_directory '{hist_dir}'\n"
         # conver the output notebook to html
         f"jupyter nbconvert --to html {output_nb}"
     )
@@ -135,7 +125,6 @@ if __name__ == "__main__":
         repo_indicators_dir,
         working_dir,
         input_dir,
-        hist_dir,
         slurm_dir,
     ) = parse_args()
 
@@ -149,7 +138,6 @@ if __name__ == "__main__":
         "repo_indicators_dir": repo_indicators_dir,
         "working_dir": working_dir,
         "input_dir": input_dir,
-        "hist_dir": hist_dir,
         "slurm_dir": slurm_dir,
     }
     sbatch_path = write_sbatch_run_visual_qc(**sbatch_kwargs)

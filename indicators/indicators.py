@@ -1,7 +1,6 @@
 """Script for computing a set of indicators for a given set of files.
 This means a set of indicators that share the same source variable or variables, and for a given model and scenario.
 Handling of missing data (e.g. a model-scenario-variable combination that does not exist) should be done outside of this script.
-The historical data is used for the warm and cold spell duration indices; default directory is in config.py or can be set with --hist_dir.
 
 Usage:
     python indicators.py --indicators rx1day --model CESM2 --scenario ssp585 --input_dir /beegfs/CMIP6/kmredilla/cmip6_regridding/regrid --out_dir /beegfs/CMIP6/kmredilla/indicators
@@ -176,37 +175,37 @@ def rx5day(pr):
     return out
 
 
-# def wsdi(tasmax, hist_da):
-#     """'Warm spell duration index' - Annual count of occurrences of at least 5 consecutive days with daily max T above 90th percentile of historical values for the date
+def wsdi(tasmax, hist_da):
+    """'Warm spell duration index' - Annual count of occurrences of at least 5 consecutive days with daily max T above 90th percentile of historical values for the date
 
-#     Args:
-#         tasmax (xarray.DataArray): daily maximum temperature values
-#         hist_da (xarray.DataArray): historical daily maximum temperature values
+    Args:
+        tasmax (xarray.DataArray): daily maximum temperature values
+        hist_da (xarray.DataArray): historical daily maximum temperature values
 
-#     Returns:
-#         Warm spell duration index for each year
-#     """
-#     tasmax_per = percentile_doy(hist_da, per=90).sel(percentiles=90)
+    Returns:
+        Warm spell duration index for each year
+    """
+    tasmax_per = percentile_doy(hist_da, per=90).sel(percentiles=90)
 
-#     return xci.warm_spell_duration_index(
-#         tasmax, tasmax_per, window=6, freq="YS"
-#     ).drop_vars("percentiles")
+    return xci.warm_spell_duration_index(
+        tasmax, tasmax_per, window=6, freq="YS"
+    ).drop_vars("percentiles")
 
 
-# def csdi(tasmin, hist_da):
-#     """'Cold spell duration index' - Annual count of occurrences of at least 5 consecutive days with daily min T below 10th percentile of historical values for the date
+def csdi(tasmin, hist_da):
+    """'Cold spell duration index' - Annual count of occurrences of at least 5 consecutive days with daily min T below 10th percentile of historical values for the date
 
-#     Args:
-#         tasmin (xarray.DataArray): daily minimum temperature values for a year
-#         hist_da (xarray.DataArray): historical daily minimum temperature values
+    Args:
+        tasmin (xarray.DataArray): daily minimum temperature values for a year
+        hist_da (xarray.DataArray): historical daily minimum temperature values
 
-#     Returns:
-#         Cold spell duration index for each year
-#     """
-#     tasmin_per = percentile_doy(hist_da, per=10).sel(percentiles=10)
-#     return xci.cold_spell_duration_index(
-#         tasmin, tasmin_per, window=6, freq="YS"
-#     ).drop_vars("percentiles")
+    Returns:
+        Cold spell duration index for each year
+    """
+    tasmin_per = percentile_doy(hist_da, per=10).sel(percentiles=10)
+    return xci.cold_spell_duration_index(
+        tasmin, tasmin_per, window=6, freq="YS"
+    ).drop_vars("percentiles")
 
 
 def r10mm(pr):
@@ -312,7 +311,7 @@ def compute_indicator(da, idx, coord_labels, kwargs={}):
     return new_da
 
 
-def run_compute_indicators(fp_di, indicators, coord_labels, hist_dir, kwargs={}):
+def run_compute_indicators(fp_di, indicators, coord_labels, kwargs={}):
     """Open connections to data files for a particular model variable, scenario, and model and compute all requested indicators.
 
     Args:
@@ -338,56 +337,36 @@ def run_compute_indicators(fp_di, indicators, coord_labels, hist_dir, kwargs={})
                         )
                     )
 
-        elif idx in ["wsdi"]:
-            # TODO: find a 1980-2010 daily pan-Arctic historical dataset
-            hist_ds = xr.open_mfdataset(
-                [
-                    hist_dir.joinpath(f"historical_met_{year}.nc")
-                    for year in range(1980, 2010)
-                ]
+        elif idx in ["wsdi", "csdi"]:
+            # get historical variable files for normal years of the model and open as single dataset
+            hist_fp_di = find_var_files_and_create_fp_dict(
+                model, "historical", idx_varid_lu[idx], input_dir
             )
+            hist_fps = []
+            for year in normal_years:
+                for fp in hist_fp_di[idx_varid_lu[idx]]:
+                    if f"regrid_{year}" in fp.name:
+                        hist_fps.append(fp)
 
-            with xr.open_mfdataset(
-                fp_di["tasmax"],
-                chunks="auto",
-                parallel=True,
-                engine="h5netcdf",
-            ) as tasmax_ds:
+            with xr.open_mfdataset(hist_fps) as hist_ds:
 
-                kwargs = {"hist_da": hist_ds["tmax"]}
-                out.append(
-                    compute_indicator(
-                        da=tasmax_ds["tasmax"],
-                        idx=idx,
-                        coord_labels=coord_labels,
-                        kwargs=kwargs,
+                # open all the the variable data as a single dataset
+                with xr.open_mfdataset(
+                    fp_di[idx_varid_lu[idx]],
+                    chunks="auto",
+                    parallel=True,
+                    engine="h5netcdf",
+                ) as var_ds:
+
+                    kwargs = {"hist_da": hist_ds[idx_varid_lu[idx]]}
+                    out.append(
+                        compute_indicator(
+                            da=var_ds[idx_varid_lu[idx]],
+                            idx=idx,
+                            coord_labels=coord_labels,
+                            kwargs=kwargs,
+                        )
                     )
-                )
-
-        elif idx in ["csdi"]:
-            # TODO: find a 1980-2010 daily pan-Arctic historical dataset
-            hist_ds = xr.open_mfdataset(
-                [
-                    hist_dir.joinpath(f"historical_met_{year}.nc")
-                    for year in range(1980, 2010)
-                ]
-            )
-
-            with xr.open_mfdataset(
-                fp_di["tasmin"],
-                chunks="auto",
-                parallel=True,
-                engine="h5netcdf",
-            ) as tasmin_ds:
-                kwargs = {"hist_da": hist_ds["tmin"]}
-                out.append(
-                    compute_indicator(
-                        da=tasmin_ds["tasmin"],
-                        idx=idx,
-                        coord_labels=coord_labels,
-                        kwargs=kwargs,
-                    )
-                )
 
         else:
             # this will assume there is only one input variable
@@ -583,7 +562,7 @@ def find_var_files_and_create_fp_dict(model, scenario, var_ids, input_dir):
     return fp_di
 
 
-def generate_base_kwargs(model, scenario, indicators, var_ids, input_dir, hist_dir):
+def generate_base_kwargs(model, scenario, indicators, var_ids, input_dir):
     """Function for creating some kwargs for the run_compute_indicators function.
     Contains a validation routine to ensure input files exist, and attempts to copy them from the backup directory if they don't.
 
@@ -593,7 +572,6 @@ def generate_base_kwargs(model, scenario, indicators, var_ids, input_dir, hist_d
         indicators (list): indicators to derive using data in provided filepaths
         var_ids (list): list of CMIP6 variable IDs needed for that
         input_dir (pathlib.Path): path to main directory containing regridded files
-        hist_dir (pathlib.Path): path to main directory containing historical files
     """
     check_varid_indicator_compatibility(indicators, var_ids)
 
@@ -607,7 +585,6 @@ def generate_base_kwargs(model, scenario, indicators, var_ids, input_dir, hist_d
         fp_di=fp_di,
         indicators=indicators,
         coord_labels=coord_labels,
-        hist_dir=hist_dir,
     )
 
     return kwargs
@@ -641,12 +618,6 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
-        "--hist_dir",
-        type=str,
-        help="Path to input directory with historical files.",
-        default=str(hist_dir),
-    )
-    parser.add_argument(
         "--out_dir",
         type=str,
         help="Path to directory where indicators data should be written",
@@ -665,7 +636,6 @@ def parse_args():
         args.model,
         args.scenario,
         Path(args.input_dir),
-        Path(args.hist_dir),
         Path(args.out_dir),
         args.no_clobber,
     )
@@ -678,7 +648,6 @@ if __name__ == "__main__":
         model,
         scenario,
         input_dir,
-        hist_dir,
         out_dir,
         no_clobber,
     ) = parse_args()
@@ -691,7 +660,6 @@ if __name__ == "__main__":
         indicators=indicators,
         var_ids=var_ids,
         input_dir=input_dir,
-        hist_dir=hist_dir,
     )
 
     indicators_ds = xr.merge(run_compute_indicators(**kwargs))
