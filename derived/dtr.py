@@ -197,6 +197,7 @@ if __name__ == "__main__":
     dtr_ds.attrs["variable_id"] = "dtr"
 
     # write
+    output_dir.mkdir(parents=True, exist_ok=True)
     for year in np.unique(dtr_ds.time.dt.year):
         year_ds = dtr_ds.sel(time=str(year))
         start_date, end_date = get_start_end_dates(year_ds)
@@ -204,4 +205,4 @@ if __name__ == "__main__":
         logging.info(
             f"Writing {year_ds.dtr.name} for {start_date} to {end_date} to {output_fp}"
         )
-        # year_ds.to_netcdf(output_fp)
+        year_ds.to_netcdf(output_fp)
