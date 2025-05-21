@@ -8,6 +8,6 @@ cmip6_dir = Path("/beegfs/CMIP6/arctic-cmip6/")
 regrid_dir = Path("/beegfs/CMIP6/arctic-cmip6/regrid/")
 
 # TODO: find a 1980-2010 daily pan-Arctic historical dataset
-# hist_dir = Path("/beegfs/CMIP6/arctic-cmip6/")
+hist_dir = Path("/beegfs/CMIP6/arctic-cmip6/daymet")
 
 indicator_tmp_fp = "{indicator}_{model}_{scenario}_indicator.nc"

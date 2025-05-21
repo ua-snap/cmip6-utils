@@ -18,7 +18,6 @@ from xclim.core.calendar import percentile_doy
 from xclim.core.units import convert_units_to, to_agg_units
 from xclim.indices.generic import threshold_count
 import datetime
-from dask.distributed import Client
 
 from config import *
 from luts import *
@@ -673,8 +672,6 @@ def parse_args():
 
 
 if __name__ == "__main__":
-
-    # client = Client(n_workers=1, threads_per_worker=4, memory_limit="4GB")
 
     (
         indicators,
