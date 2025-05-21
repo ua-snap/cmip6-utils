@@ -340,7 +340,7 @@ def run_compute_indicators(fp_di, indicators, coord_labels, kwargs={}):
         elif idx in ["wsdi", "csdi"]:
             # get normal years of the variable data as single dataset
             hist_fp_di = find_var_files_and_create_fp_dict(
-                model, "historical", idx_varid_lu[idx], input_dir
+                coord_labels["model"], "historical", idx_varid_lu[idx], input_dir
             )
             hist_fps = []
             for year in normal_years:
