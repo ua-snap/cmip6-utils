@@ -344,7 +344,9 @@ def run_compute_indicators(fp_di, indicators, coord_labels, kwargs={}):
             )
             hist_fps = []
             for year in normal_years:
-                for fp in hist_fp_di[idx_varid_lu[idx]]:
+                for fp in hist_fp_di[
+                    idx_varid_lu[idx][0]
+                ]:  # 0 index since there is only one var used in these indicators
                     if f"regrid_{year}" in fp.name:
                         hist_fps.append(fp)
 
@@ -352,16 +354,25 @@ def run_compute_indicators(fp_di, indicators, coord_labels, kwargs={}):
 
                 # open all the the variable data as a single dataset
                 with xr.open_mfdataset(
-                    fp_di[idx_varid_lu[idx]],
+                    fp_di[
+                        idx_varid_lu[idx][0]
+                    ],  # 0 index since there is only one var used in these indicators
                     chunks="auto",
                     parallel=True,
                     engine="h5netcdf",
                 ) as var_ds:
 
-                    kwargs = {"hist_da": hist_ds[idx_varid_lu[idx]]}
+                    if "height" in var_ds.coords:
+                        var_ds = var_ds.drop_vars("height")
+
+                    kwargs = {
+                        "hist_da": hist_ds[idx_varid_lu[idx][0]]
+                    }  # 0 index since there is only one var used in these indicators
                     out.append(
                         compute_indicator(
-                            da=var_ds[idx_varid_lu[idx]],
+                            da=var_ds[
+                                idx_varid_lu[idx][0]
+                            ],  # 0 index since there is only one var used in these indicators
                             idx=idx,
                             coord_labels=coord_labels,
                             kwargs=kwargs,
