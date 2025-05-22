@@ -55,10 +55,16 @@ ranges_lu = {
     "su": {"min": 0, "max": 200},
     "dw": {"min": 0, "max": 275},
     "ftc": {"min": 0, "max": 250},
-    "hd": {"min": 0, "max": 45},
-    "cd": {"min": -80, "max": 20},
-    "wsdi": {"min": 0, "max": 10},
-    "csdi": {"min": 0, "max": 10},
+    "hd": {"min": -80, "max": 45},
+    "cd": {"min": -80, "max": 45},
+    "wsdi": {
+        "min": 0,
+        "max": 20,
+    },  # guessing at a reasonable range... 20 heat waves per year?
+    "csdi": {
+        "min": 0,
+        "max": 20,
+    },  # guessing at a reasonable range... 20 cold snaps per year?
 }
 
 
