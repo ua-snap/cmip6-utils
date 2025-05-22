@@ -257,6 +257,6 @@ if __name__ == "__main__":
         "sbatch_head": sbatch_head,
     }
     write_sbatch_diff(**sbatch_diff_kwargs)
-    # job_id = submit_sbatch(sbatch_fp)
+    job_id = submit_sbatch(sbatch_fp)
 
-    # print(job_id)
+    print(job_id)
