@@ -15,6 +15,8 @@ dtr_sbatch_config_tmp_fn = "process_cmip6_dtr_config.txt"
 diff_sbatch_tmp_fn = "process_cmip6_diff_{new_var_id}.slurm"
 diff_sbatch_config_tmp_fn = "process_cmip6_diff_{new_var_id}_config.txt"
 
+era5_diff_sbatch_tmp_fn = "process_era5_diff_{new_var_id}.slurm"
+
 era5_dtr_tmp_fn = "dtr_{year}_era5_4km_3338.nc"
 era5_dtr_sbatch_fn = "process_era5_dtr.slurm"
 
