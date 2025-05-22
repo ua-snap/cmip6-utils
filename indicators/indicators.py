@@ -311,13 +311,14 @@ def compute_indicator(da, idx, coord_labels, kwargs={}):
     return new_da
 
 
-def run_compute_indicators(fp_di, indicators, coord_labels, kwargs={}):
+def run_compute_indicators(fp_di, indicators, coord_labels, input_dir, kwargs={}):
     """Open connections to data files for a particular model variable, scenario, and model and compute all requested indicators.
 
     Args:
         fp_di (path-like): Dict of paths to the files for the variables required for creating the indicators variables in indicators
         indicators (list): indicators to derive using data in provided filepaths
         coord_labels (dict): dict with model and scenario as keys for labeling resulting xarray dataset coordinates.
+        input_dir (path-like): path to main directory containing regridded files
 
     Returns:
         summary_das (tuple): tuple of the form (da, index, scenario, model), where da is a DataArray with dimensions of year (summary year), latitude (lat) and longitude (lon)
@@ -599,6 +600,7 @@ def generate_base_kwargs(model, scenario, indicators, var_ids, input_dir):
         fp_di=fp_di,
         indicators=indicators,
         coord_labels=coord_labels,
+        input_dir=input_dir,
     )
 
     return kwargs
