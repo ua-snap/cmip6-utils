@@ -1,35 +1,78 @@
 # map from model variable names to possible index variable names
 # helps with possible optimization of computing indicators that rely on the same datasets
 varid_idx_lu = {
-    # "pr": ["rx1day", "rx5day", "r10mm", "cwd", "cdd"],
     "pr": ["rx1day", "rx5day", "r10mm", "cwd", "cdd"],
-    # "prsn": ["hsd"],
     "tasmax": ["hd", "su", "wsdi"],
     "tasmin": ["cd", "dw", "csdi"],
-    # "sfcWind": ["wndd"],
 }
 
 # this is the reverse lookup, for mapping indicators to the list of CMIP6 variable ID's that are needed
 idx_varid_lu = {
     "su": ["tasmax"],
-    "su2": ["tasmax"],
     "dw": ["tasmin"],
     "ftc": ["tasmax", "tasmin"],
     "rx1day": ["pr"],
+    "rx5day": ["pr"],
+    "r10mm": ["pr"],
+    "cdd": ["pr"],
+    "cwd": ["pr"],
+    "hd": ["tasmax"],
+    "cd": ["tasmin"],
+    "wsdi": ["tasmax"],
+    "csdi": ["tasmin"],
 }
 
 # units str for each indicator, used for QC
-units_lu = {"rx1day": "mm", "su": "d", "dw": "d", "ftc": "d"}
+units_lu = {
+    "rx1day": "mm",
+    "rx5day": "mm",
+    "r10mm": "d",
+    "cdd": "d",
+    "cwd": "d",
+    "su": "d",
+    "dw": "d",
+    "ftc": "d",
+    "hd": "degrees C",
+    "cd": "degrees C",
+    "wsdi": "count",
+    "csdi": "count",
+}
 
 # ranges dict for each indicator, used for QC
 # range references:
 # rx1day: max recorded in historical record is <400mm(16") https://journals.ametsoc.org/view/journals/bams/95/8/bams-d-13-00027.1.xml#:~:text=The%20National%20Climatic%20Data%20Center,single%20calendar%2Dday%20precipitation%20amount.
+# rx5day: use 5 times the rx1day value
+# r10mm: Yakutat is the rainiest place in AK, and ~7 months of the year (~210 days) would average >10mm of rain per day https://en.wikipedia.org/wiki/Yakutat,_Alaska#Climate
+# hd: highest temp recorded in the Arctic is 38C https://wmo.int/media/news/wmo-recognizes-new-arctic-temperature-record-of-380c#:~:text=A%20temperature%20of%2038%C2%B0,World%20Meteorological%20Organization%20(WMO).
+# cd: lowest temp ever recorded in the northern hemisphere is -69.6C https://wmo.int/asu-map?map=Temp_005#:~:text=Discussion,%25C2%25B0c%2Dgr%E2%80%A6
+
 ranges_lu = {
     "rx1day": {"min": 0, "max": 500},
+    "rx5day": {"min": 0, "max": 2500},
+    "r10mm": {"min": 0, "max": 250},
+    "cdd": {"min": 0, "max": 365},
+    "cwd": {"min": 0, "max": 365},
     "su": {"min": 0, "max": 200},
     "dw": {"min": 0, "max": 275},
     "ftc": {"min": 0, "max": 250},
+    "hd": {"min": -80, "max": 45},
+    "cd": {"min": -80, "max": 45},
+    "wsdi": {
+        "min": 0,
+        "max": 20,
+    },  # guessing at a reasonable range... 20 heat waves per year?
+    "csdi": {
+        "min": 0,
+        "max": 20,
+    },  # guessing at a reasonable range... 20 cold snaps per year?
 }
+
+
+# years used to define the climate normal for indicators that use historical percentiles
+# for CMIP6 data, 2014 is the last full year of the historical period
+start_year = 1985
+end_year = 2014
+normal_years = [str(year) for year in range(start_year, end_year + 1)]
 
 # lookup table of frequencies by variable id
 # copied from the transfers/config.py
@@ -78,6 +121,26 @@ indicator_lu = {
         "long_name": "yearly_maximum_1_day_precipitation",
         "description": "Maxmimum 1-day Precipitation, calculated over a yearly frequency using xclim.indices.max_n_day_precipitation_amount().",
     },
+    "rx5day": {
+        "title": "Yearly Maximum 5-day Precipitation",
+        "long_name": "yearly_maximum_5_day_precipitation",
+        "description": "Maximum 5-day Precipitation, calculated over a yearly frequency using xclim.indices.max_n_day_precipitation_amount().",
+    },
+    "r10mm": {
+        "title": "Yearly Number of Days with Precipitation >= 10mm",
+        "long_name": "yearly_days_with_precipitation_10mm",
+        "description": "Number of Days with Precipitation >= 10mm, calculated over a yearly frequency using xclim.indices._threshold.tg_days_above().",
+    },
+    "cdd": {
+        "title": "Yearly Number of Consecutive Days with Precipitation < 1mm",
+        "long_name": "yearly_consecutive_dry_days",
+        "description": "Number of Consecutive Days with Precipitation < 1mm, calculated over a yearly frequency using xclim.indices.maximum_consecutive_dry_days().",
+    },
+    "cwd": {
+        "title": "Yearly Number of Consecutive Days with Precipitation > 1mm",
+        "long_name": "yearly_consecutive_wet_days",
+        "description": "Number of Consecutive Days with Precipitation > 1mm, calculated over a yearly frequency using xclim.indices.maximum_consecutive_wet_days().",
+    },
     "dw": {
         "title": "Yearly Number of Deep Winter Days (-30C threshold)",
         "long_name": "yearly_deep_winter_days_-30C",
@@ -92,6 +155,26 @@ indicator_lu = {
         "title": "Yearly Number of Freeze-Thaw Cycles",
         "long_name": "yearly_freeze_thaw_cycles",
         "description": "Number of Freeze Thaw Cycles, calculated over a yearly frequency using xclim.indicators.atmos.daily_freezethaw_cycles().",
+    },
+    "hd": {
+        "title": "Hot Day Threshold",
+        "long_name": "hot_day_threshold",
+        "description": "the highest observed daily maximum 2m air temperature such that there are 5 other observations equal to or greater than this value.",
+    },
+    "cd": {
+        "title": "Cold Day Threshold",
+        "long_name": "cold_day_threshold",
+        "description": "the lowest observed daily minimum 2m air temperature such that there are 5 other observations equal to or less than this value.",
+    },
+    "wsdi": {
+        "title": "Warm Spell Duration Index",
+        "long_name": "warm_spell_duration_index",
+        "description": "Annual count of occurrences of at least 5 consecutive days with daily maximum temperature above 90th percentile of historical values for the date, calculated over a yearly frequency using xclim.indices.warm_spell_duration_index().",
+    },
+    "csdi": {
+        "title": "Cold Spell Duration Index",
+        "long_name": "cold_spell_duration_index",
+        "description": "Annual count of occurrences of at least 5 consecutive days with daily minimum temperature below 10th percentile of historical values for the date, calculated over a yearly frequency using xclim.indices.cold_spell_duration_index().",
     },
 }
 

@@ -1,8 +1,8 @@
-"""Script for computing a set of indicators for a given set of files. 
+"""Script for computing a set of indicators for a given set of files.
 This means a set of indicators that share the same source variable or variables, and for a given model and scenario.
 Handling of missing data (e.g. a model-scenario-variable combination that does not exist) should be done outside of this script.
 
-Usage: 
+Usage:
     python indicators.py --indicators rx1day --model CESM2 --scenario ssp585 --input_dir /beegfs/CMIP6/kmredilla/cmip6_regridding/regrid --out_dir /beegfs/CMIP6/kmredilla/indicators
 """
 
@@ -12,15 +12,12 @@ import cftime
 import numpy as np
 import xarray as xr
 import xclim.indices as xci
-import shutil
-import sys
+from xclim.indicators import atmos
+from xclim.core.calendar import percentile_doy
+from xclim.core.units import convert_units_to, to_agg_units
+from xclim.indices.generic import threshold_count
 import datetime
 
-# needed for other indicators but not yet
-# from xclim.core.calendar import percentile_doy
-# from xclim.core.units import convert_units_to, to_agg_units
-# from xclim.indices.generic import threshold_count
-from xclim.indicators import atmos  # , icclim
 from config import *
 from luts import *
 
@@ -105,6 +102,155 @@ def ftc(tasmax, tasmin):
     return ftc
 
 
+def take_sorted(arr, axis, idx):
+    """Helper function for the 'hot day' and 'cold day' indices to slice a numpy array after sorting it. Done in favor of fixed, []-based indexing.
+
+    Args:
+        arr (numpy.ndarray): array
+        axis (int): axis to sort and slice according to
+        idx (int): index value to slice arr at across all other axes
+
+    Returns:
+        array of values at position idx of arr sorted along axis
+    """
+    # np.sort defaults to ascending...
+    return np.take(np.sort(arr, axis), idx, axis)
+
+
+def hd(tasmax):
+    """'Hot Day' - the 6th hottest day of the year
+
+    Args:
+        tasmax (xarray.DataArray): daily maximum temperature values for a year
+
+    Returns:
+        Hot Day values for each year
+    """
+
+    def func(tasmax):
+        # hd is simply "6th hottest" day
+        return tasmax.reduce(take_sorted, dim="time", idx=-6)
+
+    out = tasmax.resample(time="1Y").map(func)
+    out.attrs["units"] = "C"
+    out.attrs["comment"] = "'hot day': 6th hottest day of the year"
+
+    return out
+
+
+def cd(tasmin):
+    """'Cold Day' - the 6th coldest day of the year
+
+    Args:
+        tasmin (xarray.DataArray): daily minimum temperature values
+
+    Returns:
+        Cold Day values for each year
+    """
+
+    def func(tasmin):
+        # cd is simply "6th coldest" day
+        return tasmin.reduce(take_sorted, dim="time", idx=5)
+
+    out = tasmin.resample(time="1Y").map(func)
+    out.attrs["units"] = "C"
+    out.attrs["comment"] = "'cold day': 6th coldest day of the year"
+
+    return out
+
+
+def rx5day(pr):
+    """'Max 5-day precip' - the max 5-day precip value recorded for a year.
+
+    Args:
+        pr (xarray.DataArray): daily total precip values
+
+    Returns:
+        Max 5-day precip for each year
+    """
+    pr = fix_pr_units(pr)
+    out = xci.max_n_day_precipitation_amount(pr, 5, freq="YS")
+    out.attrs["units"] = "mm"
+
+    return out
+
+
+def wsdi(tasmax, hist_da):
+    """'Warm spell duration index' - Annual count of occurrences of at least 5 consecutive days with daily max T above 90th percentile of historical values for the date
+
+    Args:
+        tasmax (xarray.DataArray): daily maximum temperature values
+        hist_da (xarray.DataArray): historical daily maximum temperature values
+
+    Returns:
+        Warm spell duration index for each year
+    """
+    tasmax_per = percentile_doy(hist_da, per=90).sel(percentiles=90)
+
+    return xci.warm_spell_duration_index(
+        tasmax, tasmax_per, window=6, freq="YS"
+    ).drop_vars("percentiles")
+
+
+def csdi(tasmin, hist_da):
+    """'Cold spell duration index' - Annual count of occurrences of at least 5 consecutive days with daily min T below 10th percentile of historical values for the date
+
+    Args:
+        tasmin (xarray.DataArray): daily minimum temperature values for a year
+        hist_da (xarray.DataArray): historical daily minimum temperature values
+
+    Returns:
+        Cold spell duration index for each year
+    """
+    tasmin_per = percentile_doy(hist_da, per=10).sel(percentiles=10)
+    return xci.cold_spell_duration_index(
+        tasmin, tasmin_per, window=6, freq="YS"
+    ).drop_vars("percentiles")
+
+
+def r10mm(pr):
+    """'Heavy precip days' - number of days in a year with over 10mm of precip
+
+    Args:
+        pr (xarray.DataArray): daily total precip values
+
+    Returns:
+        Number of heavy precip days for each year
+    """
+    # code based on xclim.indices._threshold.tg_days_above
+    pr = fix_pr_units(pr)
+    thresh = "10 mm/day"
+    thresh = convert_units_to(thresh, pr)
+    f = threshold_count(pr, ">", thresh, freq="YS")
+    return to_agg_units(f, pr, "count")
+
+
+def cwd(pr):
+    """'Consecutive wet days' - number of the most consecutive days with precip > 1 mm
+
+    Args:
+        pr (xarray.DataArray): daily total precip values
+
+    Returns:
+        Max number of consecutive wet days for each year
+    """
+    pr = fix_pr_units(pr)
+    return xci.maximum_consecutive_wet_days(pr, thresh=f"1 mm/day", freq="YS")
+
+
+def cdd(pr):
+    """'Consecutive dry days' - number of the most consecutive days with precip < 1 mm
+
+    Args:
+        pr (xarray.DataArray): daily total precip values
+
+    Returns:
+        Max number of consecutive dry days for each year
+    """
+    pr = fix_pr_units(pr)
+    return xci.maximum_consecutive_dry_days(pr, thresh=f"1 mm/day", freq="YS")
+
+
 def convert_times_to_years(time_da):
     """Convert the time values in a time axis (DataArray) to integer year values. Handles cftime types and numpy.datetime64."""
     if time_da.values.dtype == np.dtype("<M8[ns]"):
@@ -165,13 +311,14 @@ def compute_indicator(da, idx, coord_labels, kwargs={}):
     return new_da
 
 
-def run_compute_indicators(fp_di, indicators, coord_labels, kwargs={}):
+def run_compute_indicators(fp_di, indicators, coord_labels, input_dir, kwargs={}):
     """Open connections to data files for a particular model variable, scenario, and model and compute all requested indicators.
 
     Args:
         fp_di (path-like): Dict of paths to the files for the variables required for creating the indicators variables in indicators
         indicators (list): indicators to derive using data in provided filepaths
         coord_labels (dict): dict with model and scenario as keys for labeling resulting xarray dataset coordinates.
+        input_dir (path-like): path to main directory containing regridded files
 
     Returns:
         summary_das (tuple): tuple of the form (da, index, scenario, model), where da is a DataArray with dimensions of year (summary year), latitude (lat) and longitude (lon)
@@ -185,6 +332,51 @@ def run_compute_indicators(fp_di, indicators, coord_labels, kwargs={}):
                     out.append(
                         compute_indicator(
                             da=tasmax_ds["tasmax"],
+                            idx=idx,
+                            coord_labels=coord_labels,
+                            kwargs=kwargs,
+                        )
+                    )
+
+        elif idx in ["wsdi", "csdi"]:
+            # get normal years of the variable data as single dataset
+            hist_fp_di = find_var_files_and_create_fp_dict(
+                coord_labels["model"], "historical", idx_varid_lu[idx], input_dir
+            )
+            hist_fps = []
+            for year in normal_years:
+                for fp in hist_fp_di[
+                    idx_varid_lu[idx][0]
+                ]:  # 0 index since there is only one var used in these indicators
+                    if f"regrid_{year}" in fp.name:
+                        hist_fps.append(fp)
+
+            with xr.open_mfdataset(
+                hist_fps,
+                chunks="auto",
+                parallel=True,
+            ) as hist_ds:
+
+                # open all years of the the variable data as a single dataset
+                with xr.open_mfdataset(
+                    fp_di[
+                        idx_varid_lu[idx][0]
+                    ],  # 0 index since there is only one var used in these indicators
+                    chunks="auto",
+                    parallel=True,
+                ) as var_ds:
+
+                    if "height" in var_ds.coords:
+                        var_ds = var_ds.drop_vars("height")
+
+                    kwargs = {
+                        "hist_da": hist_ds[idx_varid_lu[idx][0]]
+                    }  # 0 index since there is only one var used in these indicators
+                    out.append(
+                        compute_indicator(
+                            da=var_ds[
+                                idx_varid_lu[idx][0]
+                            ],  # 0 index since there is only one var used in these indicators
                             idx=idx,
                             coord_labels=coord_labels,
                             kwargs=kwargs,
@@ -408,6 +600,7 @@ def generate_base_kwargs(model, scenario, indicators, var_ids, input_dir):
         fp_di=fp_di,
         indicators=indicators,
         coord_labels=coord_labels,
+        input_dir=input_dir,
     )
 
     return kwargs
@@ -465,6 +658,7 @@ def parse_args():
 
 
 if __name__ == "__main__":
+
     (
         indicators,
         model,
