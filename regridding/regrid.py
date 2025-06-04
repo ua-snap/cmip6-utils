@@ -655,6 +655,7 @@ def fix_time(out_ds, src_ds):
         elif isinstance(out_ds.time.values[0], np.datetime64):
             out_ds = dayfreq_gregorian_to_noleap(out_ds)
         else:
+            ensure_consistent_hour = fix_hour_in_time_dim(out_ds)
             assert isinstance(
                 out_ds.time.values[0], cftime._cftime.DatetimeNoLeap
             ), f"Unrecognized time type: {type(out_ds.time.values[0])}"
