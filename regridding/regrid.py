@@ -353,14 +353,14 @@ def fix_hour_in_time_dim(ds):
         Dataset with time dimension fixed to 12:00:00
     """
     if np.any(ds.time.dt.hour != 12):
-        new_ts = pd.to_datetime(
-            [
-                f"{year}-{month}-{day}T12:00:00"
-                for year, month, day in zip(
-                    ds.time.dt.year, ds.time.dt.month, ds.time.dt.day
-                )
-            ]
-        )
+        new_ts = [
+            cftime.DatetimeNoLeap(year, month, day, 12, 0, 0)
+            for year, month, day in zip(
+                ds.time.dt.year.values,
+                ds.time.dt.month.values,
+                ds.time.dt.day.values,
+            )
+        ]
         ds = ds.assign_coords(time=new_ts)
 
     return ds
@@ -655,7 +655,8 @@ def fix_time(out_ds, src_ds):
         elif isinstance(out_ds.time.values[0], np.datetime64):
             out_ds = dayfreq_gregorian_to_noleap(out_ds)
         else:
-            ensure_consistent_hour = fix_hour_in_time_dim(out_ds)
+            # still need to make sure hour is consistent
+            out_ds = fix_hour_in_time_dim(out_ds)
             assert isinstance(
                 out_ds.time.values[0], cftime._cftime.DatetimeNoLeap
             ), f"Unrecognized time type: {type(out_ds.time.values[0])}"
