@@ -379,8 +379,8 @@ class SanityChecker:
                 continue
 
             tasmin_store_info = tasmin_lookup[key]
-            tasmax_to_open.append(tasmax_store_info["filename"])
-            tasmin_to_open.append(tasmin_store_info["filename"])
+            tasmax_to_open.append(tasmax_store_info)
+            tasmin_to_open.append(tasmin_store_info)
 
         # Load both datasets
         ds_min = self.open_mfdataset(tasmin_to_open)
