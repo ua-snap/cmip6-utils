@@ -98,8 +98,9 @@ class SanityChecker:
 
     def __init__(self, data_folder):
         self.data_folder = Path(data_folder)
-        self.zarr_files = self._discover_zarr_files()
+        self.zarr_stores = self._discover_zarr_stores()
 
+        # client = Client(n_workers=4, threads_per_worker=6)
         self.cluster = SLURMCluster(
             cores=28,
             processes=14,
@@ -114,8 +115,6 @@ class SanityChecker:
             interface="ib0",
         )
         self.client = Client(self.cluster)
-
-        # client = Client(n_workers=4, threads_per_worker=6)
         print(f"Using Dask client: {self.client}")
 
     def close_cluster(self):
@@ -125,7 +124,7 @@ class SanityChecker:
         if self.cluster:
             self.cluster.close()
 
-    def _discover_zarr_files(self):
+    def _discover_zarr_stores(self):
         """Discover all zarr files in the data folder."""
         zarr_pattern = "*_*_*.zarr"
         files = list(self.data_folder.glob(zarr_pattern))
@@ -191,7 +190,10 @@ class SanityChecker:
 
         try:
             ds = xr.open_mfdataset(
-                paths, combine="by_coords", preprocess=pull_dims_from_source
+                paths,
+                combine="by_coords",
+                preprocess=pull_dims_from_source,
+                coords="minimal",
             )
         except Exception as e:
             pytest.fail(
@@ -236,12 +238,12 @@ class SanityChecker:
 
     def test_pr_bounds(self):
         """Test that precipitation data is within valid bounds (0 to 1650 mm/d)."""
-        if "pr" not in self.zarr_files:
+        if "pr" not in self.zarr_stores:
             pytest.skip("No precipitation (pr) files found")
 
         var_id = "pr"  # Precipitation variable ID
-        # for file_info in self.zarr_files[var_id]
-        pr_files = self.zarr_files[var_id]
+        # for file_info in self.zarr_stores[var_id]
+        pr_files = self.zarr_stores[var_id]
 
         # Print table of presence/absence of zarr stores (model x scenario)
         self.print_zarr_stores_table(pr_files)
@@ -262,17 +264,18 @@ class SanityChecker:
         # Check for values below 0
         negative_pr_perc = percentage_condition(pr_da, "< 0")
 
-        if any(negative_pr_perc) > 0:
+        if negative_pr_perc.any() > 0:
             pytest.fail(
-                f"Precipitation below 0 mm/d found: " f"{negative_pr_perc.to_pandas()}"
+                f"Precipitation below 0 mm/d found: \n"
+                f"{negative_pr_perc.to_pandas()}"
             )
 
         extreme_pr_perc = percentage_condition(pr_da, "> 1650")
 
         # Check for values above 1650 mm/d
-        if any(extreme_pr_perc) > 0:
+        if extreme_pr_perc.any() > 0:
             pytest.fail(
-                f"Precipitation above 1650 mm/d found: "
+                f"Precipitation above 1650 mm/d found: \n"
                 f"{extreme_pr_perc.to_pandas()}"
             )
 
@@ -282,156 +285,152 @@ class SanityChecker:
 
     def test_tasmax_bounds(self):
         """Test that maximum temperature data is below 40°C."""
-        if "tasmax" not in self.zarr_files:
+        if "tasmax" not in self.zarr_stores:
             pytest.skip("No maximum temperature (tasmax) files found")
 
         var_id = "tasmax"  # Maximum temperature variable ID
-        for file_info in self.zarr_files[var_id]:
-            ds = self.load_dataset(file_info, var_id)
+        tasmax_files = self.zarr_stores[var_id]
+        # for file_info in self.zarr_stores[var_id]:
+        self.print_zarr_stores_table(tasmax_files)
 
-            # Expect exactly 'tasmax' variable
-            if var_id not in ds.data_vars:
-                raise ValueError(
-                    f"Expected variable 'tasmax' not found in {file_info['filename']}. "
-                    f"Available variables: {list(ds.data_vars.keys())}"
-                )
+        self.cluster.scale(n=140)
+        ds = self.open_mfdataset(tasmax_files)
 
-            tasmax_da = ds[var_id]
-            tasmax_da = convert_units_to(tasmax_da, "degC")
-
-            max_val = tasmax_da.max().values
-            if max_val > 40:
-                pytest.fail(
-                    f"Maximum temperature above 40°C found in {file_info['filename']}: "
-                    f"maximum value = {max_val:.2f} °C"
-                )
-
-            print(
-                f"✓ TASMAX bounds check passed for {file_info['filename']} "
-                f"(max: {max_val:.2f} °C)"
+        # Expect exactly 'tasmax' variable
+        if var_id not in ds.data_vars:
+            raise ValueError(
+                f"Expected variable 'tasmax' not found. "
+                f"Available variables: {list(ds.data_vars.keys())}"
             )
+
+        tasmax_da = ds[var_id]
+        tasmax_da = convert_units_to(tasmax_da, "degC")
+
+        high_tasmax_perc = percentage_condition(tasmax_da, "> 40")
+        if high_tasmax_perc.any() > 0:
+            pytest.fail(
+                f"Maximum temperature above 40°C found: \n"
+                f"{high_tasmax_perc.to_pandas()}"
+            )
+
+        self.cluster.scale(n=0)
+
+        print(f"✓ TASMAX bounds check passed. ")
 
     def test_tasmin_bounds(self):
         """Test that minimum temperature data is above -70°C."""
-        if "tasmin" not in self.zarr_files:
+        if "tasmin" not in self.zarr_stores:
             pytest.skip("No minimum temperature (tasmin) files found")
 
         var_id = "tasmin"  # Minimum temperature variable ID
-        for file_info in self.zarr_files[var_id]:
-            ds = self.load_dataset(file_info, var_id)
+        tasmin_files = self.zarr_stores[var_id]
+        # for file_info in self.zarr_stores[var_id]:
+        self.print_zarr_stores_table(tasmin_files)
 
-            # Expect exactly 'tasmin' variable
-            if var_id not in ds.data_vars:
-                raise ValueError(
-                    f"Expected variable 'tasmin' not found in {file_info['filename']}. "
-                    f"Available variables: {list(ds.data_vars.keys())}"
-                )
+        # for file_info in self.zarr_stores[var_id]:
+        self.cluster.scale(n=140)
+        ds = self.open_mfdataset(tasmin_files)
 
-            tasmin_da = ds[var_id]
-            tasmin_da = convert_units_to(tasmin_da, "degC")
-
-            min_val = tasmin_da.min().values
-            if min_val < -70:
-                pytest.fail(
-                    f"Minimum temperature below -70°C found in {file_info['filename']}: "
-                    f"minimum value = {min_val:.2f} °C"
-                )
-
-            print(
-                f"✓ TASMIN bounds check passed for {file_info['filename']} "
-                f"(min: {min_val:.2f} °C)"
+        # Expect exactly 'tasmin' variable
+        if var_id not in ds.data_vars:
+            raise ValueError(
+                f"Expected variable 'tasmin' not found. "
+                f"Available variables: {list(ds.data_vars.keys())}"
             )
+
+        tasmin_da = ds[var_id]
+        tasmin_da = convert_units_to(tasmin_da, "degC")
+
+        low_tasmin_perc = percentage_condition(tasmin_da, "< -70")
+        if low_tasmin_perc.any() > 0:
+            pytest.fail(
+                f"Minimum temperature below -70°C found: \n"
+                f"{low_tasmin_perc.to_pandas()}"
+            )
+
+        self.cluster.scale(n=0)
+
+        print(f"✓ TASMIN bounds check passed.")
 
     def test_tasmin_tasmax_consistency(self):
         """Test that tasmin <= tasmax for corresponding model/scenario pairs."""
-        if "tasmin" not in self.zarr_files or "tasmax" not in self.zarr_files:
+        if "tasmin" not in self.zarr_stores or "tasmax" not in self.zarr_stores:
             pytest.skip("Both tasmin and tasmax files required for consistency check")
+
+        tasmin_stores = self.zarr_stores["tasmin"]
 
         # Create lookup for tasmin files
         tasmin_lookup = {}
-        for file_info in self.zarr_files["tasmin"]:
+        for file_info in tasmin_stores:
             key = (file_info["model"], file_info["scenario"])
             tasmin_lookup[key] = file_info
 
         # Check each tasmax file against corresponding tasmin
-        for tasmax_info in self.zarr_files["tasmax"]:
-            key = (tasmax_info["model"], tasmax_info["scenario"])
+        tasmax_stores = self.zarr_stores["tasmax"]
+        tasmax_to_open = []
+        tasmin_to_open = []
+        for tasmax_store_info in tasmax_stores:
+            key = (tasmax_store_info["model"], tasmax_store_info["scenario"])
 
             if key not in tasmin_lookup:
-                print(f"⚠ No corresponding tasmin file for {tasmax_info['filename']}")
+                print(
+                    f"⚠ No corresponding tasmin file for {tasmax_store_info['filename']}"
+                )
                 continue
 
-            tasmin_info = tasmin_lookup[key]
+            tasmin_store_info = tasmin_lookup[key]
+            tasmax_to_open.append(tasmax_store_info["filename"])
+            tasmin_to_open.append(tasmin_store_info["filename"])
 
-            # Load both datasets
-            ds_min = self.load_dataset(tasmin_info)
-            ds_max = self.load_dataset(tasmax_info)
+        # Load both datasets
+        ds_min = self.open_mfdataset(tasmin_to_open)
+        ds_max = self.open_mfdataset(tasmax_to_open)
 
-            # Expect exactly 'tasmin' and 'tasmax' variables
-            if "tasmin" not in ds_min.data_vars:
-                raise ValueError(
-                    f"Expected variable 'tasmin' not found in {tasmin_info['filename']}. "
-                    f"Available variables: {list(ds_min.data_vars.keys())}"
-                )
+        # Expect exactly 'tasmin' and 'tasmax' variables
+        if "tasmin" not in ds_min.data_vars:
+            raise ValueError(
+                f"Expected variable 'tasmin' not found. "
+                f"Available variables: {list(ds_min.data_vars.keys())}"
+            )
 
-            if "tasmax" not in ds_max.data_vars:
-                raise ValueError(
-                    f"Expected variable 'tasmax' not found in {tasmax_info['filename']}. "
-                    f"Available variables: {list(ds_max.data_vars.keys())}"
-                )
+        if "tasmax" not in ds_max.data_vars:
+            raise ValueError(
+                f"Expected variable 'tasmax' not found. "
+                f"Available variables: {list(ds_max.data_vars.keys())}"
+            )
 
-            tasmin_data = ds_min["tasmin"]
-            tasmax_data = ds_max["tasmax"]
+        tasmin_data = ds_min["tasmin"]
+        tasmax_data = ds_max["tasmax"]
 
-            # Ensure both datasets have the same dimensions and coordinates
-            try:
-                # Align the datasets (in case of slight coordinate differences)
-                tasmin_aligned, tasmax_aligned = xr.align(
-                    tasmin_data, tasmax_data, join="inner"
-                )
+        # Align the datasets (in case of slight coordinate differences)
+        tasmin_aligned, tasmax_aligned = xr.align(
+            tasmin_data, tasmax_data, join="inner"
+        )
 
-                # Check for tasmin > tasmax
-                violation_mask = tasmin_aligned > tasmax_aligned
+        # Check for tasmin > tasmax
+        violation_mask = tasmin_aligned > tasmax_aligned
 
-                if violation_mask.any():
-                    n_violations = violation_mask.sum().values
-                    total_points = violation_mask.size
+        violation_perc = percentage_condition(violation_mask, "== True")
+        if violation_perc.any() > 0:
+            pytest.fail(
+                f"Instances where tasmin > tasmax found: \n"
+                f"{violation_perc.to_pandas()}"
+            )
 
-                    # Get some example violations
-                    violation_indices = np.where(violation_mask.values)
-                    if len(violation_indices[0]) > 0:
-                        # Get first violation for reporting
-                        idx = tuple(
-                            violation_indices[i][0]
-                            for i in range(len(violation_indices))
-                        )
-                        tasmin_val = float(tasmin_aligned.values[idx])
-                        tasmax_val = float(tasmax_aligned.values[idx])
+        self.cluster.scale(n=0)
 
-                        pytest.fail(
-                            f"Found {n_violations} points where tasmin > tasmax in "
-                            f"{tasmin_info['model']}_{tasmin_info['scenario']} "
-                            f"({n_violations}/{total_points} = "
-                            f"{100*n_violations/total_points:.3f}% of points). "
-                            f"Example: tasmin={tasmin_val:.2f}, tasmax={tasmax_val:.2f}"
-                        )
+        print(f"✓ Temperature consistency check passed.")
 
-                print(
-                    f"✓ Temperature consistency check passed for "
-                    f"{tasmin_info['model']}_{tasmin_info['scenario']}"
-                )
-
-            except Exception as e:
-                pytest.fail(
-                    f"Error comparing tasmin/tasmax for "
-                    f"{tasmin_info['model']}_{tasmin_info['scenario']}: {str(e)}"
-                )
+        # except Exception as e:
+        #     pytest.fail(
+        #         f"Error comparing tasmin/tasmax for "
+        #         f"{tasmin_info['model']}_{tasmin_info['scenario']}: {str(e)}"
+        #     )
 
 
-def test_precipitation_bounds(sanity_checker):
-    """Test precipitation data bounds."""
-    sanity_checker.test_pr_bounds()
-    sanity_checker.close_cluster()
+# def test_precipitation_bounds(sanity_checker):
+#     """Test precipitation data bounds."""
+#     sanity_checker.test_pr_bounds()
 
 
 # def test_maximum_temperature_bounds(sanity_checker):
@@ -444,9 +443,9 @@ def test_precipitation_bounds(sanity_checker):
 #     sanity_checker.test_tasmin_bounds()
 
 
-# def test_temperature_consistency(sanity_checker):
-#     """Test temperature consistency between tasmin and tasmax."""
-#     sanity_checker.test_tasmin_tasmax_consistency()
+def test_temperature_consistency(sanity_checker):
+    """Test temperature consistency between tasmin and tasmax."""
+    sanity_checker.test_tasmin_tasmax_consistency()
 
 
 if __name__ == "__main__":
@@ -464,31 +463,52 @@ if __name__ == "__main__":
     print(f"Testing climate data in: {data_folder}")
     tester = SanityChecker(data_folder)
 
-    print(f"Found zarr files: {list(tester.zarr_files.keys())}")
-    for var, files in tester.zarr_files.items():
+    print(f"Found zarr files: {list(tester.zarr_stores.keys())}")
+    for var, files in tester.zarr_stores.items():
         print(f"  {var}: {len(files)} files")
 
+    cluster = SLURMCluster(
+        cores=28,
+        processes=14,
+        # n_workers=14,
+        memory="128GB",
+        # queue="debug",
+        queue="t2small",
+        # walltime="01:00:00",
+        walltime="12:00:00",
+        log_directory="/beegfs/CMIP6/kmredilla/tmp/dask_jobqueue_logs",
+        account="cmip6",
+        interface="ib0",
+    )
+    client = Client(cluster)
+    cluster.scale(n=140)  # Scale up the cluster to 140 workers
+
     # Run tests
-    try:
-        print("\n" + "=" * 50)
-        print("Running precipitation bounds test...")
-        tester.test_pr_bounds()
+    tester.test_pr_bounds()
+    # try:
+    #     print("\n" + "=" * 50)
+    #     print("Running precipitation bounds test...")
+    #     tester.test_pr_bounds()
 
-        # print("\n" + "=" * 50)
-        # print("Running maximum temperature bounds test...")
-        # tester.test_tasmax_bounds()
+    #     # print("\n" + "=" * 50)
+    #     # print("Running maximum temperature bounds test...")
+    #     # tester.test_tasmax_bounds()
 
-        # print("\n" + "=" * 50)
-        # print("Running minimum temperature bounds test...")
-        # tester.test_tasmin_bounds()
+    #     # print("\n" + "=" * 50)
+    #     # print("Running minimum temperature bounds test...")
+    #     # tester.test_tasmin_bounds()
 
-        # print("\n" + "=" * 50)
-        # print("Running temperature consistency test...")
-        # tester.test_tasmin_tasmax_consistency()
+    #     # print("\n" + "=" * 50)
+    #     # print("Running temperature consistency test...")
+    #     # tester.test_tasmin_tasmax_consistency()
 
-        print("\n" + "=" * 50)
-        print("All tests completed successfully! ✓")
+    #     print("\n" + "=" * 50)
+    #     print("All tests completed successfully! ✓")
 
-    except Exception as e:
-        print(f"\nTest failed: {str(e)}")
-        sys.exit(1)
+    # except Exception as e:
+    #     print(f"\nTest failed: {str(e)}")
+    #     sys.exit(1)
+
+    # finally:
+    #     cluster.close()
+    #     client.close()

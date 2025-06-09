@@ -1,7 +1,7 @@
 # Pytest fixtures and test functions
 
 import pytest
-from bias_adjust.tests.sanity_checks import SanityChecker
+from sanity_checks import SanityChecker
 
 
 @pytest.fixture(scope="session")
