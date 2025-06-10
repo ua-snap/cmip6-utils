@@ -383,6 +383,7 @@ class SanityChecker:
             tasmin_to_open.append(tasmin_store_info)
 
         # Load both datasets
+        self.cluster.scale(n=140)
         ds_min = self.open_mfdataset(tasmin_to_open)
         ds_max = self.open_mfdataset(tasmax_to_open)
 
