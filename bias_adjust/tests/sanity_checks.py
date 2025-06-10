@@ -411,7 +411,7 @@ class SanityChecker:
         # Check for tasmin > tasmax
         violation_mask = tasmin_aligned > tasmax_aligned
 
-        violation_perc = percentage_condition(violation_mask, "== True")
+        violation_perc = percentage_condition(violation_mask.astype(float), "== 1")
         if violation_perc.any() > 0:
             pytest.fail(
                 f"Instances where tasmin > tasmax found: \n"
