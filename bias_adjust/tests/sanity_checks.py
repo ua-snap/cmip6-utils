@@ -1,9 +1,24 @@
+"""This test script performs sanity checks on downscaled data stored in Zarr format.
+It is designed to be run on the whole corpus of downscaled data
+It checks for valid bounds on precipitation, maximum temperature, and minimum temperature,
+as well as consistency between tasmin and tasmax variables.
+I'm not sure this is the best use case for pytest, just experimenting with it, and it works.
+It uses dask via dask-jobqueue to create a cluster from multiple slurm nodes.
+This is based on the "health checks" of Lavoie et al 2024 https://doi.org/10.1038/s41597-023-02855-z
+
+Example usage:
+    pytest -s sanity_checks.py --data-folder /center1/CMIP6/kmredilla/cmip6_4km_downscaling/adjusted
+    # -s flag prints output in real time
+
+Notes:
+    As should be noted elsewhere, the location of the data should probably be on
+    /center or some other filesystem for consistent dask processing.
+"""
+
 import operator
 import re
-
 import pytest
 import xarray as xr
-import numpy as np
 from distributed import Client
 from dask_jobqueue import SLURMCluster
 from pathlib import Path
@@ -11,13 +26,19 @@ from xclim.core.units import convert_units_to
 from collections import defaultdict
 
 
-def pull_dims_from_source(ds):
+def pull_dims_from_source(ds: xr.Dataset) -> xr.Dataset:
     """Pull dimensions from the source attribute of the dataset.
-    If dataset variable id does not match the filename variable id, rename it.
-    (This allows for datasets with generic variable names like "data" to be used,
-    as long as their filepath starts with the variable id.)
-    """
 
+    If dataset variable id does not match the filename variable id, rename it.
+    This allows for datasets with generic variable names like "data" to be used,
+    as long as their filepath starts with the variable id.
+
+    Args:
+        ds (xr.Dataset): The input xarray Dataset.
+
+    Returns:
+        xr.Dataset: The dataset with added 'model' and 'scenario' dimensions.
+    """
     var_id = list(ds.data_vars)[0]  # assume first var is the one we want
     src_fp = Path(ds.encoding["source"])
     fn = src_fp.name
@@ -47,9 +68,16 @@ def pull_dims_from_source(ds):
     return ds
 
 
-def percentage_condition(da, condition):
-    """Calculate the percentage of pixels over time and x/y axes that meet a given condition."""
+def percentage_condition(da: xr.DataArray, condition: str) -> xr.DataArray:
+    """Calculate the percentage of pixels over time and x/y axes that meet a given condition.
 
+    Args:
+        da (xr.DataArray): The data array to check.
+        condition (str): The condition as a string (e.g., '> 24', '<= 0').
+
+    Returns:
+        xr.DataArray: The percentage of pixels meeting the condition for each model and scenario.
+    """
     # Parse the condition string
     match = re.match(r"([<>!=]=?|==)\s*(.*)", condition.strip())
     if not match:
@@ -78,7 +106,6 @@ def percentage_condition(da, condition):
     )
 
     # Compute percentage for each model and scenario
-    # Compute total count excluding NaNs for each model and scenario
     percentage_condition = condition_count / total_count * 100
 
     # Create a mask indicating where all values are NaN for each model and scenario.
@@ -94,22 +121,23 @@ def percentage_condition(da, condition):
 
 
 class SanityChecker:
-    """Test suite for adjusted climate model data stored in zarr format."""
+    """Test suite for downscaled CMIP6 data stored in zarr format."""
 
-    def __init__(self, data_folder):
+    def __init__(self, data_folder: str) -> None:
+        """Initialize the SanityChecker.
+
+        Args:
+            data_folder (str): Path to the folder containing zarr files.
+        """
         self.data_folder = Path(data_folder)
         self.zarr_stores = self._discover_zarr_stores()
 
-        # client = Client(n_workers=4, threads_per_worker=6)
         self.cluster = SLURMCluster(
             cores=28,
             processes=14,
-            # n_workers=14,
             memory="128GB",
-            # queue="debug",
             queue="t2small",
-            # walltime="01:00:00",
-            walltime="12:00:00",
+            walltime="02:00:00",
             log_directory="/beegfs/CMIP6/kmredilla/tmp/dask_jobqueue_logs",
             account="cmip6",
             interface="ib0",
@@ -117,15 +145,19 @@ class SanityChecker:
         self.client = Client(self.cluster)
         print(f"Using Dask client: {self.client}")
 
-    def close_cluster(self):
+    def close_cluster(self) -> None:
         """Close the Dask cluster."""
         if self.client:
             self.client.close()
         if self.cluster:
             self.cluster.close()
 
-    def _discover_zarr_stores(self):
-        """Discover all zarr files in the data folder."""
+    def _discover_zarr_stores(self) -> dict:
+        """Discover all zarr files in the data folder.
+
+        Returns:
+            dict: Dictionary mapping variable names to lists of file info dicts.
+        """
         zarr_pattern = "*_*_*.zarr"
         files = list(self.data_folder.glob(zarr_pattern))
 
@@ -154,8 +186,33 @@ class SanityChecker:
 
         return zarr_info
 
-    def validate_attrs(self, ds, model, scenario, var_id):
-        """Validate dataset attributes."""
+    def _any_skipna(self, da: xr.DataArray) -> bool:
+        """Check if any value in the DataArray is True, ignoring NaNs.
+        Because the skipna=True is not available in xarray.DataArray.any(),
+        this is simply a wrapper to set NaNs to False before calling .any().
+
+        Args:
+            da (xr.DataArray): The DataArray to check.
+
+        Returns:
+            bool: True if any value is not NaN, False otherwise.
+        """
+        return da.astype(bool).where(da.notnull(), False).any().values
+
+    def validate_attrs(
+        self, ds: xr.Dataset, model: str, scenario: str, var_id: str
+    ) -> None:
+        """Validate dataset attributes.
+
+        Args:
+            ds (xr.Dataset): The dataset to validate.
+            model (str): Expected model name.
+            scenario (str): Expected scenario name.
+            var_id (str): Expected variable id.
+
+        Raises:
+            ValueError: If any attribute does not match the expected value.
+        """
         if "source_id" not in ds.attrs or ds.attrs["source_id"] != model:
             raise ValueError(
                 f"Model attribute mismatch: expected '{model}', found '{ds.attrs.get('source_id', 'missing')}'"
@@ -169,8 +226,19 @@ class SanityChecker:
                 f"Variable attribute mismatch: expected '{var_id}', found '{ds.attrs.get('variable_id', 'missing')}'"
             )
 
-    def load_dataset(self, file_info, var_id=None):
-        """Load a zarr dataset with error handling."""
+    def load_dataset(self, file_info: dict, var_id: str = None) -> xr.Dataset:
+        """Load a zarr dataset with error handling.
+
+        Args:
+            file_info (dict): Dictionary with file information.
+            var_id (str, optional): Variable id to validate. Defaults to None.
+
+        Returns:
+            xr.Dataset: Loaded xarray dataset.
+
+        Raises:
+            pytest.fail: If loading fails.
+        """
         file_path = file_info["path"]
         try:
             ds = xr.open_zarr(file_path)
@@ -184,8 +252,18 @@ class SanityChecker:
 
         return ds
 
-    def open_mfdataset(self, files):
-        """Open multiple zarr files as a single dataset."""
+    def open_mfdataset(self, files: list) -> xr.Dataset:
+        """Open multiple zarr files as a single dataset.
+
+        Args:
+            files (list): List of file info dictionaries.
+
+        Returns:
+            xr.Dataset: Combined xarray dataset.
+
+        Raises:
+            pytest.fail: If opening fails.
+        """
         paths = [file_info["path"] for file_info in files]
 
         try:
@@ -202,8 +280,12 @@ class SanityChecker:
 
         return ds
 
-    def print_zarr_stores_table(self, variable_files):
+    def print_zarr_stores_table(self, variable_files: list) -> None:
+        """Print a table showing presence/absence of zarr stores by model and scenario.
 
+        Args:
+            variable_files (list): List of file info dictionaries for a variable.
+        """
         models = set()
         scenarios = set()
         presence = defaultdict(dict)
@@ -236,13 +318,17 @@ class SanityChecker:
         for row in rows:
             print(fmt.format(*row))
 
-    def test_pr_bounds(self):
-        """Test that precipitation data is within valid bounds (0 to 1650 mm/d)."""
+    def test_pr_bounds(self) -> None:
+        """Test that precipitation data is within valid bounds (0 to 1650 mm/d).
+
+        Raises:
+            pytest.skip: If no precipitation files found.
+            pytest.fail: If data is out of bounds.
+        """
         if "pr" not in self.zarr_stores:
             pytest.skip("No precipitation (pr) files found")
 
         var_id = "pr"  # Precipitation variable ID
-        # for file_info in self.zarr_stores[var_id]
         pr_files = self.zarr_stores[var_id]
 
         # Print table of presence/absence of zarr stores (model x scenario)
@@ -264,7 +350,7 @@ class SanityChecker:
         # Check for values below 0
         negative_pr_perc = percentage_condition(pr_da, "< 0")
 
-        if negative_pr_perc.any() > 0:
+        if self._any_skipna(negative_pr_perc):
             pytest.fail(
                 f"Precipitation below 0 mm/d found: \n"
                 f"{negative_pr_perc.to_pandas()}"
@@ -273,7 +359,7 @@ class SanityChecker:
         extreme_pr_perc = percentage_condition(pr_da, "> 1650")
 
         # Check for values above 1650 mm/d
-        if extreme_pr_perc.any() > 0:
+        if self._any_skipna(extreme_pr_perc):
             pytest.fail(
                 f"Precipitation above 1650 mm/d found: \n"
                 f"{extreme_pr_perc.to_pandas()}"
@@ -283,14 +369,18 @@ class SanityChecker:
 
         print(f"✓ PR bounds check passed")
 
-    def test_tasmax_bounds(self):
-        """Test that maximum temperature data is below 40°C."""
+    def test_tasmax_bounds(self) -> None:
+        """Test that maximum temperature data is below 40°C.
+
+        Raises:
+            pytest.skip: If no tasmax files found.
+            pytest.fail: If data is out of bounds.
+        """
         if "tasmax" not in self.zarr_stores:
             pytest.skip("No maximum temperature (tasmax) files found")
 
         var_id = "tasmax"  # Maximum temperature variable ID
         tasmax_files = self.zarr_stores[var_id]
-        # for file_info in self.zarr_stores[var_id]:
         self.print_zarr_stores_table(tasmax_files)
 
         self.cluster.scale(n=140)
@@ -306,8 +396,9 @@ class SanityChecker:
         tasmax_da = ds[var_id]
         tasmax_da = convert_units_to(tasmax_da, "degC")
 
+        # for reference, maximum temperature of WRF downscaled 4km ERA5 is 34.4 °C
         high_tasmax_perc = percentage_condition(tasmax_da, "> 40")
-        if high_tasmax_perc.any() > 0:
+        if self._any_skipna(high_tasmax_perc):
             pytest.fail(
                 f"Maximum temperature above 40°C found: \n"
                 f"{high_tasmax_perc.to_pandas()}"
@@ -317,17 +408,20 @@ class SanityChecker:
 
         print(f"✓ TASMAX bounds check passed. ")
 
-    def test_tasmin_bounds(self):
-        """Test that minimum temperature data is above -70°C."""
+    def test_tasmin_bounds(self) -> None:
+        """Test that minimum temperature data is above -70°C.
+
+        Raises:
+            pytest.skip: If no tasmin files found.
+            pytest.fail: If data is out of bounds.
+        """
         if "tasmin" not in self.zarr_stores:
             pytest.skip("No minimum temperature (tasmin) files found")
 
         var_id = "tasmin"  # Minimum temperature variable ID
         tasmin_files = self.zarr_stores[var_id]
-        # for file_info in self.zarr_stores[var_id]:
         self.print_zarr_stores_table(tasmin_files)
 
-        # for file_info in self.zarr_stores[var_id]:
         self.cluster.scale(n=140)
         ds = self.open_mfdataset(tasmin_files)
 
@@ -342,7 +436,7 @@ class SanityChecker:
         tasmin_da = convert_units_to(tasmin_da, "degC")
 
         low_tasmin_perc = percentage_condition(tasmin_da, "< -70")
-        if low_tasmin_perc.any() > 0:
+        if self._any_skipna(low_tasmin_perc):
             pytest.fail(
                 f"Minimum temperature below -70°C found: \n"
                 f"{low_tasmin_perc.to_pandas()}"
@@ -352,8 +446,13 @@ class SanityChecker:
 
         print(f"✓ TASMIN bounds check passed.")
 
-    def test_tasmin_tasmax_consistency(self):
-        """Test that tasmin <= tasmax for corresponding model/scenario pairs."""
+    def test_tasmin_tasmax_consistency(self) -> None:
+        """Test that tasmin <= tasmax for corresponding model/scenario pairs.
+
+        Raises:
+            pytest.skip: If required files are missing.
+            pytest.fail: If tasmin > tasmax anywhere.
+        """
         if "tasmin" not in self.zarr_stores or "tasmax" not in self.zarr_stores:
             pytest.skip("Both tasmin and tasmax files required for consistency check")
 
@@ -412,7 +511,7 @@ class SanityChecker:
         violation_mask = tasmin_aligned > tasmax_aligned
 
         violation_perc = percentage_condition(violation_mask.astype(float), "== 1")
-        if violation_perc.any() > 0:
+        if self._any_skipna(violation_perc):
             pytest.fail(
                 f"Instances where tasmin > tasmax found: \n"
                 f"{violation_perc.to_pandas()}"
@@ -422,94 +521,26 @@ class SanityChecker:
 
         print(f"✓ Temperature consistency check passed.")
 
-        # except Exception as e:
-        #     pytest.fail(
-        #         f"Error comparing tasmin/tasmax for "
-        #         f"{tasmin_info['model']}_{tasmin_info['scenario']}: {str(e)}"
-        #     )
+
+def test_precipitation_bounds(sanity_checker):
+    """Test precipitation data bounds."""
+    sanity_checker.test_pr_bounds()
 
 
-# def test_precipitation_bounds(sanity_checker):
-#     """Test precipitation data bounds."""
-#     sanity_checker.test_pr_bounds()
+def test_maximum_temperature_bounds(sanity_checker):
+    """Test maximum temperature bounds."""
+    sanity_checker.test_tasmax_bounds()
 
 
-# def test_maximum_temperature_bounds(sanity_checker):
-#     """Test maximum temperature bounds."""
-#     sanity_checker.test_tasmax_bounds()
+def test_minimum_temperature_bounds(sanity_checker):
+    """Test minimum temperature bounds."""
+    sanity_checker.test_tasmin_bounds()
 
 
-# def test_minimum_temperature_bounds(sanity_checker):
-#     """Test minimum temperature bounds."""
-#     sanity_checker.test_tasmin_bounds()
+def test_temperature_consistency(sanity_checker: SanityChecker) -> None:
+    """Test temperature consistency between tasmin and tasmax.
 
-
-def test_temperature_consistency(sanity_checker):
-    """Test temperature consistency between tasmin and tasmax."""
+    Args:
+        sanity_checker (SanityChecker): The SanityChecker instance.
+    """
     sanity_checker.test_tasmin_tasmax_consistency()
-
-
-if __name__ == "__main__":
-    # Example usage for running directly
-    import sys
-
-    if len(sys.argv) > 1:
-        data_folder = sys.argv[1]
-
-    print(f"Testing climate data in: {data_folder}")
-
-    # Create Dask client
-    print("Starting Dask client...")
-
-    print(f"Testing climate data in: {data_folder}")
-    tester = SanityChecker(data_folder)
-
-    print(f"Found zarr files: {list(tester.zarr_stores.keys())}")
-    for var, files in tester.zarr_stores.items():
-        print(f"  {var}: {len(files)} files")
-
-    cluster = SLURMCluster(
-        cores=28,
-        processes=14,
-        # n_workers=14,
-        memory="128GB",
-        # queue="debug",
-        queue="t2small",
-        # walltime="01:00:00",
-        walltime="12:00:00",
-        log_directory="/beegfs/CMIP6/kmredilla/tmp/dask_jobqueue_logs",
-        account="cmip6",
-        interface="ib0",
-    )
-    client = Client(cluster)
-    cluster.scale(n=140)  # Scale up the cluster to 140 workers
-
-    # Run tests
-    tester.test_pr_bounds()
-    # try:
-    #     print("\n" + "=" * 50)
-    #     print("Running precipitation bounds test...")
-    #     tester.test_pr_bounds()
-
-    #     # print("\n" + "=" * 50)
-    #     # print("Running maximum temperature bounds test...")
-    #     # tester.test_tasmax_bounds()
-
-    #     # print("\n" + "=" * 50)
-    #     # print("Running minimum temperature bounds test...")
-    #     # tester.test_tasmin_bounds()
-
-    #     # print("\n" + "=" * 50)
-    #     # print("Running temperature consistency test...")
-    #     # tester.test_tasmin_tasmax_consistency()
-
-    #     print("\n" + "=" * 50)
-    #     print("All tests completed successfully! ✓")
-
-    # except Exception as e:
-    #     print(f"\nTest failed: {str(e)}")
-    #     sys.exit(1)
-
-    # finally:
-    #     cluster.close()
-    #     client.close()
