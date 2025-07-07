@@ -1,6 +1,11 @@
 """Resample (aggregate) and reproject the WRF ERA5 from hourly to daily data in EPSG:3338.
 This is done for maximum, mean, and minimum temperature, and total precipitation.
 
+NOTE - this (and the corresponding runner script, run_resample_and_regrid_era5.py) was moved to
+archive/ because it will be deprecated in favor of the pipeline developing in wrf-downscaled-era5-curation.
+It can be removed completely once that pipeline is fully functional and tested, and outputs can be used in
+the CMIP6 downscaling pipeline.
+
 Example usage:
     python resample_and_regrid_era5.py --era5_dir /beegfs/CMIP6/wrf_era5/04km --output_dir /beegfs/CMIP6/kmredilla/daily_era5_4km_3338 --year 1965 --geo_file /beegfs/CMIP6/wrf_era5/geo_em.d02.nc
 """
