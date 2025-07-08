@@ -537,7 +537,7 @@ def test_minimum_temperature_bounds(sanity_checker):
     sanity_checker.test_tasmin_bounds()
 
 
-def test_temperature_consistency(sanity_checker: SanityChecker) -> None:
+def test_tasmin_tasmax_consistency(sanity_checker: SanityChecker) -> None:
     """Test temperature consistency between tasmin and tasmax.
 
     Args:

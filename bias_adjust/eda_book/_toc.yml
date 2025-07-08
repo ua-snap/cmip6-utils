@@ -1,7 +1,0 @@
-format: jb-article
-root: intro
-sections:
-- file: ba_tasmax
-- file: ba_pr
-- file: ba_pr_tuning
-- file: ba_pr_profiling

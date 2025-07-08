@@ -1,5 +1,8 @@
 """Modify existing Zarr stores containing precipitation data in place on disk.
-This script is intended to be used to post-process downscaled CMIP6 data
+This script is intended to be used to post-process downscaled CMIP6 data. It is used to round
+negative precip values to the nearest whole number, assuming all negative precip values are
+small (< -0.5 mm). Will raise a warning if negative values remain after rounding - this
+would signal a possible issue with the downscaled data.
 
 Example usage:
     python round_negative_precip.py --zarr-dir /center1/CMIP6/kmredilla/cmip6_4km_downscaling/adjusted
@@ -232,25 +235,6 @@ def process_pr(arr: zarr.Array, name: str) -> dict:
         results["percentage_changed"] = percentage_changed
 
     return results
-
-
-# def print_results(results: dict) -> None:
-#     """
-#     Print processing results in a formatted way.
-
-#     Parameters
-#     ----------
-#     results : dict
-#         Dictionary containing processing results
-#     """
-#     if results.get("type") == "group":
-#         print(f"Processing group: {results['name']}")
-#         for array_result in results["arrays"]:
-#             print_array_results(array_result, indent="  ")
-#     else:
-#         print_array_results(results)
-
-#     print()
 
 
 def print_array_results(results: dict, indent: str = "") -> None:

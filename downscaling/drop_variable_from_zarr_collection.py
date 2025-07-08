@@ -1,8 +1,9 @@
-"""Drop a variable from Zarr stores in a directory.
+"""Drop a variable from Zarr stores in a directory. Modifies the Zarr stores in place.
 Currently, it only supports dropping a scalar variable, i.e. a variable with zero dimensions.
 This is useful for removing variables that are not needed or that may cause issues in downstream processing.
 
-
+Example usage:
+    python drop_variable_from_zarr_collection.py --zarr_dir /path/to/zarr/directory --var_name height
 """
 
 from pathlib import Path
