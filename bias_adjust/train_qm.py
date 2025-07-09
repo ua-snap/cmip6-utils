@@ -178,7 +178,7 @@ if __name__ == "__main__":
     with dask.config.set(
         **{
             # "array.slicing.split_large_chunks": False,
-            "temporary_directory": "/beegfs/CMIP6/kmredilla/tmp",
+            "temporary_directory": "/beegfs/CMIP6/crstephenson/tmp",
             "idle-timeout": "120s",
         }
     ):

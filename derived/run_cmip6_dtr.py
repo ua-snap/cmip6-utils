@@ -16,6 +16,7 @@ Returns:
     e.g. files for GFDL-ESM4 ssp245 would be written to <output_dir>/GFDL-ESM4/ssp245/dtr/<output files>
 """
 
+import os
 import argparse
 import subprocess
 import logging
@@ -60,7 +61,7 @@ def validate_args(args):
         model
         for model in args.models
         if model
-        in next(args.input_dir.walk())[
+        in next(os.walk(args.input_dir))[
             1
         ]  # this gets the list of subdirectories in the input directory
     ]

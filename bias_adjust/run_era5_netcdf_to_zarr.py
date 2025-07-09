@@ -15,6 +15,7 @@ example usage:
         --slurm_dir /center1/CMIP6/kmredilla/cmip6_downscaling/slurm
 """
 
+import os
 import argparse
 from itertools import product
 import logging
@@ -51,10 +52,11 @@ def validate_args(args):
         var_id
         for var_id in args.variables
         if var_id
-        in next(args.netcdf_dir.walk())[
+        in next(os.walk(args.netcdf_dir))[
             1
         ]  # this gets the list of subdirectories in the input directory
     ]
+
     if not any(variables_in_input_dir):
         raise ValueError(
             f"No subdirectories in the input directory match the variables provided. Aborting."
