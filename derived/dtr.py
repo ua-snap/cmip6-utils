@@ -144,7 +144,7 @@ def make_output_filepath(output_dir, dtr_tmp_fn, start_date, end_date):
                 end_date=end_date.strftime("%Y%m%d"),
             )
         )
-    elif keys == ["year"]:
+    elif keys == {"year"}:
         start_year = start_date.year
         end_year = end_date.year
         if start_year != end_year:
