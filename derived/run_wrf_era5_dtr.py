@@ -44,16 +44,11 @@ def validate_args(args):
             f"Input directory, {args.era5_dir}, does not exist. Aborting."
         )
     args.output_dir = Path(args.output_dir)
-    if not args.output_dir.parent.exists():
-        args.output_dir.parent.mkdir(parents=True, exist_ok=True)
-        # raise FileNotFoundError(
-        #     f"Parent of output directory, {args.output_dir.parent}, does not exist. Aborting."
-        # )
+    if not args.output_dir.exists():
+        args.output_dir.mkdir(parents=True, exist_ok=True)
     args.slurm_dir = Path(args.slurm_dir)
-    if not args.slurm_dir.parent.exists():
-        raise FileNotFoundError(
-            f"Parent of slurm directory, {args.slurm_dir.parent}, does not exist. Aborting."
-        )
+    if not args.slurm_dir.exists():
+        args.slurm_dir.mkdir(parents=True, exist_ok=True)
 
     return args
 
