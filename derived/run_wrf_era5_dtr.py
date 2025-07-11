@@ -45,9 +45,10 @@ def validate_args(args):
         )
     args.output_dir = Path(args.output_dir)
     if not args.output_dir.parent.exists():
-        raise FileNotFoundError(
-            f"Parent of output directory, {args.output_dir.parent}, does not exist. Aborting."
-        )
+        args.output_dir.parent.mkdir(parents=True, exist_ok=True)
+        # raise FileNotFoundError(
+        #     f"Parent of output directory, {args.output_dir.parent}, does not exist. Aborting."
+        # )
     args.slurm_dir = Path(args.slurm_dir)
     if not args.slurm_dir.parent.exists():
         raise FileNotFoundError(
