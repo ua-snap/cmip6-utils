@@ -14,6 +14,8 @@ Rather, we decided to use [Lavoie et al 2024](https://doi.org/10.1038/s41597-023
 
 We explored detrended quantile mapping (with multiple different detrending configs) but found that the quantile delta mapping method seemed to perform similarly in most cases, and seemed to be better than the DQM methods for things like seasonal precipitation cycles. See the `discrete_comparison_qm_method.ipynb` notebook. 
 
+To run the notebooks, it is advised that you start a jupyter server from a compute node, from within the `notebooks/` directory. It has a module that is used in many of the notebooks, `baeda.py` (bias-adjustment exploratory data analysis). Lots of paths are hard-coded and will need to be changed if they need to be run again. Many should be useful simply as reference. 
+
 ## Which CMIP6 data?
 
 The CMIP6 data we are working with (to be / have been adjusted) are daily fields of maximum temperature, daily temperature range, and that have been regridded to a 4km nominal grid in EPSG:3338. The models herein are part of the SNAP CMIP6 ensemble, a set of 13 models that was selected based on skill in Alaska and the arctic using the [GCMEval tool](https://gcmeval.met.no/) ([paper](https://doi.org/10.1016/j.cliser.2020.100167)).
