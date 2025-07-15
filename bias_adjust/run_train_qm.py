@@ -11,6 +11,7 @@ example usage:
         --sim_dir /beegfs/CMIP6/kmredilla/cmip6_4km_downscaling/cmip6_zarr/ \
         --ref_dir /beegfs/CMIP6/kmredilla/cmip6_4km_downscaling/era5_zarr/ \
         --output_dir /beegfs/CMIP6/kmredilla/cmip6_downscaling/optimized_inputs/ \
+        --tmp_dir /center1/CMIP6/kmredilla/tmp \
         --models 'GFDL-ESM4 CESM2' \
         --variables 'tasmax pr' \
         --slurm_dir /beegfs/CMIP6/kmredilla/cmip6_downscaling/slurm
@@ -53,11 +54,13 @@ def validate_args(args):
     args.sim_dir = Path(args.sim_dir)
     args.ref_dir = Path(args.ref_dir)
     args.output_dir = Path(args.output_dir)
+    args.tmp_dir = Path(args.tmp_dir)
     args.slurm_dir = Path(args.slurm_dir)
     validate_path_arg(args.worker_script, "worker_script")
     validate_path_arg(args.sim_dir, "sim_dir")
     validate_path_arg(args.ref_dir, "ref_dir")
     validate_path_arg(args.output_dir.parent, "parent of output_dir")
+    validate_path_arg(args.tmp_dir, "tmp_dir")
     validate_path_arg(args.slurm_dir, "slurm_dir")
 
     args.models = args.models.split(" ")
@@ -112,6 +115,12 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
+        "--tmp_dir",
+        type=str,
+        help="Path to directory where dask temporary files will be written.",
+        required=True,
+    )
+    parser.add_argument(
         "--models",
         type=str,
         help="' '-separated list of CMIP6 models to work on",
@@ -145,6 +154,7 @@ def parse_args():
         args.sim_dir,
         args.ref_dir,
         args.output_dir,
+        args.tmp_dir,
         args.models,
         args.variables,
         args.slurm_dir,
@@ -157,6 +167,7 @@ def write_sbatch_train_qm(
     ref_dir,
     slurm_dir,
     output_dir,
+    tmp_dir,
     model,
     var_id,
     worker_script,
@@ -174,6 +185,7 @@ def write_sbatch_train_qm(
     train_path = output_dir.joinpath(
         trained_qm_tmp_fn.format(var_id=var_id, model=model)
     )
+    tmp_path = Path(tmp_dir)
     # create the sbatch file
     sbatch_path = slurm_dir.joinpath(
         train_qm_sbatch_tmp_fn.format(model=model, var_id=var_id)
@@ -194,7 +206,8 @@ def write_sbatch_train_qm(
         f"python {worker_script} \\\n"
         f"--sim_path {sim_path} \\\n"
         f"--ref_path {ref_path} \\\n"
-        f"--train_path {train_path} \n"
+        f"--train_path {train_path} \\\n"
+        f"--tmp_path {tmp_path} \n"
     )
 
     pycommands += "\n\n"
@@ -212,8 +225,9 @@ def write_sbatch_train_qm(
 def write_all_sbatch_train_qm(
     sim_dir,
     ref_dir,
-    output_dir,
     slurm_dir,
+    output_dir,
+    tmp_dir,
     worker_script,
     models,
     variables,
@@ -226,6 +240,7 @@ def write_all_sbatch_train_qm(
         "ref_dir": ref_dir,
         "slurm_dir": slurm_dir,
         "output_dir": output_dir,
+        "tmp_dir": tmp_dir,
         "worker_script": worker_script,
         "sbatch_head_kwargs": sbatch_head_kwargs,
     }
@@ -250,6 +265,7 @@ if __name__ == "__main__":
         sim_dir,
         ref_dir,
         output_dir,
+        tmp_dir,
         models,
         variables,
         slurm_dir,
@@ -274,6 +290,7 @@ if __name__ == "__main__":
         "ref_dir": ref_dir,
         "slurm_dir": slurm_dir,
         "output_dir": output_dir,
+        "tmp_dir": tmp_dir,
         "worker_script": worker_script,
         "sbatch_head_kwargs": sbatch_head_kwargs,
         "models": models,

@@ -7,7 +7,8 @@ Example usage:
     python train_qm.py \
         --sim_path /beegfs/CMIP6/kmredilla/zarr_bias_adjust_inputs/zarr/pr_GFDL-ESM4_historical.zarr \
         --ref_path /beegfs/CMIP6/kmredilla/zarr_bias_adjust_inputs/zarr/pr_era5.zarr \
-        --train_path /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted/trained/qdm_trained_pr_GFDL-ESM4.zarr
+        --train_path /beegfs/CMIP6/kmredilla/cmip6_4km_3338_adjusted/trained/qdm_trained_pr_GFDL-ESM4.zarr \
+        --tmp_path /center1/CMIP6/kmredilla/tmp
 """
 
 import argparse
@@ -66,6 +67,11 @@ def parse_args():
         type=str,
         help="Path to write trained QM object to",
     )
+    parser.add_argument(
+        "--tmp_path",
+        type=str,
+        help="path to temporary scratch space for dask",
+    )
     args = parser.parse_args()
 
     args = validate_args(args)
@@ -74,6 +80,7 @@ def parse_args():
         args.sim_path,
         args.ref_path,
         args.train_path,
+        args.tmp_path,
     )
 
 
@@ -174,11 +181,12 @@ if __name__ == "__main__":
         sim_path,
         ref_path,
         train_path,
+        tmp_path
     ) = parse_args()
     with dask.config.set(
         **{
             # "array.slicing.split_large_chunks": False,
-            "temporary_directory": "/beegfs/CMIP6/kmredilla/tmp",
+            "temporary_directory": tmp_path,
             "idle-timeout": "120s",
         }
     ):

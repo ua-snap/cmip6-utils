@@ -396,7 +396,8 @@ if __name__ == "__main__":
     )
 
     # allegedly this might help with multiprocessing hanging
-    set_start_method("spawn")
+    # sometimes it causes problems and needs to be commented out though
+    # set_start_method("spawn")
 
     # read the grid info from all files
     fps = []

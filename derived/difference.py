@@ -106,7 +106,8 @@ if __name__ == "__main__":
     # give this a variable_id attribute for consistency (helps with e.g. regridding with regrid.py)
     diff_ds.attrs["variable_id"] = new_var_id
 
-    logging.info(f"Writing { diff_ds.attrs["variable_id"]} to {output_store}")
+    variable_id = diff_ds.attrs["variable_id"]
+    logging.info(f"Writing {variable_id} to {output_store}")
     if output_store.exists():
         logging.info(f"Deleting existing {output_store}")
         shutil.rmtree(output_store)

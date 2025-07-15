@@ -14,6 +14,7 @@ example usage:
         --slurm_dir /beegfs/CMIP6/kmredilla/cmip6_downscaling/slurm
 """
 
+import os
 import argparse
 from itertools import product
 import logging
@@ -55,7 +56,7 @@ def validate_args(args):
         model
         for model in args.models
         if model
-        in next(args.netcdf_dir.walk())[
+        in next(os.walk(args.netcdf_dir))[
             1
         ]  # this gets the list of subdirectories in the input directory
     ]
