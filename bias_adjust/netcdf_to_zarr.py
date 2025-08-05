@@ -19,6 +19,8 @@ from pathlib import Path
 import xarray as xr
 from dask.distributed import Client
 
+from zarr.sync import ThreadSynchronizer
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -219,6 +221,7 @@ if __name__ == "__main__":
     if zarr_path.exists():
         shutil.rmtree(zarr_path, ignore_errors=True)
 
-    ds.to_zarr(zarr_path)
+    synchronizer = ThreadSynchronizer()
+    ds.to_zarr(zarr_path, synchronizer=synchronizer)
 
     logging.info(f"Conversion complete.")

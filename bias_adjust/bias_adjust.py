@@ -17,6 +17,8 @@ import dask
 from dask.distributed import Client
 from xclim import sdba
 
+from zarr.sync import ThreadSynchronizer
+
 # from luts import jitter_under_lu
 from train_qm import get_var_id
 
@@ -162,4 +164,6 @@ if __name__ == "__main__":
             shutil.rmtree(adj_path, ignore_errors=True)
 
         logging.info(f"Writing adjusted data to {adj_path}")
-        scen_ds.to_zarr(adj_path)
+
+        synchronizer = ThreadSynchronizer()
+        scen_ds.to_zarr(adj_path, synchronizer=synchronizer)

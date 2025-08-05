@@ -18,6 +18,7 @@ from pathlib import Path
 
 # import icclim
 import xarray as xr
+from zarr.sync import ThreadSynchronizer
 import dask
 from dask.distributed import Client
 from xclim import sdba
@@ -236,4 +237,6 @@ if __name__ == "__main__":
             logging.info(f"Writing QDM object to {train_path}")
             if train_path.exists():
                 shutil.rmtree(train_path, ignore_errors=True)
-            qm_train.ds.to_zarr(train_path)
+
+            synchronizer = ThreadSynchronizer()
+            qm_train.ds.to_zarr(train_path, synchronizer=synchronizer)

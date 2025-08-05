@@ -20,6 +20,8 @@ import xarray as xr
 import string
 from datetime import datetime
 
+from zarr.sync import ThreadSynchronizer
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -112,4 +114,5 @@ if __name__ == "__main__":
         logging.info(f"Deleting existing {output_store}")
         shutil.rmtree(output_store)
 
-    diff_ds.to_zarr(output_store)
+    synchronizer = ThreadSynchronizer()
+    diff_ds.to_zarr(output_store, synchronizer=synchronizer)
