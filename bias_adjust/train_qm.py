@@ -178,12 +178,7 @@ def keep_attrs(train_ds, hist_ds, hist_path):
 
 
 if __name__ == "__main__":
-    (
-        sim_path,
-        ref_path,
-        train_path,
-        tmp_path
-    ) = parse_args()
+    (sim_path, ref_path, train_path, tmp_path) = parse_args()
     with dask.config.set(
         **{
             # "array.slicing.split_large_chunks": False,
@@ -234,9 +229,9 @@ if __name__ == "__main__":
 
             qm_train.ds = keep_attrs(qm_train.ds, hist_ds, sim_path)
 
-            logging.info(f"Writing QDM object to {train_path}")
-            if train_path.exists():
-                shutil.rmtree(train_path, ignore_errors=True)
+        logging.info(f"Writing QDM object to {train_path}")
+        if train_path.exists():
+            shutil.rmtree(train_path, ignore_errors=True)
 
-            synchronizer = ThreadSynchronizer()
-            qm_train.ds.to_zarr(train_path, synchronizer=synchronizer)
+        synchronizer = ThreadSynchronizer()
+        qm_train.ds.to_zarr(train_path, synchronizer=synchronizer)

@@ -134,6 +134,13 @@ def validate_sim_source(train_ds, sim_ds):
 
 if __name__ == "__main__":
     train_path, sim_path, adj_path = parse_args()
+    # TODO: Un-hardcode the Dask tmp directory here.
+    with dask.config.set(
+        **{
+            "temporary_directory": "/beegfs/CMIP6/crstephenson/tmp",
+            "idle-timeout": "120s",
+        }
+    ):
 
     # fewer workers and more threads is better for non-GIL like Numpy etc
     with Client(n_workers=4, threads_per_worker=6) as client:
@@ -159,11 +166,10 @@ if __name__ == "__main__":
         scen_ds = add_global_attrs(scen_ds, sim_ds)
         logging.info(f"Running adjustment and writing to {adj_path}")
 
-        if adj_path.exists():
-            logging.info(f"Adjusted data store exists, removing ({adj_path}).")
-            shutil.rmtree(adj_path, ignore_errors=True)
+    if adj_path.exists():
+        logging.info(f"Adjusted data store exists, removing ({adj_path}).")
+        shutil.rmtree(adj_path, ignore_errors=True)
 
-        logging.info(f"Writing adjusted data to {adj_path}")
-
-        synchronizer = ThreadSynchronizer()
-        scen_ds.to_zarr(adj_path, synchronizer=synchronizer)
+    logging.info(f"Writing adjusted data to {adj_path}")
+    synchronizer = ThreadSynchronizer()
+    scen_ds.to_zarr(adj_path, synchronizer=synchronizer)
