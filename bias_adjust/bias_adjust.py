@@ -1,7 +1,7 @@
 """Script for bias adjusting a given model and scenario. Uses a pre-trained quantile mapping adjustment object.
 
 Example usage:
-    python bias_adjust.py --train_path /center1/CMIP6/kmredilla/bias_adjustment_testing/trained_qdm_pr_GFDL-ESM4.zarr --sim_path /center1/CMIP6/kmredilla/zarr_bias_adjust_inputs/pr_GFDL-ESM4_historical.zarr --adj_path /center1/CMIP6/kmredilla/cmip6_4km_3338_downscaled/pr_GFDL-ESM4_historical_adj.zarr
+    python bias_adjust.py --train_path /center1/CMIP6/kmredilla/bias_adjustment_testing/trained_qdm_pr_GFDL-ESM4.zarr --sim_path /center1/CMIP6/kmredilla/zarr_bias_adjust_inputs/pr_GFDL-ESM4_historical.zarr --adj_path /center1/CMIP6/kmredilla/cmip6_4km_3338_downscaled/pr_GFDL-ESM4_historical_adj.zarr --tmp_path /center1/CMIP6/kmredilla/tmp
 """
 
 import argparse
@@ -113,6 +113,12 @@ def parse_args():
         help="Path to write adjusted data",
         required=True,
     )
+    parser.add_argument(
+        "--tmp_path",
+        type=str,
+        help="Path to directory where dask temporary files will be written.",
+        required=True,
+    )
 
     args = parser.parse_args()
 
@@ -120,6 +126,7 @@ def parse_args():
         Path(args.train_path),
         Path(args.sim_path),
         Path(args.adj_path),
+        Path(args.tmp_path),
     )
 
 
@@ -133,11 +140,11 @@ def validate_sim_source(train_ds, sim_ds):
 
 
 if __name__ == "__main__":
-    train_path, sim_path, adj_path = parse_args()
+    train_path, sim_path, adj_path, tmp_path = parse_args()
     # TODO: Un-hardcode the Dask tmp directory here.
     with dask.config.set(
         **{
-            "temporary_directory": "/beegfs/CMIP6/crstephenson/tmp",
+            "temporary_directory": tmp_path,
             "idle-timeout": "120s",
         }
     ):

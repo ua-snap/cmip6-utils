@@ -8,6 +8,7 @@ example usage:
         --sim_dir /beegfs/CMIP6/kmredilla/cmip6_4km_downscaling/cmip6_zarr/ \
         --train_dir /beegfs/CMIP6/kmredilla/cmip6_4km_downscaling/trained_datasets/ \
         --output_dir /beegfs/CMIP6/kmredilla/cmip6_4km_downscaling/adjusted \
+        --tmp_dir /beegfs/CMIP6/kmredilla/cmip6_4km_downscaling/tmp \
         --models 'GFDL-ESM4 CESM2' \
         --scenarios 'historical ssp245' \
         --variables 'tasmax pr' \
@@ -49,6 +50,7 @@ def validate_args(args):
     """Validate the arguments passed to the script."""
     args.worker_script = Path(args.worker_script)
     args.output_dir = Path(args.output_dir)
+    args.tmp_dir = Path(args.tmp_dir)
     args.sim_dir = Path(args.sim_dir)
     args.train_dir = Path(args.train_dir)
     args.slurm_dir = Path(args.slurm_dir)
@@ -56,6 +58,7 @@ def validate_args(args):
     validate_path_arg(args.sim_dir, "sim_dir")
     validate_path_arg(args.train_dir, "train_dir")
     validate_path_arg(args.output_dir.parent, "parent of output_dir")
+    validate_path_arg(args.tmp_dir, "tmp_dir")
     validate_path_arg(args.slurm_dir, "slurm_dir")
 
     args.models = args.models.split(" ")
@@ -113,6 +116,12 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
+        "--tmp_dir",
+        type=str,
+        help="Path to directory where dask temporary files will be written.",
+        required=True,
+    )
+    parser.add_argument(
         "--models",
         type=str,
         help="' '-separated list of CMIP6 models to work on",
@@ -152,6 +161,7 @@ def parse_args():
         args.sim_dir,
         args.train_dir,
         args.output_dir,
+        args.tmp_dir,
         args.models,
         args.scenarios,
         args.variables,
@@ -165,6 +175,7 @@ def write_sbatch_bias_adjust(
     train_dir,
     slurm_dir,
     output_dir,
+    tmp_dir,
     model,
     scenario,
     var_id,
@@ -192,6 +203,8 @@ def write_sbatch_bias_adjust(
         cmip6_adjusted_tmp_fn.format(var_id=var_id, model=model, scenario=scenario)
     )
 
+    tmp_path = Path(tmp_dir)
+
     # create the sbatch file
     sbatch_path = slurm_dir.joinpath(
         bias_adjust_sbatch_tmp_fn.format(model=model, scenario=scenario, var_id=var_id)
@@ -213,6 +226,7 @@ def write_sbatch_bias_adjust(
         f"--train_path {train_path} \\\n"
         f"--sim_path {sim_path} \\\n"
         f"--adj_path {adj_path} \\\n"
+        f"--tmp_path {tmp_path} \n"
     )
 
     pycommands += "\n\n"
@@ -231,6 +245,7 @@ def write_all_sbatch_bias_adjust(
     sim_dir,
     train_dir,
     output_dir,
+    tmp_dir,
     slurm_dir,
     worker_script,
     models,
@@ -245,6 +260,7 @@ def write_all_sbatch_bias_adjust(
         "train_dir": train_dir,
         "slurm_dir": slurm_dir,
         "output_dir": output_dir,
+        "tmp_dir": tmp_dir,
         "worker_script": worker_script,
         "sbatch_head_kwargs": sbatch_head_kwargs,
     }
@@ -269,6 +285,7 @@ if __name__ == "__main__":
         sim_dir,
         train_dir,
         output_dir,
+        tmp_dir,
         models,
         scenarios,
         variables,
@@ -295,6 +312,7 @@ if __name__ == "__main__":
         "train_dir": train_dir,
         "slurm_dir": slurm_dir,
         "output_dir": output_dir,
+        "tmp_dir": tmp_dir,
         "worker_script": worker_script,
         "sbatch_head_kwargs": sbatch_head_kwargs,
         "models": models,
