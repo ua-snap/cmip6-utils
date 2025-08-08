@@ -188,7 +188,7 @@ if __name__ == "__main__":
     ):
         # I *think* most Chinook nodes will have 28 or more CPUs,
         # so these should be safe n_workers and threads_per_worker values
-        with Client(n_workers=6, threads_per_worker=4) as client:
+        with Client(n_workers=4, threads_per_worker=4) as client:
             # open connection to data
             hist_ds = xr.open_zarr(sim_path)
             # convert calendar to noleap to match CMIP6
@@ -229,9 +229,9 @@ if __name__ == "__main__":
 
             qm_train.ds = keep_attrs(qm_train.ds, hist_ds, sim_path)
 
-        logging.info(f"Writing QDM object to {train_path}")
-        if train_path.exists():
-            shutil.rmtree(train_path, ignore_errors=True)
+            logging.info(f"Writing QDM object to {train_path}")
+            if train_path.exists():
+                shutil.rmtree(train_path, ignore_errors=True)
 
-        synchronizer = ThreadSynchronizer()
-        qm_train.ds.to_zarr(train_path, synchronizer=synchronizer)
+            synchronizer = ThreadSynchronizer()
+            qm_train.ds.to_zarr(train_path, synchronizer=synchronizer)
