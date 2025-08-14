@@ -13,8 +13,6 @@ import shutil
 from itertools import product
 from pathlib import Path
 import xarray as xr
-import dask
-from dask.distributed import Client
 from xclim import sdba
 
 from zarr.sync import ThreadSynchronizer
@@ -141,41 +139,33 @@ def validate_sim_source(train_ds, sim_ds):
 
 if __name__ == "__main__":
     train_path, sim_path, adj_path, tmp_path = parse_args()
-    # TODO: Un-hardcode the Dask tmp directory here.
-    with dask.config.set(
-        **{
-            "temporary_directory": tmp_path,
-            "idle-timeout": "120s",
-        }
-    ):
-        # fewer workers and more threads is better for non-GIL like Numpy etc
-        with Client(n_workers=4, threads_per_worker=6) as client:
-            # open connection to trained QM dataset
-            train_ds = xr.open_zarr(train_path).chunk({"x": 50, "y": 50})
-            qm = sdba.QuantileDeltaMapping.from_dataset(train_ds)
 
-            # create a dataset containing all projected data to be adjusted
-            # not adjusting historical, no need for now
-            # need to rechunk this one too, same reason as for training data
-            sim_ds = xr.open_zarr(sim_path)
-            validate_sim_source(train_ds, sim_ds)
+    # open connection to trained QM dataset
+    train_ds = xr.open_zarr(train_path).chunk({"x": 50, "y": 50})
+    qm = sdba.QuantileDeltaMapping.from_dataset(train_ds)
 
-            var_id = get_var_id(sim_ds)
+    # create a dataset containing all projected data to be adjusted
+    # not adjusting historical, no need for now
+    # need to rechunk this one too, same reason as for training data
+    sim_ds = xr.open_zarr(sim_path)
+    validate_sim_source(train_ds, sim_ds)
 
-            scen = qm.adjust(
-                sim_ds[var_id],
-                extrapolation="constant",
-                interp="nearest",
-            )
-            scen_ds = scen.to_dataset(name=var_id)
-            scen_ds = drop_non_coord_vars(scen_ds)
-            scen_ds = add_global_attrs(scen_ds, sim_ds)
-            logging.info(f"Running adjustment and writing to {adj_path}")
+    var_id = get_var_id(sim_ds)
 
-        if adj_path.exists():
-            logging.info(f"Adjusted data store exists, removing ({adj_path}).")
-            shutil.rmtree(adj_path, ignore_errors=True)
+    scen = qm.adjust(
+        sim_ds[var_id],
+        extrapolation="constant",
+        interp="nearest",
+    )
+    scen_ds = scen.to_dataset(name=var_id)
+    scen_ds = drop_non_coord_vars(scen_ds)
+    scen_ds = add_global_attrs(scen_ds, sim_ds)
+    logging.info(f"Running adjustment and writing to {adj_path}")
 
-        logging.info(f"Writing adjusted data to {adj_path}")
-        synchronizer = ThreadSynchronizer()
-        scen_ds.to_zarr(adj_path, synchronizer=synchronizer)
+    if adj_path.exists():
+        logging.info(f"Adjusted data store exists, removing ({adj_path}).")
+        shutil.rmtree(adj_path, ignore_errors=True)
+
+    logging.info(f"Writing adjusted data to {adj_path}")
+    synchronizer = ThreadSynchronizer()
+    scen_ds.to_zarr(adj_path, synchronizer=synchronizer)
