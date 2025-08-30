@@ -1,7 +1,7 @@
 """Script for bias adjusting a given model and scenario. Uses a pre-trained quantile mapping adjustment object.
 
 Example usage:
-    python bias_adjust.py --train_path /center1/CMIP6/kmredilla/bias_adjustment_testing/trained_qdm_pr_GFDL-ESM4.zarr --sim_path /center1/CMIP6/kmredilla/zarr_bias_adjust_inputs/pr_GFDL-ESM4_historical.zarr --adj_path /center1/CMIP6/kmredilla/cmip6_4km_3338_downscaled/pr_GFDL-ESM4_historical_adj.zarr
+    python bias_adjust.py --train_path /center1/CMIP6/kmredilla/bias_adjustment_testing/trained_qdm_pr_GFDL-ESM4.zarr --sim_path /center1/CMIP6/kmredilla/zarr_bias_adjust_inputs/pr_GFDL-ESM4_historical.zarr --adj_path /center1/CMIP6/kmredilla/cmip6_4km_3338_downscaled/pr_GFDL-ESM4_historical_adj.zarr --tmp_path /center1/CMIP6/kmredilla/tmp
 """
 
 import argparse
@@ -13,8 +13,6 @@ import shutil
 from itertools import product
 from pathlib import Path
 import xarray as xr
-import dask
-from dask.distributed import Client
 from xclim import sdba
 
 from zarr.sync import ThreadSynchronizer
@@ -113,6 +111,12 @@ def parse_args():
         help="Path to write adjusted data",
         required=True,
     )
+    parser.add_argument(
+        "--tmp_path",
+        type=str,
+        help="Path to directory where dask temporary files will be written.",
+        required=True,
+    )
 
     args = parser.parse_args()
 
@@ -120,6 +124,7 @@ def parse_args():
         Path(args.train_path),
         Path(args.sim_path),
         Path(args.adj_path),
+        Path(args.tmp_path),
     )
 
 
@@ -133,37 +138,34 @@ def validate_sim_source(train_ds, sim_ds):
 
 
 if __name__ == "__main__":
-    train_path, sim_path, adj_path = parse_args()
+    train_path, sim_path, adj_path, tmp_path = parse_args()
 
-    # fewer workers and more threads is better for non-GIL like Numpy etc
-    with Client(n_workers=4, threads_per_worker=6) as client:
-        # open connection to trained QM dataset
-        train_ds = xr.open_zarr(train_path).chunk({"x": 50, "y": 50})
-        qm = sdba.QuantileDeltaMapping.from_dataset(train_ds)
+    # open connection to trained QM dataset
+    train_ds = xr.open_zarr(train_path).chunk({"x": 50, "y": 50})
+    qm = sdba.QuantileDeltaMapping.from_dataset(train_ds)
 
-        # create a dataset containing all projected data to be adjusted
-        # not adjusting historical, no need for now
-        # need to rechunk this one too, same reason as for training data
-        sim_ds = xr.open_zarr(sim_path)
-        validate_sim_source(train_ds, sim_ds)
+    # create a dataset containing all projected data to be adjusted
+    # not adjusting historical, no need for now
+    # need to rechunk this one too, same reason as for training data
+    sim_ds = xr.open_zarr(sim_path)
+    validate_sim_source(train_ds, sim_ds)
 
-        var_id = get_var_id(sim_ds)
+    var_id = get_var_id(sim_ds)
 
-        scen = qm.adjust(
-            sim_ds[var_id],
-            extrapolation="constant",
-            interp="nearest",
-        )
-        scen_ds = scen.to_dataset(name=var_id)
-        scen_ds = drop_non_coord_vars(scen_ds)
-        scen_ds = add_global_attrs(scen_ds, sim_ds)
-        logging.info(f"Running adjustment and writing to {adj_path}")
+    scen = qm.adjust(
+        sim_ds[var_id],
+        extrapolation="constant",
+        interp="nearest",
+    )
+    scen_ds = scen.to_dataset(name=var_id)
+    scen_ds = drop_non_coord_vars(scen_ds)
+    scen_ds = add_global_attrs(scen_ds, sim_ds)
+    logging.info(f"Running adjustment and writing to {adj_path}")
 
-        if adj_path.exists():
-            logging.info(f"Adjusted data store exists, removing ({adj_path}).")
-            shutil.rmtree(adj_path, ignore_errors=True)
+    if adj_path.exists():
+        logging.info(f"Adjusted data store exists, removing ({adj_path}).")
+        shutil.rmtree(adj_path, ignore_errors=True)
 
-        logging.info(f"Writing adjusted data to {adj_path}")
-
-        synchronizer = ThreadSynchronizer()
-        scen_ds.to_zarr(adj_path, synchronizer=synchronizer)
+    logging.info(f"Writing adjusted data to {adj_path}")
+    synchronizer = ThreadSynchronizer()
+    scen_ds.to_zarr(adj_path, synchronizer=synchronizer)

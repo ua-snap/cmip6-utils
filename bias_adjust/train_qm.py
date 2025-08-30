@@ -19,8 +19,6 @@ from pathlib import Path
 # import icclim
 import xarray as xr
 from zarr.sync import ThreadSynchronizer
-import dask
-from dask.distributed import Client
 from xclim import sdba
 from luts import sim_ref_var_lu, varid_adj_kind_lu, jitter_under_lu
 
@@ -178,65 +176,51 @@ def keep_attrs(train_ds, hist_ds, hist_path):
 
 
 if __name__ == "__main__":
-    (
-        sim_path,
-        ref_path,
-        train_path,
-        tmp_path
-    ) = parse_args()
-    with dask.config.set(
-        **{
-            # "array.slicing.split_large_chunks": False,
-            "temporary_directory": tmp_path,
-            "idle-timeout": "120s",
-        }
-    ):
-        # I *think* most Chinook nodes will have 28 or more CPUs,
-        # so these should be safe n_workers and threads_per_worker values
-        with Client(n_workers=6, threads_per_worker=4) as client:
-            # open connection to data
-            hist_ds = xr.open_zarr(sim_path)
-            # convert calendar to noleap to match CMIP6
-            ref_ds = xr.open_zarr(ref_path).convert_calendar("noleap")
-            hist_ds, ref_ds = ensure_matching_time_coords(hist_ds, ref_ds)
+    (sim_path, ref_path, train_path, tmp_path) = parse_args()
 
-            var_id = get_var_id(hist_ds)
-            if var_id not in ref_ds.data_vars:
-                ref_var_id = sim_ref_var_lu[var_id]
-                # keep the variable names the same
-                ref_ds = ref_ds.rename({ref_var_id: var_id})
+    # open connection to data
+    hist_ds = xr.open_zarr(sim_path)
+    # convert calendar to noleap to match CMIP6
+    ref_ds = xr.open_zarr(ref_path).convert_calendar("noleap")
+    hist_ds, ref_ds = ensure_matching_time_coords(hist_ds, ref_ds)
 
-            # get dataarrays
-            ref = ref_ds[var_id]
-            hist = hist_ds[var_id]
+    var_id = get_var_id(hist_ds)
+    if var_id not in ref_ds.data_vars:
+        ref_var_id = sim_ref_var_lu[var_id]
+        # keep the variable names the same
+        ref_ds = ref_ds.rename({ref_var_id: var_id})
 
-            if var_id == "pr":
-                ref = ensure_correct_ref_precip_units(ref)
+    # get dataarrays
+    ref = ref_ds[var_id]
+    hist = hist_ds[var_id]
 
-            # ensure data does not have zeros, depending on variable
-            if var_id in jitter_under_lu.keys():
-                hist = apply_jitter(hist)
-                ref = apply_jitter(ref)
+    if var_id == "pr":
+        ref = ensure_correct_ref_precip_units(ref)
 
-            train_kwargs = dict(
-                ref=ref,
-                hist=hist,
-                nquantiles=100,
-                group="time.dayofyear",
-                window=31,
-                kind=varid_adj_kind_lu[var_id],
-            )
-            if var_id == "pr":
-                # do the adapt frequency thingy for precipitation data
-                train_kwargs.update(adapt_freq_thresh="0.254 mm d-1")
+    # ensure data does not have zeros, depending on variable
+    if var_id in jitter_under_lu.keys():
+        hist = apply_jitter(hist)
+        ref = apply_jitter(ref)
 
-            qm_train = sdba.QuantileDeltaMapping.train(**train_kwargs)
+    train_kwargs = dict(
+        ref=ref,
+        hist=hist,
+        nquantiles=100,
+        group="time.dayofyear",
+        window=31,
+        kind=varid_adj_kind_lu[var_id],
+    )
+    if var_id == "pr":
+        # do the adapt frequency thingy for precipitation data
+        train_kwargs.update(adapt_freq_thresh="0.254 mm d-1")
 
-            qm_train.ds = keep_attrs(qm_train.ds, hist_ds, sim_path)
+    qm_train = sdba.QuantileDeltaMapping.train(**train_kwargs)
 
-            logging.info(f"Writing QDM object to {train_path}")
-            if train_path.exists():
-                shutil.rmtree(train_path, ignore_errors=True)
+    qm_train.ds = keep_attrs(qm_train.ds, hist_ds, sim_path)
 
-            synchronizer = ThreadSynchronizer()
-            qm_train.ds.to_zarr(train_path, synchronizer=synchronizer)
+    logging.info(f"Writing QDM object to {train_path}")
+    if train_path.exists():
+        shutil.rmtree(train_path, ignore_errors=True)
+
+    synchronizer = ThreadSynchronizer()
+    qm_train.ds.to_zarr(train_path, synchronizer=synchronizer)

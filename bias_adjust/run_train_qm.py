@@ -196,6 +196,7 @@ def write_sbatch_train_qm(
         {
             "sbatch_out_path": sbatch_out_path,
             "job_name": f"train_qm_{model}_{var_id}",
+            "time_limit": "4-00:00:00",
         }
     )
 
