@@ -393,7 +393,7 @@ def extract_time_series(ds, var_id, projected_coords=None):
                 warn(
                     (
                         f"All-nan extraction encountered for location: {location}.\n"
-                        f"Coordinates supplied: x: {projected_coords[location]["x"]}, y: {projected_coords[location]["y"]}. "
+                        f"Coordinates supplied: x: {projected_coords[location]['x']}, y: {projected_coords[location]['y']}. "
                         f"Dataset connection: {ds}"
                     )
                 )
