@@ -6,13 +6,15 @@ from pathlib import Path
 from config import *
 
 
-def make_sbatch_head(conda_init_script, conda_env_name):
+def make_sbatch_head(partition, sbatch_out_file, conda_env_name):
     """Make a string of SBATCH commands that can be written into a .slurm script.
 
     Parameters
     ----------
-    conda_init_script : pathlib.Path
-        path to a script that contains commands for initializing the shells on the compute nodes to use conda activate
+    partition : str
+        slurm partition to use, default is t2small
+    sbatch_out_file : str
+        path to where sbatch stdout should be written
     conda_env_name : str
         name of the conda environment to activate
 
@@ -26,13 +28,13 @@ def make_sbatch_head(conda_init_script, conda_env_name):
         "#!/bin/sh\n"
         "#SBATCH --nodes=1\n"
         f"#SBATCH --cpus-per-task=24\n"
-        f"#SBATCH -p t2small\n"
+        f"#SBATCH -p {partition}\n"
         f"#SBATCH --time=01:00:00\n"
-        f"#SBATCH --output {sbatch_out_fp}\n"
+        f"#SBATCH --output {sbatch_out_file}\n"
         # print start time
         "echo Start slurm && date\n"
         # prepare shell for using activate
-        f"source {conda_init_script}\n"
+        'eval "$($HOME/miniconda3/bin/conda shell.bash hook)"\n'
         f"conda activate {conda_env_name}\n"
     )
 
@@ -108,7 +110,7 @@ def write_sbatch_regrid(
     else:
         pycommands += "\n\n"
 
-    commands = sbatch_head.format(sbatch_out_fp=sbatch_out_fp) + pycommands
+    commands = sbatch_head + pycommands
 
     with open(sbatch_fp, "w") as f:
         f.write(commands)
@@ -146,8 +148,6 @@ def parse_args():
         path to directory where regridded files are written
     regrid_batch_dir : pathlib.Path
         path to directory where batch files are stored
-    conda_init_script : pathlib.Path
-        path to conda init script
     conda_env_name : str
         name of conda environment to activate
     regrid_script : pathlib.Path
@@ -186,12 +186,6 @@ def parse_args():
         "--regrid_batch_dir",
         type=str,
         help="Path to directory where batch files are stored",
-        required=True,
-    )
-    parser.add_argument(
-        "--conda_init_script",
-        type=str,
-        help="Path to conda init script",
         required=True,
     )
     parser.add_argument(
@@ -258,13 +252,18 @@ def parse_args():
         help="list of scenarios used in generating batch files",
         required=True,
     )
+    parser.add_argument(
+        "--partition",
+        type=str,
+        help="partition to use for slurm jobs",
+        default="t2small",
+    )
     args = parser.parse_args()
 
     return (
         Path(args.slurm_dir),
         Path(args.regrid_dir),
         Path(args.regrid_batch_dir),
-        Path(args.conda_init_script),
         args.conda_env_name,
         Path(args.regrid_script),
         Path(args.target_grid_fp),
@@ -276,6 +275,7 @@ def parse_args():
         args.freqs,
         args.models,
         args.scenarios,
+        args.partition,
     )
 
 
@@ -284,7 +284,6 @@ if __name__ == "__main__":
         slurm_dir,
         regrid_dir,
         regrid_batch_dir,
-        conda_init_script,
         conda_env_name,
         regrid_script,
         target_grid_fp,
@@ -296,6 +295,7 @@ if __name__ == "__main__":
         freqs,
         models,
         scenarios,
+        partition,
     ) = parse_args()
 
     # make these dirs if they don't exist
@@ -329,7 +329,7 @@ if __name__ == "__main__":
                         )
 
                         sbatch_head = make_sbatch_head(
-                            conda_init_script, conda_env_name
+                            partition, sbatch_out_fp, conda_env_name
                         )
                         sbatch_regrid_kwargs = {
                             "sbatch_fp": sbatch_fp,

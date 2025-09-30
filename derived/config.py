@@ -1,10 +1,24 @@
 # this is what we will call the dir created in working_dir that will contain all outputs
 output_dir_name = "dtr_processing"
 # template file names for DTR, tasmax, and tasmin
-dtr_tmp_fn = "dtr_day_{model}_{scenario}_regrid_{year}0101-{year}1231.nc"
-tasmax_tmp_fn = "tasmax_day_{model}_{scenario}_regrid_{year}0101-{year}1231.nc"
-tasmin_tmp_fn = "tasmin_day_{model}_{scenario}_regrid_{year}0101-{year}1231.nc"
+dtr_tmp_dir_structure = "{model}/{scenario}/day/dtr"
+dtr_tmp_fn = "dtr_day_{model}_{scenario}_regrid_{start_date}-{end_date}.nc"
 
+tasmin_tmp_dir_structure = "{model}/{scenario}/day/tasmin"
+tasmin_tmp_fn = "tasmin_day_{model}_{scenario}_regrid_{start_date}-{end_date}.nc"
+# tasmax_tmp_fn = "tasmax_day_{model}_{scenario}_regrid_{year}0101-{year}1231.nc"
+# tasmin_tmp_fn = "tasmin_day_{model}_{scenario}_regrid_{year}0101-{year}1231.nc"
+
+dtr_sbatch_tmp_fn = "process_cmip6_dtr.slurm"
+dtr_sbatch_config_tmp_fn = "process_cmip6_dtr_config.txt"
+
+diff_sbatch_tmp_fn = "process_cmip6_diff_{new_var_id}.slurm"
+diff_sbatch_config_tmp_fn = "process_cmip6_diff_{new_var_id}_config.txt"
+
+era5_diff_sbatch_tmp_fn = "process_era5_diff_{new_var_id}.slurm"
+
+era5_dtr_tmp_fn = "dtr_{year}_era5_4km_3338.nc"
+era5_dtr_sbatch_fn = "process_era5_dtr.slurm"
 
 # min / max possible ranges
 expected_value_ranges = {

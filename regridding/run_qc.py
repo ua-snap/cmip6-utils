@@ -10,14 +10,12 @@ def parse_args():
 
     Returns
     -------
-    output_directory : pathlib.Path
+    working_dir : pathlib.Path
         Path to directory where regridded files are written
     cmip6_directory : pathlib.Path
         Path to directory where CMIP6 files are stored
     repo_regridding_directory : pathlib.Path
         Path to regridding directory in cmip6-utils repo
-    conda_init_script : pathlib.Path
-        Path to script that initiates conda
     conda_env_name : str
         Name of conda environment to activate
     qc_notebook : pathlib.Path
@@ -33,7 +31,7 @@ def parse_args():
     """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--output_directory",
+        "--working_dir",
         type=str,
         help="Path to directory where regridded files are written",
         required=True,
@@ -48,12 +46,6 @@ def parse_args():
         "--repo_regridding_directory",
         type=str,
         help="Path to regridding directory in cmip6-utils repo",
-        required=True,
-    )
-    parser.add_argument(
-        "--conda_init_script",
-        type=str,
-        help="Path to script that initiates conda",
         required=True,
     )
     parser.add_argument(
@@ -96,10 +88,9 @@ def parse_args():
     args = parser.parse_args()
 
     return (
-        Path(args.output_directory),
+        Path(args.working_dir),
         Path(args.cmip6_directory),
         Path(args.repo_regridding_directory),
-        Path(args.conda_init_script),
         args.conda_env_name,
         Path(args.qc_notebook),
         args.vars,
@@ -112,10 +103,9 @@ def parse_args():
 if __name__ == "__main__":
 
     (
-        output_directory,
+        working_dir,
         cmip6_directory,
         repo_regridding_directory,
-        conda_init_script,
         conda_env_name,
         qc_notebook,
         vars,
@@ -126,7 +116,7 @@ if __name__ == "__main__":
 
     # Create QC directory
 
-    qc_dir = output_directory.joinpath("qc")
+    qc_dir = working_dir.joinpath("qc")
     qc_dir.mkdir(exist_ok=True)
 
     # Create and submit notebook script
@@ -151,12 +141,12 @@ if __name__ == "__main__":
         # print start time
         "echo Start slurm && date\n"
         # prepare shell for using activate
-        f"source {conda_init_script}\n"
+        'eval "$($HOME/miniconda3/bin/conda shell.bash hook)"\n'
         f"conda activate {conda_env_name}\n"
         # run the notebook
         f"cd {repo_regridding_directory}\n"
         f"papermill {qc_notebook} {output_nb} -r output_directory"
-        f" '{output_directory}' -r cmip6_directory '{cmip6_directory}'"
+        f" '{working_dir}' -r cmip6_directory '{cmip6_directory}'"
         f" -r vars '{vars}' -r freqs '{freqs}' -r models '{models}' -r scenarios '{scenarios}'\n"
         f"jupyter nbconvert --to html {output_nb}"
     )

@@ -10,6 +10,7 @@ dependencies:
   - anyio=3.6.1=pyhd8ed1ab_1
   - argon2-cffi=21.3.0=pyhd8ed1ab_0
   - argon2-cffi-bindings=21.2.0=py39hd1e30aa_4
+  - asciitree=0.3.3=py_2
   - asttokens=2.0.5=pyhd8ed1ab_0
   - attr=2.5.1=h166bdaf_1
   - attrs=22.1.0=pyh71513ae_1
@@ -28,10 +29,12 @@ dependencies:
   - brotlipy=0.7.0=py39hd1e30aa_1006
   - bzip2=1.0.8=hd590300_5
   - c-ares=1.18.1=h7f98852_0
-  - ca-certificates=2023.12.12=h06a4308_0
+  - ca-certificates=2025.7.14=hbd8a1cb_0
+  - cached-property=1.5.2=hd8ed1ab_1
+  - cached_property=1.5.2=pyha770c72_1
   - cartopy=0.22.0=py39hddac248_1
   - cdsapi=0.5.1=pyhd8ed1ab_0
-  - certifi=2024.2.2=py39h06a4308_0
+  - certifi=2025.7.14=pyhd8ed1ab_0
   - cf_xarray=0.8.7=pyhd8ed1ab_0
   - cffi=1.15.1=py39h7a31438_5
   - cftime=1.6.1=py39hd257fcd_0
@@ -49,6 +52,7 @@ dependencies:
   - cytoolz=0.12.2=py39hd1e30aa_1
   - dask=2022.2.1=pyhd3eb1b0_0
   - dask-core=2022.2.1=pyhd8ed1ab_0
+  - dask-jobqueue=0.8.5=pyhd8ed1ab_0
   - dbus=1.13.6=h5008d03_3
   - debugpy=1.6.0=py39h5a03fae_0
   - decorator=5.1.1=pyhd8ed1ab_0
@@ -60,6 +64,7 @@ dependencies:
   - exceptiongroup=1.2.0=pyhd8ed1ab_0
   - executing=0.9.1=pyhd8ed1ab_0
   - expat=2.4.8=h27087fc_0
+  - fasteners=0.19=pyhd8ed1ab_1
   - fftw=3.3.10=nompi_hc118613_108
   - flit-core=3.7.1=pyhd8ed1ab_0
   - font-ttf-dejavu-sans-mono=2.37=hab24e00_0
@@ -81,6 +86,8 @@ dependencies:
   - globus-sdk=3.34.0=pyhd8ed1ab_0
   - gst-plugins-base=1.20.3=hf6a322e_0
   - gstreamer=1.20.3=hd4edc92_2
+  - h5netcdf=1.6.3=pyhd8ed1ab_0
+  - h5py=3.7.0=nompi_py39h817c9c5_102
   - hdf4=4.2.15=h9772cbc_4
   - hdf5=1.12.2=nompi_h2386368_100
   - holoviews=1.18.1=pyhd8ed1ab_0
@@ -203,9 +210,10 @@ dependencies:
   - nspr=4.32=h9c3ff4c_1
   - nss=3.78=h2350873_0
   - numba=0.57.1=py39hb75a051_0
+  - numcodecs=0.12.1=py39h84cc369_1
   - numpy=1.23.1=py39hba7629e_0
   - openjpeg=2.4.0=hb52868f_1
-  - openssl=1.1.1w=h7f8727e_0
+  - openssl=1.1.1w=hd590300_0
   - packaging=21.3=pyhd8ed1ab_0
   - pandas=1.4.3=py39h1832856_0
   - pandoc=2.18=ha770c72_0
@@ -263,6 +271,8 @@ dependencies:
   - requests=2.28.1=pyhd8ed1ab_1
   - scikit-learn=1.3.2=py39ha22ef79_2
   - scipy=1.10.1=py39he83f1e1_2
+  - seaborn=0.13.2=hd8ed1ab_3
+  - seaborn-base=0.13.2=pyhd8ed1ab_3
   - send2trash=1.8.0=pyhd8ed1ab_0
   - setuptools=63.2.0=py39hf3d152e_0
   - shapely=2.0.2=py39h6404dd3_1
@@ -306,12 +316,13 @@ dependencies:
   - xcb-util-renderutil=0.3.9=h166bdaf_0
   - xcb-util-wm=0.4.1=h516909a_0
   - xclim=0.47.0=py39hf3d152e_0
-  - xesmf=0.8.2=pyhd8ed1ab_0
+  - xesmf=0.8.4=pyhd8ed1ab_1
   - xorg-libxau=1.0.9=h7f98852_0
   - xorg-libxdmcp=1.1.3=h7f98852_0
   - xyzservices=2023.10.1=pyhd8ed1ab_0
   - xz=5.2.5=h516909a_1
   - yaml=0.2.5=h7f98852_2
+  - zarr=2.18.2=pyhd8ed1ab_0
   - zeromq=4.3.4=h9c3ff4c_1
   - zict=3.0.0=pyhd8ed1ab_0
   - zipp=3.8.0=pyhd8ed1ab_0
@@ -322,4 +333,4 @@ dependencies:
       - cligj==0.7.2
       - fiona==1.9.5
       - geopandas==0.14.3
-prefix: /home/jdpaul3/miniconda3/envs/cmip6-utils
+prefix: /home/crstephenson/miniconda3/envs/cmip6-utils
