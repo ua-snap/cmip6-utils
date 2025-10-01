@@ -197,6 +197,20 @@ if __name__ == "__main__":
     if var_id == "pr":
         ref = ensure_correct_ref_precip_units(ref)
 
+    if var_id == "dtr":
+        logging.info("Squeezing DTR values")
+        rechunked = hist.chunk(dict(y=-1, x=-1))
+        max_value = rechunked.max().values
+        min_value = rechunked.min().values
+        lower_thresh = rechunked.quantile(0.0001).values
+        upper_thresh = rechunked.quantile(0.9999).values
+        hist = hist.where(hist >= lower_thresh, other=lower_thresh)
+        hist = hist.where(hist <= upper_thresh, other=upper_thresh)
+        logging.info(f"Max DTR value: {max_value}")
+        logging.info(f"Min DTR value: {min_value}")
+        logging.info(f"Setting values below {lower_thresh} to {lower_thresh}")
+        logging.info(f"Setting values above {upper_thresh} to {upper_thresh}")
+
     # ensure data does not have zeros, depending on variable
     if var_id in jitter_under_lu.keys():
         hist = apply_jitter(hist)
