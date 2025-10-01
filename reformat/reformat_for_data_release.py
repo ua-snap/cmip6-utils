@@ -92,7 +92,7 @@ def main():
     
     # Validate input directory exists
     if not adjusted_dir.exists():
-        print(f"Error: Input directory {adjusted_dir} does not exist!")
+        print(f"\nError: Input directory {adjusted_dir} does not exist!\n")
         sys.exit(1)
     
     # List zarr files
@@ -100,10 +100,10 @@ def main():
     files.sort()
     
     if not files:
-        print(f"No zarr files found in {adjusted_dir}")
+        print(f"\nNo zarr files found in {adjusted_dir}\n")
         sys.exit(0)
     
-    print(f"Found {len(files)} zarr files to reformat.")
+    print(f"\nFound {len(files)} zarr files to reformat.\n")
     
     # Process datasets and save to new zarr files
     # Creating output directory if it doesn't exist
@@ -116,7 +116,7 @@ def main():
         print(f"Processing {file}...")
         try:
             ds = process_file(file, prod_variant_lu)
-            print(f"File reformatted successfully!")
+            print(f"File reformatted successfully!\n")
             success_count += 1
             
             output_file = output_dir / file.name
@@ -125,10 +125,10 @@ def main():
             print(f"Saved to {output_file}")
             
         except Exception as e:
-            print(f"File could not be reformatted! Error: {e}")
+            print(f"File could not be reformatted! Error: {e}\n")
             failure_count += 1
     
-    print(f"\n\nProcessing complete. Success: {success_count}, Failure: {failure_count}")
+    print(f"\n\nProcessing complete. Success: {success_count}, Failure: {failure_count}\n\n")
 
 
 if __name__ == "__main__":
