@@ -8,10 +8,10 @@ This script processes zarr files by:
 3. Cleaning dataset attributes to keep only contact, creation_date, and history
 
 Usage:
-    python reformat_for_data_release.py <adjusted_dir> <output_dir>
+    python reformat_for_data_release.py <input_dir> <output_dir>
 
 Arguments:
-    adjusted_dir: Path to directory containing input zarr files
+    input_dir: Path to directory containing input zarr files
     output_dir: Path to directory where reformatted files will be saved
 """
 
