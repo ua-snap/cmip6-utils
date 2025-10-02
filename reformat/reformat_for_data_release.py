@@ -116,13 +116,13 @@ def main():
         print(f"Processing {file}...")
         try:
             ds = process_file(file, prod_variant_lu)
-            print(f"File reformatted successfully!\n")
-            success_count += 1
             
             output_file = output_dir / file.name
             ds.to_zarr(output_file, mode="w")
             ds.close()
+            print(f"File reformatted successfully!\n")
             print(f"Saved to {output_file}")
+            success_count += 1
             
         except Exception as e:
             print(f"File could not be reformatted! Error: {e}\n")
