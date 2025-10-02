@@ -58,7 +58,6 @@ def add_ensemble_dim(ds, ensemble_str):
 def clean_attrs(ds):
     """Drop attributes that are not 'contact', 'creation_date', or 'history'."""
     attrs_to_keep = ["contact", "creation_date", "history"]
-    attrs_to_drop = [attr for attr in ds.attrs if attr not in attrs_to_keep]
     ds.attrs = {attr: ds.attrs[attr] for attr in attrs_to_keep if attr in ds.attrs}
     return ds
 
