@@ -35,6 +35,7 @@ import numpy as np
 import xarray as xr
 import string
 from datetime import datetime
+import os
 
 logging.basicConfig(
     level=logging.INFO,
@@ -47,15 +48,9 @@ def parse_args():
     """Parse some arguments"""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--tmax_dir",
+        "--input_dir",
         type=str,
-        help="Directory containing daily maximum temperature data saved by year (and nothing else)",
-        required=True,
-    )
-    parser.add_argument(
-        "--tmin_dir",
-        type=str,
-        help="Directory containing daily minimum temperature data saved by year (and nothing else)",
+        help="Directory containing batch files of source CMIP6 filepaths",
         required=True,
     )
     parser.add_argument(
@@ -73,29 +68,40 @@ def parse_args():
     args = parser.parse_args()
 
     return (
-        Path(args.tmax_dir),
-        Path(args.tmin_dir),
+        Path(args.input_dir),
         Path(args.output_dir),
         args.dtr_tmp_fn,
     )
 
 
-def get_tmax_tmin_fps(tmax_dir, tmin_dir):
+def get_tmax_tmin_fps(input_dir):
     """Helper function for getting tasmax and tasmin filepaths. Put in function for checking prior to slurming.
     Assumes that all files in the input directories are the target input files.
     """
-    tmax_fps = list(tmax_dir.glob("*"))
-    tmin_fps = list(tmin_dir.glob("*"))
+
+    # Read all of the files in cmip6_files_dir and concatenate them into a single list
+    cmip6_file_list = []
+    for filename in os.listdir(input_dir):
+        file_path = os.path.join(input_dir, filename)
+        if os.path.isfile(file_path):
+            with open(file_path, "r") as f:
+                cmip6_file_list.extend([line.strip() for line in f if line.strip()])
+
+    tmax_fps = [fp for fp in cmip6_file_list if "tasmax" in fp]
+    tmin_fps = [fp for fp in cmip6_file_list if "tasmin" in fp]
+
+    tmax_fps.sort()
+    tmin_fps.sort()
 
     assert (
         len(tmax_fps) > 0
-    ), f"No tasmax files found in the input directory, in {tmax_dir}"
+    ), f"No tasmax files found in the input directory, in {input_dir}"
     assert (
         len(tmin_fps) > 0
-    ), f"No tasmin files found in the input directory, in {tmin_dir}"
+    ), f"No tasmin files found in the input directory, in {input_dir}"
     assert len(tmax_fps) == len(
         tmin_fps
-    ), f"Number of tmax and tmin files must be the same. tmax: {len(tmax_fps)} files in {tmax_dir}, tmin: {len(tmin_fps)} files in {tmin_dir}"
+    ), f"Number of tmax and tmin files must be the same. tmax: {len(tmax_fps)} files in {input_dir}, tmin: {len(tmin_fps)} files in {input_dir}"
 
     return tmax_fps, tmin_fps
 
@@ -161,16 +167,16 @@ def make_output_filepath(output_dir, dtr_tmp_fn, start_date, end_date):
 
 
 if __name__ == "__main__":
-    tmax_dir, tmin_dir, output_dir, dtr_tmp_fn = parse_args()
+    input_dir, output_dir, dtr_tmp_fn = parse_args()
 
     # assumes all files in one dir have corresponding file in the other
-    tmax_fps, tmin_fps = get_tmax_tmin_fps(tmax_dir, tmin_dir)
+    tmax_fps, tmin_fps = get_tmax_tmin_fps(input_dir)
 
     with xr.open_mfdataset(
-        tmax_fps, engine="h5netcdf", parallel=True, chunks="auto"
+        tmax_fps, engine="h5netcdf", parallel=True
     ) as tmax_ds:
         with xr.open_mfdataset(
-            tmin_fps, engine="h5netcdf", parallel=True, chunks="auto"
+            tmin_fps, engine="h5netcdf", parallel=True
         ) as tmin_ds:
             tmax_var_id = get_var_id(tmax_ds)
             tmin_var_id = get_var_id(tmin_ds)
