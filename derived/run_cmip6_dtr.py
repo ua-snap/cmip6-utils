@@ -282,6 +282,8 @@ def write_sbatch_dtr(
         "scenario=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $3}' $config)\n"
         f"python {worker_script} "
         f"--input_dir {input_dir} "
+        f"--scenario $scenario "
+        f"--model $model "
         f"--output_dir {output_dir}/$model/$scenario/day/dtr "
         f"--dtr_tmp_fn {dtr_tmp_fn.format(**dtr_fn_format)}\n"
     )
