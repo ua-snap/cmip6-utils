@@ -944,10 +944,6 @@ def apply_wgs84(ds):
             # add a second attribute "spatial_ref" identical to "crs_wkt" (this is redundant, but matches test rioxarray output)
             ds["spatial_ref"].attrs["spatial_ref"] = cf_crs["crs_wkt"]
 
-            # manually link spatial_ref attributes to the data variable via "grid_mapping" encoding
-            # assumes dataset will only have one data variable!
-            var_id = get_var_id(ds)
-            ds[var_id].encoding["grid_mapping"] = "spatial_ref"
             return ds
 
         except:
