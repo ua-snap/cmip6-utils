@@ -1140,6 +1140,10 @@ def regrid_dataset(fp, regridder, out_fp, src_mask=None, rasdafy=False):
     out_fp : pathlib.Path
         Path to output regridded file
     """
+    print("Input: ", fp, flush=True)
+    print("Output: ", out_fp, flush=True)
+    print("--------------------", flush=True)
+
     # open the source dataset
     src_ds = xr.open_dataset(fp)
 
@@ -1240,6 +1244,8 @@ if __name__ == "__main__":
 
         # get a list of yearly time ranges from the multi-year source filename
         expected_filename_time_ranges = parse_output_filename_times_from_file(fp)
+
+        print("Regridding the following files...", flush=True)
 
         # search existing filenames for the time range strings
         # if all time range strings are found in existing filenames, and no_clobber=True, then skip regridding
