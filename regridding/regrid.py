@@ -585,6 +585,7 @@ def get_time_res_days(ds):
     if type(ds.time.values[0]) in [
         cftime._cftime.Datetime360Day,
         cftime._cftime.DatetimeNoLeap,
+        cftime._cftime.DatetimeProlepticGregorian,
     ]:
         # have seen some datasets with a weird first time values
         #  (e.g. DatetimeNoLeap(1849, 12, 31, 23, 44, 59, 999993, has_year_zero=True))
