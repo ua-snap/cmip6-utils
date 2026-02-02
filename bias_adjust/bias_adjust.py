@@ -166,6 +166,29 @@ if __name__ == "__main__":
         logging.info(f"Adjusted data store exists, removing ({adj_path}).")
         shutil.rmtree(adj_path, ignore_errors=True)
 
+    if var_id == "dtr":
+        logging.info("##### START SQUEEZING DTR #####")
+        rechunked = scen_ds[var_id].chunk(dict(y=-1, x=-1))
+        max_value = rechunked.max().values
+        min_value = rechunked.min().values
+        lower_thresh = rechunked.quantile(0.0000002).values
+        upper_thresh = rechunked.quantile(0.9999998).values
+
+        # Count the number of pixels above and below the thresholds
+        num_below = scen_ds[var_id].where(scen_ds[var_id] < lower_thresh).count().compute().item()
+        num_above = scen_ds[var_id].where(scen_ds[var_id] > upper_thresh).count().compute().item()
+        logging.info("Number of pixels below lower threshold: ", num_below)
+        logging.info("Number of pixels above upper threshold: ", num_above)
+
+        scen_ds[var_id] = scen_ds[var_id].where((scen_ds[var_id] >= lower_thresh) | scen_ds[var_id].isnull(), other=lower_thresh)
+        scen_ds[var_id] = scen_ds[var_id].where((scen_ds[var_id] <= upper_thresh) | scen_ds[var_id].isnull(), other=upper_thresh)
+
+        logging.info(f"Max DTR value: {max_value}")
+        logging.info(f"Min DTR value: {min_value}")
+        logging.info(f"Set values below {lower_thresh} to {lower_thresh}")
+        logging.info(f"Set values above {upper_thresh} to {upper_thresh}")
+        logging.info("##### FINISH SQUEEZING DTR #####")
+
     logging.info(f"Writing adjusted data to {adj_path}")
     synchronizer = ThreadSynchronizer()
     scen_ds.to_zarr(adj_path, synchronizer=synchronizer)
