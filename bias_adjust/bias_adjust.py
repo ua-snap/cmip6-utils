@@ -199,18 +199,18 @@ if __name__ == "__main__":
     if var_id == "tasmax":
         count_above_threshold = (var_ds > max_tasmax).sum().compute().item()
         logging.info(f"Count of values above {max_tasmax} K: {count_above_threshold}")
-        var_ds = var_ds.where(var_ds <= max_tasmax, max_tasmax)
+        var_ds = var_ds.where((var_ds <= max_tasmax) | var_ds.isnull(), max_tasmax)
     elif var_id == "tasmin":
         count_below_threshold = (var_ds < min_tasmin).sum().compute().item()
         logging.info(f"Count of values below {min_tasmin} K: {count_below_threshold}")
-        var_ds = var_ds.where(var_ds >= min_tasmin, min_tasmin)
+        var_ds = var_ds.where((var_ds >= min_tasmin) | var_ds.isnull(), min_tasmin)
     elif var_id == "pr":
         count_above_threshold = (var_ds > max_pr).sum().compute().item()
         count_below_zero = (var_ds < min_pr).sum().compute().item()
         logging.info(f"Count of values above {max_pr} mm/day: {count_above_threshold}")
         logging.info(f"Count of values below {min_pr} mm/day: {count_below_zero}")
-        var_ds = var_ds.where(var_ds <= max_pr, max_pr)
-        var_ds = var_ds.where(var_ds >= min_pr, min_pr)
+        var_ds = var_ds.where((var_ds <= max_pr) | var_ds.isnull(), max_pr)
+        var_ds = var_ds.where((var_ds >= min_pr) | var_ds.isnull(), min_pr)
     scen_ds[var_id] = var_ds
 
     logging.info(f"Writing adjusted data to {adj_path}")
