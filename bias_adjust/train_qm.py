@@ -29,6 +29,8 @@ logging.basicConfig(
 )
 
 
+
+
 def validate_args(args):
     """Validate the supplied command line args."""
 
@@ -83,6 +85,29 @@ def parse_args():
     )
 
 
+# --- Utility functions for diagnostics and jitter ---
+def check_data_validity(ds, var_id, label):
+    """Check if the dataset variable is all NaN or empty and log a warning."""
+    if var_id not in ds.data_vars:
+        logging.warning(f"{label} variable '{var_id}' not found in dataset.")
+        return False
+    arr = ds[var_id]
+    if arr.size == 0:
+        logging.warning(f"{label} data for variable '{var_id}' is empty!")
+        return False
+    if arr.isnull().all():
+        logging.warning(f"{label} data for variable '{var_id}' is all NaN!")
+        return False
+    return True
+
+def apply_jitter(da):
+    """Apply jitter to the data if the variable is in the jitter under lookup table."""
+    var_id = da.name
+    jitter_under_thresh = jitter_under_lu[var_id]
+    da = sdba.processing.jitter_under_thresh(da, thresh=jitter_under_thresh)
+    logging.info(f"Jitter under {jitter_under_thresh} applied to data")
+    return da
+
 def get_var_id(ds):
     """Get the variable ID from the dataset."""
     if len(ds.data_vars) > 1:
@@ -129,18 +154,7 @@ def ensure_correct_ref_precip_units(ref):
         raise ValueError(
             f"Reference precipitation units are not compatible with QM training. Found {ref.attrs['units']}"
         )
-
     return ref
-
-
-def apply_jitter(da):
-    """Apply jitter to the data if the variable is in the jitter under lookup table."""
-    var_id = da.name
-    jitter_under_thresh = jitter_under_lu[var_id]
-    da = sdba.processing.jitter_under_thresh(da, thresh=jitter_under_thresh)
-    logging.info(f"Jitter under {jitter_under_thresh} applied to data")
-
-    return da
 
 
 def keep_attrs(train_ds, hist_ds, hist_path):
@@ -178,49 +192,71 @@ def keep_attrs(train_ds, hist_ds, hist_path):
 if __name__ == "__main__":
     (sim_path, ref_path, train_path, tmp_path) = parse_args()
 
-    # open connection to data
-    hist_ds = xr.open_zarr(sim_path)
-    # convert calendar to noleap to match CMIP6
-    ref_ds = xr.open_zarr(ref_path).convert_calendar("noleap")
-    hist_ds, ref_ds = ensure_matching_time_coords(hist_ds, ref_ds)
+    try:
+        # open connection to data with explicit chunking
+        hist_ds = xr.open_zarr(sim_path).chunk({"x": 50, "y": 50})
+        # convert calendar to noleap to match CMIP6
+        ref_ds = xr.open_zarr(ref_path).convert_calendar("noleap").chunk({"x": 50, "y": 50})
+        hist_ds, ref_ds = ensure_matching_time_coords(hist_ds, ref_ds)
 
-    var_id = get_var_id(hist_ds)
-    if var_id not in ref_ds.data_vars:
-        ref_var_id = sim_ref_var_lu[var_id]
-        # keep the variable names the same
-        ref_ds = ref_ds.rename({ref_var_id: var_id})
+        var_id = get_var_id(hist_ds)
+        if var_id not in ref_ds.data_vars:
+            ref_var_id = sim_ref_var_lu[var_id]
+            # keep the variable names the same
+            ref_ds = ref_ds.rename({ref_var_id: var_id})
 
-    # get dataarrays
-    ref = ref_ds[var_id]
-    hist = hist_ds[var_id]
+        # Input data validation
+        valid_hist = check_data_validity(hist_ds, var_id, "Historical")
+        valid_ref = check_data_validity(ref_ds, var_id, "Reference")
+        if not (valid_hist and valid_ref):
+            raise ValueError(f"Input data for {var_id} is invalid (empty or all NaN). Aborting.")
 
-    if var_id == "pr":
-        ref = ensure_correct_ref_precip_units(ref)
+        # get dataarrays
+        ref = ref_ds[var_id]
+        hist = hist_ds[var_id]
 
-    # ensure data does not have zeros, depending on variable
-    if var_id in jitter_under_lu.keys():
-        hist = apply_jitter(hist)
-        ref = apply_jitter(ref)
+        if var_id == "pr":
+            ref = ensure_correct_ref_precip_units(ref)
 
-    train_kwargs = dict(
-        ref=ref,
-        hist=hist,
-        nquantiles=100,
-        group="time.dayofyear",
-        window=31,
-        kind=varid_adj_kind_lu[var_id],
-    )
-    if var_id == "pr":
-        # do the adapt frequency thingy for precipitation data
-        train_kwargs.update(adapt_freq_thresh="0.254 mm d-1")
+        # ensure data does not have zeros, depending on variable
+        if var_id in jitter_under_lu.keys():
+            hist = apply_jitter(hist)
+            ref = apply_jitter(ref)
 
-    qm_train = sdba.QuantileDeltaMapping.train(**train_kwargs)
+        train_kwargs = dict(
+            ref=ref,
+            hist=hist,
+            nquantiles=100,
+            group="time.dayofyear",
+            window=31,
+            kind=varid_adj_kind_lu[var_id],
+        )
+        if var_id == "pr":
+            # do the adapt frequency thingy for precipitation data
+            train_kwargs.update(adapt_freq_thresh="0.254 mm d-1")
 
-    qm_train.ds = keep_attrs(qm_train.ds, hist_ds, sim_path)
+        qm_train = sdba.QuantileDeltaMapping.train(**train_kwargs)
 
-    logging.info(f"Writing QDM object to {train_path}")
-    if train_path.exists():
-        shutil.rmtree(train_path, ignore_errors=True)
+        qm_train.ds = keep_attrs(qm_train.ds, hist_ds, sim_path)
 
-    synchronizer = ThreadSynchronizer()
-    qm_train.ds.to_zarr(train_path, synchronizer=synchronizer)
+        logging.info(f"Writing QDM object to {train_path}")
+        if train_path.exists():
+            shutil.rmtree(train_path, ignore_errors=True)
+
+        synchronizer = ThreadSynchronizer()
+        qm_train.ds.to_zarr(train_path, synchronizer=synchronizer)
+
+        # Output validation
+        out_ds_check = xr.open_zarr(train_path)
+        if var_id in out_ds_check.data_vars:
+            arr = out_ds_check[var_id]
+            if arr.size == 0:
+                logging.warning(f"Output for {train_path} is empty!")
+            elif arr.isnull().all():
+                logging.warning(f"Output for {train_path} is all NaN!")
+        else:
+            logging.warning(f"Output variable '{var_id}' not found in {train_path}!")
+
+    except Exception as e:
+        logging.error(f"Error during training or writing: {e}")
+        raise

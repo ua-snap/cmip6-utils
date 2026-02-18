@@ -20,6 +20,13 @@ from zarr.sync import ThreadSynchronizer
 # from luts import jitter_under_lu
 from train_qm import get_var_id
 
+import dask
+
+dask.config.set({"distributed.worker.memory.target": 0.8, "distributed.worker.memory.spill": 0.9})
+# Optionally, limit number of threads/workers
+dask.config.set({"num_workers": 4})  # Adjust based on node resources
+
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -140,79 +147,96 @@ def validate_sim_source(train_ds, sim_ds):
 if __name__ == "__main__":
     train_path, sim_path, adj_path, tmp_path = parse_args()
 
-    # open connection to trained QM dataset
-    train_ds = xr.open_zarr(train_path).chunk({"x": 50, "y": 50})
-    qm = sdba.QuantileDeltaMapping.from_dataset(train_ds)
+    try:
 
-    # create a dataset containing all projected data to be adjusted
-    # not adjusting historical, no need for now
-    # need to rechunk this one too, same reason as for training data
-    sim_ds = xr.open_zarr(sim_path)
-    validate_sim_source(train_ds, sim_ds)
+        # open connection to trained QM dataset
+        train_ds = xr.open_zarr(train_path).chunk({"x": 50, "y": 50})
+        qm = sdba.QuantileDeltaMapping.from_dataset(train_ds)
 
-    var_id = get_var_id(sim_ds)
+        # create a dataset containing all projected data to be adjusted
+        # not adjusting historical, no need for now
+        # need to rechunk this one too, same reason as for training data
+        sim_ds = xr.open_zarr(sim_path).chunk({"x": 50, "y": 50})
+        validate_sim_source(train_ds, sim_ds)
 
-    scen = qm.adjust(
-        sim_ds[var_id],
-        extrapolation="constant",
-        interp="nearest",
-    )
-    scen_ds = scen.to_dataset(name=var_id)
-    scen_ds = drop_non_coord_vars(scen_ds)
-    scen_ds = add_global_attrs(scen_ds, sim_ds)
-    logging.info(f"Running adjustment and writing to {adj_path}")
+        var_id = get_var_id(sim_ds)
 
-    if adj_path.exists():
-        logging.info(f"Adjusted data store exists, removing ({adj_path}).")
-        shutil.rmtree(adj_path, ignore_errors=True)
+        if sim_ds[var_id].isnull().all():
+            logging.warning(f"Input data for {sim_path} is all NaN!")
+        if sim_ds[var_id].size == 0:
+            logging.warning(f"Input data for {sim_path} is empty!")
 
-    if var_id == "dtr":
-        logging.info("##### START SQUEEZING DTR #####")
-        rechunked = scen_ds[var_id].chunk(dict(y=-1, x=-1))
-        max_value = rechunked.max().values
-        min_value = rechunked.min().values
-        lower_thresh = rechunked.quantile(0.0000002).values
-        upper_thresh = rechunked.quantile(0.9999998).values
+        scen = qm.adjust(
+            sim_ds[var_id],
+            extrapolation="constant",
+            interp="nearest",
+        )
+        scen_ds = scen.to_dataset(name=var_id)
+        scen_ds = drop_non_coord_vars(scen_ds)
+        scen_ds = add_global_attrs(scen_ds, sim_ds)
+        logging.info(f"Running adjustment and writing to {adj_path}")
 
-        # Count the number of pixels above and below the thresholds
-        num_below = scen_ds[var_id].where(scen_ds[var_id] < lower_thresh).count().compute().item()
-        num_above = scen_ds[var_id].where(scen_ds[var_id] > upper_thresh).count().compute().item()
-        logging.info("Number of pixels below lower threshold: ", num_below)
-        logging.info("Number of pixels above upper threshold: ", num_above)
+        if adj_path.exists():
+            logging.info(f"Adjusted data store exists, removing ({adj_path}).")
+            shutil.rmtree(adj_path, ignore_errors=True)
 
-        scen_ds[var_id] = scen_ds[var_id].where((scen_ds[var_id] >= lower_thresh) | scen_ds[var_id].isnull(), other=lower_thresh)
-        scen_ds[var_id] = scen_ds[var_id].where((scen_ds[var_id] <= upper_thresh) | scen_ds[var_id].isnull(), other=upper_thresh)
+        if var_id == "dtr":
+            logging.info("##### START SQUEEZING DTR #####")
+            rechunked = scen_ds[var_id].chunk(dict(y=-1, x=-1))
+            max_value = rechunked.max().values
+            min_value = rechunked.min().values
+            lower_thresh = rechunked.quantile(0.0000002).values
+            upper_thresh = rechunked.quantile(0.9999998).values
 
-        logging.info(f"Max DTR value: {max_value}")
-        logging.info(f"Min DTR value: {min_value}")
-        logging.info(f"Set values below {lower_thresh} to {lower_thresh}")
-        logging.info(f"Set values above {upper_thresh} to {upper_thresh}")
-        logging.info("##### FINISH SQUEEZING DTR #####")
+            # Count the number of pixels above and below the thresholds
+            num_below = scen_ds[var_id].where(scen_ds[var_id] < lower_thresh).count().compute().item()
+            num_above = scen_ds[var_id].where(scen_ds[var_id] > upper_thresh).count().compute().item()
+            logging.info("Number of pixels below lower threshold: ", num_below)
+            logging.info("Number of pixels above upper threshold: ", num_above)
+
+            scen_ds[var_id] = scen_ds[var_id].where((scen_ds[var_id] >= lower_thresh) | scen_ds[var_id].isnull(), other=lower_thresh)
+            scen_ds[var_id] = scen_ds[var_id].where((scen_ds[var_id] <= upper_thresh) | scen_ds[var_id].isnull(), other=upper_thresh)
+
+            logging.info(f"Max DTR value: {max_value}")
+            logging.info(f"Min DTR value: {min_value}")
+            logging.info(f"Set values below {lower_thresh} to {lower_thresh}")
+            logging.info(f"Set values above {upper_thresh} to {upper_thresh}")
+            logging.info("##### FINISH SQUEEZING DTR #####")
 
 
-    max_tasmax = 333.15
-    min_tasmin = 203.15
-    max_pr = 1650
-    min_pr = 0
+        max_tasmax = 333.15
+        min_tasmin = 203.15
+        max_pr = 1650
+        min_pr = 0
 
-    var_ds = scen_ds[var_id]
-    if var_id == "tasmax":
-        count_above_threshold = (var_ds > max_tasmax).sum().compute().item()
-        logging.info(f"Count of values above {max_tasmax} K: {count_above_threshold}")
-        var_ds = var_ds.where((var_ds <= max_tasmax) | var_ds.isnull(), max_tasmax)
-    elif var_id == "tasmin":
-        count_below_threshold = (var_ds < min_tasmin).sum().compute().item()
-        logging.info(f"Count of values below {min_tasmin} K: {count_below_threshold}")
-        var_ds = var_ds.where((var_ds >= min_tasmin) | var_ds.isnull(), min_tasmin)
-    elif var_id == "pr":
-        count_above_threshold = (var_ds > max_pr).sum().compute().item()
-        count_below_zero = (var_ds < min_pr).sum().compute().item()
-        logging.info(f"Count of values above {max_pr} mm/day: {count_above_threshold}")
-        logging.info(f"Count of values below {min_pr} mm/day: {count_below_zero}")
-        var_ds = var_ds.where((var_ds <= max_pr) | var_ds.isnull(), max_pr)
-        var_ds = var_ds.where((var_ds >= min_pr) | var_ds.isnull(), min_pr)
-    scen_ds[var_id] = var_ds
+        var_ds = scen_ds[var_id]
+        if var_id == "tasmax":
+            count_above_threshold = (var_ds > max_tasmax).sum().compute().item()
+            logging.info(f"Count of values above {max_tasmax} K: {count_above_threshold}")
+            var_ds = var_ds.where((var_ds <= max_tasmax) | var_ds.isnull(), max_tasmax)
+        elif var_id == "tasmin":
+            count_below_threshold = (var_ds < min_tasmin).sum().compute().item()
+            logging.info(f"Count of values below {min_tasmin} K: {count_below_threshold}")
+            var_ds = var_ds.where((var_ds >= min_tasmin) | var_ds.isnull(), min_tasmin)
+        elif var_id == "pr":
+            count_above_threshold = (var_ds > max_pr).sum().compute().item()
+            count_below_zero = (var_ds < min_pr).sum().compute().item()
+            logging.info(f"Count of values above {max_pr} mm/day: {count_above_threshold}")
+            logging.info(f"Count of values below {min_pr} mm/day: {count_below_zero}")
+            var_ds = var_ds.where((var_ds <= max_pr) | var_ds.isnull(), max_pr)
+            var_ds = var_ds.where((var_ds >= min_pr) | var_ds.isnull(), min_pr)
+        scen_ds[var_id] = var_ds
 
-    logging.info(f"Writing adjusted data to {adj_path}")
-    synchronizer = ThreadSynchronizer()
-    scen_ds.to_zarr(adj_path, synchronizer=synchronizer)
+        logging.info(f"Writing adjusted data to {adj_path}")
+        synchronizer = ThreadSynchronizer()
+        scen_ds.to_zarr(adj_path, synchronizer=synchronizer)
+
+        adj_ds_check = xr.open_zarr(adj_path)
+        if adj_ds_check[var_id].isnull().all():
+            logging.warning(f"Output for {adj_path} is all NaN!")
+        elif adj_ds_check[var_id].size == 0:
+            logging.warning(f"Output for {adj_path} is empty!")
+
+    except Exception as e:
+        logging.error(f"Error during processing or writing: {e}")
+        raise
