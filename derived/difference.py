@@ -114,5 +114,12 @@ if __name__ == "__main__":
         logging.info(f"Deleting existing {output_store}")
         shutil.rmtree(output_store)
 
+    min_tasmin = 203.15
+    if variable_id == "tasmin":
+        logging.info("Squeezing tasmin values below limit")
+        count_below_threshold = (diff_ds[variable_id] < min_tasmin).sum().compute().item()
+        logging.info(f"Count of values below {min_tasmin} K: {count_below_threshold}")
+        diff_ds = diff_ds.where((diff_ds[variable_id] >= min_tasmin) | diff_ds[variable_id].isnull(), min_tasmin)
+
     synchronizer = ThreadSynchronizer()
     diff_ds.to_zarr(output_store, synchronizer=synchronizer)
