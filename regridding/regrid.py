@@ -1148,10 +1148,6 @@ def regrid_dataset(fp, regridder, out_fp, src_mask=None, rasdafy=False):
     # open the source dataset
     src_ds = xr.open_dataset(fp)
 
-    # imposing this restriction will help with datasets that have just tons of
-    # daily data in a single file, far more than we need e.g. back to 1850
-    # src_ds = src_ds.sel(time=slice("1950", "2100"))
-
     # add mask if not none
     if src_mask is not None:
         src_ds["mask"] = src_mask
