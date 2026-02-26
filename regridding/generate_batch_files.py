@@ -430,22 +430,6 @@ if __name__ == "__main__":
 
     results_df = pd.DataFrame(grids)
 
-    # # here we will exclude some files.
-    # # we are only going to worry about regridding those which have a latitude dimension for now.
-    # results_df = results_df.query("~lat_min.isnull()")
-    # # we are also going to exclude files which cannot form a panarctic result (very few so far).
-    # results_df = results_df.query("lat_max > 50")
-    # # drop any subdaily frequencies.
-    # results_df = results_df.query(
-    #     "frequency.str.contains('day') | frequency.str.contains('mon')"
-    # )
-    # # only regrid files if their starting date is less than or equal to 2101-01-01.
-    # results_df = results_df.query("start_year < @max_year")
-    # results_df = results_df.query("end_year >= @min_year")
-
-    # remove all batch files. We will be generating only those which contain files to be regridded based on flow parameters.
-    #_ = [fp.unlink() for fp in regrid_batch_dir.glob("*.txt")]
-
     # Print results_df with all columns and values
     pd.set_option('display.max_columns', None)
 

@@ -203,22 +203,19 @@ if __name__ == "__main__":
             logging.info(f"Set values above {upper_thresh} to {upper_thresh}")
             logging.info("##### FINISH SQUEEZING DTR #####")
 
-
         max_tasmax = 333.15
-        min_tasmin = 203.15
         max_pr = 1650
         min_pr = 0
 
+        # tasmin is squeezed separately in the derived/difference.py script
         var_ds = scen_ds[var_id]
         if var_id == "tasmax":
+            logging.info("Squeezing tasmax values above limit")
             count_above_threshold = (var_ds > max_tasmax).sum().compute().item()
             logging.info(f"Count of values above {max_tasmax} K: {count_above_threshold}")
             var_ds = var_ds.where((var_ds <= max_tasmax) | var_ds.isnull(), max_tasmax)
-        elif var_id == "tasmin":
-            count_below_threshold = (var_ds < min_tasmin).sum().compute().item()
-            logging.info(f"Count of values below {min_tasmin} K: {count_below_threshold}")
-            var_ds = var_ds.where((var_ds >= min_tasmin) | var_ds.isnull(), min_tasmin)
         elif var_id == "pr":
+            logging.info("Squeezing pr values above and below limits")
             count_above_threshold = (var_ds > max_pr).sum().compute().item()
             count_below_zero = (var_ds < min_pr).sum().compute().item()
             logging.info(f"Count of values above {max_pr} mm/day: {count_above_threshold}")

@@ -161,6 +161,9 @@ def parse_args():
         default=True,
     )
     args = parser.parse_args()
+
+    # TODO: This was commented out during CMIP6 downscale work.
+    # There is probably more work to do here to get it working properly again.
     # args = validate_args(args)
 
     return (
