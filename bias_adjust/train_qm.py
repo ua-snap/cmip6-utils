@@ -505,15 +505,15 @@ if __name__ == "__main__":
         # Exit with error code
         sys.exit(1)
     
-    if not success:
-        logging.error("Training did not complete successfully")
-        sys.exit(1)
-    
     finally:
         # Always cleanup Dask client
         if client is not None:
             logging.info("Closing Dask client...")
             client.close()
+    
+    if not success:
+        logging.error("Training did not complete successfully")
+        sys.exit(1)
     
     logging.info("Exiting with success")
     sys.exit(0)
