@@ -478,7 +478,8 @@ if __name__ == "__main__":
                 train_path,
                 encoding=encoding,
                 synchronizer=synchronizer,
-                consolidated=True  # Faster subsequent reads
+                consolidated=True,  # Faster subsequent reads
+                compute=True  # Force synchronous write completion
             )
             logging.info(f"Successfully wrote QDM object to {train_path}")
         except Exception as e:
