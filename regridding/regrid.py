@@ -6,6 +6,7 @@ Note - this script first crops the dataset to the panarctic domain of 50N and up
 import argparse
 import logging
 import random
+import sys
 import time
 import traceback
 import warnings
@@ -18,6 +19,8 @@ import xesmf as xe
 import xarray as xr
 from pyproj import CRS
 from xclim.core import units
+import dask
+from dask.distributed import Client, LocalCluster
 
 # project
 from config import variables, landsea_variables
@@ -30,6 +33,64 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[logging.StreamHandler()],
 )
+
+
+def configure_dask_for_regridding(n_workers=4, threads_per_worker=4, memory_limit='28GB'):
+    """Configure Dask LocalCluster optimized for regridding on 128GB nodes.
+    
+    Regridding is memory-intensive (large spatial grids) and compute-bound (interpolation).
+    
+    Args:
+        n_workers: Number of worker processes (default: 4)
+        threads_per_worker: Threads per worker (default: 4)
+        memory_limit: Memory limit per worker (default: 28GB)
+        
+    Returns:
+        client: Dask distributed client
+    """
+    # Close any existing clients
+    try:
+        client = Client.current()
+        client.close()
+    except ValueError:
+        pass
+    
+    # Configure global dask settings
+    dask.config.set({
+        # Memory management - regridding can use a lot of memory
+        'distributed.worker.memory.target': 0.70,
+        'distributed.worker.memory.spill': 0.80,
+        'distributed.worker.memory.pause': 0.85,
+        'distributed.worker.memory.terminate': 0.95,
+        
+        # I/O and network
+        'distributed.comm.timeouts.tcp': '120s',
+        'distributed.scheduler.bandwidth': 1e9,
+        
+        # Array settings for regridding
+        'array.slicing.split_large_chunks': True,
+        'array.chunk-size': '128 MiB',
+        
+        # Disable work stealing for more predictable memory usage
+        'distributed.scheduler.work-stealing': False,
+    })
+    
+    cluster = LocalCluster(
+        n_workers=n_workers,
+        threads_per_worker=threads_per_worker,
+        memory_limit=memory_limit,
+        processes=True,
+        dashboard_address=None,
+    )
+    
+    client = Client(cluster)
+    
+    logging.info(f"Dask cluster configured for regridding:")
+    logging.info(f"  Workers: {n_workers}, Threads/worker: {threads_per_worker}")
+    logging.info(f"  Memory per worker: {memory_limit}")
+    logging.info(f"  Total memory: {n_workers * 28} GB (out of ~128 GB available)")
+    
+    return client
 
 
 def parse_args():
@@ -729,6 +790,43 @@ def write_regridded_files(out_ds, out_fp):
     return out_fp
 
 
+def validate_regridded_output(out_fps, var_id):
+    """Validate that regridded output files exist and contain valid data.
+    
+    Args:
+        out_fps: List of output file paths
+        var_id: Variable identifier to check
+        
+    Raises:
+        ValueError: If any output is invalid
+    """
+    if not out_fps:
+        raise ValueError("No output files were created")
+    
+    for out_fp in out_fps:
+        if not out_fp.exists():
+            raise ValueError(f"Output file not created: {out_fp}")
+        
+        # Check file size
+        size_mb = out_fp.stat().st_size / (1024 * 1024)
+        if size_mb < 0.5:
+            raise ValueError(f"Output file suspiciously small ({size_mb:.2f} MB): {out_fp}")
+        
+        # Quick validation - open and check variable exists
+        try:
+            with xr.open_dataset(out_fp) as ds:
+                if var_id not in ds.data_vars:
+                    raise ValueError(f"Variable '{var_id}' not found in: {out_fp}")
+                
+                arr = ds[var_id]
+                if arr.size == 0:
+                    raise ValueError(f"Variable '{var_id}' is empty in: {out_fp}")
+        except Exception as e:
+            raise ValueError(f"Cannot validate {out_fp}: {e}")
+        
+        logging.info(f"✓ Validated: {out_fp.name} ({size_mb:.2f} MB)")
+
+
 def get_var_id(ds):
     """Get the CMIP6 variable ID from a dataset.
 
@@ -1141,19 +1239,23 @@ def regrid_dataset(fp, regridder, out_fp, src_mask=None, rasdafy=False):
     out_fp : pathlib.Path
         Path to output regridded file
     """
+    logging.info(f"  Processing: {fp.name}")
     print("Input: ", fp, flush=True)
     print("Output: ", out_fp, flush=True)
     print("--------------------", flush=True)
 
     # open the source dataset
     src_ds = xr.open_dataset(fp)
+    var_id = get_var_id(src_ds)
 
     # add mask if not none
     if src_mask is not None:
         src_ds["mask"] = src_mask
 
+    logging.info(f"  Applying regridding for {var_id}...")
     regrid_task = regridder(src_ds, keep_attrs=True)
     regrid_ds = regrid_task.compute()
+    logging.info(f"  Regridding computation complete")
 
     # if the variable is a fixed frequency variable, just write it as is without any time modifications
     # this should never occur because only daily and monthly frequency data should be regridded,
@@ -1171,8 +1273,26 @@ def regrid_dataset(fp, regridder, out_fp, src_mask=None, rasdafy=False):
 
     # fix attributes
     regrid_ds = fix_attrs(regrid_ds)
-    # write
+    
+    # write and get list of output files
+    logging.info(f"  Writing output files...")
     out_fp = write_regridded_files(regrid_ds, out_fp)
+    
+    # Validate output files
+    # Get all the year files that were written
+    nodate_out_fn = "_".join(out_fp.name.split(".nc")[0].split("_")[:-1])
+    written_fps = list(out_fp.parent.glob(f"{nodate_out_fn}*.nc"))
+    
+    try:
+        validate_regridded_output(written_fps, var_id)
+        logging.info(f"  ✓ Successfully validated {len(written_fps)} output files")
+    except ValueError as e:
+        logging.error(f"  Validation failed: {e}")
+        # Clean up invalid outputs
+        for written_fp in written_fps:
+            if written_fp.exists():
+                written_fp.unlink()
+        raise
 
     return out_fp
 
@@ -1189,96 +1309,154 @@ if __name__ == "__main__":
         rasdafy,
         no_clobber,
     ) = parse_args()
-
-    # get the paths of files to regrid from the batch file
-    with open(regrid_batch_fp) as f:
-        lines = f.readlines()
-    src_fps = [Path(line.replace("\n", "")) for line in lines]
-
-    # cannot open / crop if dataset is irregular in lat / lon.
-    # I think we should shift to simply regridding to the destination grid,
-    # which we should ensure has the domain we want.
-    dst_ds = xr.open_dataset(dst_fp, chunks={"time": 100})
-
-    # open first source file for initializing regridder
-    src_init_ds = xr.open_dataset(src_fps[0])
-
-    # if sftlf_fp is provided, assume it is needed for masking
-    if src_sftlf_fp:
-        assert (
-            dst_sftlf_fp
-        ), "If source sftlf file is provided, destination sftlf file must also be provided"
-    # assume dst_sftlf_fp will ALWAYS be provided if we are dealing with masked variables
-    if dst_sftlf_fp:
-        src_init_ds, dst_ds = prep_for_landsea(
-            src_init_ds,
-            dst_ds,
-            src_sftlf_fp,
-            dst_sftlf_fp,
+    
+    client = None
+    success = False
+    
+    try:
+        # Configure Dask
+        logging.info("Configuring Dask cluster...")
+        client = configure_dask_for_regridding(
+            n_workers=4,
+            threads_per_worker=4,
+            memory_limit='28GB'
         )
 
-    # use one of the source files to be regridded and the destination grid file to create a regridder object
-    regridder = init_regridder(src_init_ds, dst_ds, interp_method)
+        # get the paths of files to regrid from the batch file
+        with open(regrid_batch_fp) as f:
+            lines = f.readlines()
+        src_fps = [Path(line.replace("\n", "")) for line in lines]
+        
+        logging.info(f"Loaded {len(src_fps)} files from batch file: {regrid_batch_fp.name}")
 
-    # now iterate over files in batch file and run the regridding
-    print(f"Regridding {len(src_fps)} files", flush=True)
-    tic = time.perf_counter()
+        # cannot open / crop if dataset is irregular in lat / lon.
+        # I think we should shift to simply regridding to the destination grid,
+        # which we should ensure has the domain we want.
+        logging.info("Loading destination grid...")
+        dst_ds = xr.open_dataset(dst_fp, chunks={"time": 100})
 
-    results = []
-    errs = []
-    no_clobbers = []
+        # open first source file for initializing regridder
+        logging.info("Loading initial source file for regridder setup...")
+        src_init_ds = xr.open_dataset(src_fps[0])
 
-    for fp in src_fps:
-        out_fp = generate_regrid_filepath(fp, out_dir)
-
-        # make sure the parent dirs exist
-        out_fp.parent.mkdir(exist_ok=True, parents=True)
-
-        # remove date from filename about to be regridded
-        #  and list all existing files created from the source file being examined
-        nodate_out_fn = "_".join(out_fp.name.split(".nc")[0].split("_")[:-1])
-        existing_fps = list(out_fp.parent.glob(f"{nodate_out_fn}*.nc"))
-
-        # get a list of yearly time ranges from the multi-year source filename
-        expected_filename_time_ranges = parse_output_filename_times_from_file(fp)
-
-        print("Regridding the following files...", flush=True)
-
-        # search existing filenames for the time range strings
-        # if all time range strings are found in existing filenames, and no_clobber=True, then skip regridding
-        if (
-            all(
-                [
-                    any(time_str in fp.name for fp in existing_fps)
-                    for time_str in expected_filename_time_ranges
-                ]
+        # if sftlf_fp is provided, assume it is needed for masking
+        if src_sftlf_fp:
+            assert (
+                dst_sftlf_fp
+            ), "If source sftlf file is provided, destination sftlf file must also be provided"
+        # assume dst_sftlf_fp will ALWAYS be provided if we are dealing with masked variables
+        if dst_sftlf_fp:
+            logging.info("Preparing land-sea masking...")
+            src_init_ds, dst_ds = prep_for_landsea(
+                src_init_ds,
+                dst_ds,
+                src_sftlf_fp,
+                dst_sftlf_fp,
             )
-            and no_clobber
-        ):
-            no_clobbers.append(str(fp))
-        else:
-            src_mask = None
-            if "mask" in src_init_ds.data_vars:
-                src_mask = src_init_ds["mask"]
-            try:
-                results.append(regrid_dataset(fp, regridder, out_fp, src_mask, rasdafy))
-            except Exception as e:
-                errs.append(str(fp))
-                print(f"\nFILE NOT REGRIDDED: {fp}\n     Errors printed below:\n")
-                traceback.print_exc()
 
-    print(
-        f"Regridding done, {len(results)} files regridded in {np.round((time.perf_counter() - tic) / 60, 1)}m"
-    )
+        # use one of the source files to be regridded and the destination grid file to create a regridder object
+        logging.info(f"Initializing regridder with method: {interp_method}")
+        regridder = init_regridder(src_init_ds, dst_ds, interp_method)
 
-    if len(results) < len(src_fps):
-        print("\nThe following files were NOT regridded because:\n")
-        print("PROCESSING ERROR:", "\nPROCESSING ERROR: ".join(errs))
-        if no_clobber and len(no_clobbers) > 0:
+        # now iterate over files in batch file and run the regridding
+        total_files = len(src_fps)
+        print(f"Regridding {total_files} files", flush=True)
+        logging.info(f"Starting regridding of {total_files} files...")
+        tic = time.perf_counter()
+
+        results = []
+        errs = []
+        no_clobbers = []
+
+        for idx, fp in enumerate(src_fps, 1):
+            logging.info(f"\n{'='*80}")
+            logging.info(f"Processing file {idx}/{total_files}: {fp.name}")
+            logging.info(f"{'='*80}")
+            
+            out_fp = generate_regrid_filepath(fp, out_dir)
+
+            # make sure the parent dirs exist
+            out_fp.parent.mkdir(exist_ok=True, parents=True)
+
+            # remove date from filename about to be regridded
+            #  and list all existing files created from the source file being examined
+            nodate_out_fn = "_".join(out_fp.name.split(".nc")[0].split("_")[:-1])
+            existing_fps = list(out_fp.parent.glob(f"{nodate_out_fn}*.nc"))
+
+            # get a list of yearly time ranges from the multi-year source filename
+            expected_filename_time_ranges = parse_output_filename_times_from_file(fp)
+
+            # search existing filenames for the time range strings
+            # if all time range strings are found in existing filenames, and no_clobber=True, then skip regridding
+            if (
+                all(
+                    [
+                        any(time_str in fp.name for fp in existing_fps)
+                        for time_str in expected_filename_time_ranges
+                    ]
+                )
+                and no_clobber
+            ):
+                logging.info(f"⊘ Skipping (no-clobber): {fp.name}")
+                no_clobbers.append(str(fp))
+            else:
+                src_mask = None
+                if "mask" in src_init_ds.data_vars:
+                    src_mask = src_init_ds["mask"]
+                try:
+                    result = regrid_dataset(fp, regridder, out_fp, src_mask, rasdafy)
+                    results.append(result)
+                    logging.info(f"✓ Completed {idx}/{total_files}: {fp.name}")
+                except Exception as e:
+                    errs.append(str(fp))
+                    logging.error(f"✗ FAILED {idx}/{total_files}: {fp.name}")
+                    logging.error(f"Error: {e}")
+                    print(f"\nFILE NOT REGRIDDED: {fp}\n     Errors printed below:\n")
+                    traceback.print_exc()
+
+        elapsed_time = (time.perf_counter() - tic) / 60
+        logging.info(f"\n{'='*80}")
+        logging.info(f"REGRIDDING SUMMARY")
+        logging.info(f"{'='*80}")
+        print(
+            f"Regridding done, {len(results)} files regridded in {np.round(elapsed_time, 1)}m"
+        )
+        logging.info(f"  Total files processed: {len(results)}/{total_files}")
+        logging.info(f"  Files skipped (no-clobber): {len(no_clobbers)}")
+        logging.info(f"  Files failed: {len(errs)}")
+        logging.info(f"  Time elapsed: {np.round(elapsed_time, 1)} minutes")
+
+        if len(results) < len(src_fps):
             print("\nThe following files were NOT regridded because:\n")
-            print("OVERWRITE ERROR:", "\nOVERWRITE ERROR: ".join(no_clobbers))
+            if errs:
+                print("PROCESSING ERROR:", "\nPROCESSING ERROR: ".join(errs))
+            if no_clobber and len(no_clobbers) > 0:
+                print("\nOVERWRITE ERROR:", "\nOVERWRITE ERROR: ".join(no_clobbers))
 
-    # if any filepaths failed to regrid due to errors, add them to a "batch_retry.txt" file to be optionally retried
-    if len(errs) > 0:
-        regrid_batch_dir = regrid_batch_fp.parent
-        write_retry_batch_file(regrid_batch_dir, errs)
+        # if any filepaths failed to regrid due to errors, add them to a "batch_retry.txt" file to be optionally retried
+        if len(errs) > 0:
+            regrid_batch_dir = regrid_batch_fp.parent
+            write_retry_batch_file(regrid_batch_dir, errs)
+            logging.error(f"\n{len(errs)} files failed - retry batch file written")
+            # Set exit code to 1 if there were errors
+            sys.exit(1)
+        
+        success = True
+        logging.info("\n✓ Regridding completed successfully")
+        
+    except Exception as e:
+        logging.error(f"\nFATAL ERROR in regridding pipeline: {e}")
+        traceback.print_exc()
+        sys.exit(1)
+    
+    finally:
+        # Always cleanup Dask client
+        if client is not None:
+            logging.info("Closing Dask client...")
+            client.close()
+    
+    if not success:
+        logging.error("Regridding did not complete successfully")
+        sys.exit(1)
+    
+    sys.exit(0)
