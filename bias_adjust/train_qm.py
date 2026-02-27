@@ -14,11 +14,16 @@ Example usage:
 import argparse
 import logging
 import shutil
+import sys
 from pathlib import Path
 
 # import icclim
+import dask
+import dask.array as da
+from dask.distributed import Client, LocalCluster
 import xarray as xr
 from zarr.sync import ThreadSynchronizer
+import numcodecs
 from xclim import sdba
 from luts import sim_ref_var_lu, varid_adj_kind_lu, jitter_under_lu
 
@@ -27,6 +32,65 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[logging.StreamHandler()],
 )
+
+
+def configure_dask_for_training(n_workers=4, threads_per_worker=4, memory_limit='30GB'):
+    """Configure Dask LocalCluster optimized for QDM training on 128GB nodes.
+    
+    Args:
+        n_workers: Number of worker processes (default: 4)
+        threads_per_worker: Threads per worker (default: 4)
+        memory_limit: Memory limit per worker (default: 30GB = 120GB total for 4 workers)
+        
+    Returns:
+        client: Dask distributed client
+    """
+    # Close any existing clients
+    try:
+        client = Client.current()
+        client.close()
+    except ValueError:
+        pass
+    
+    # Configure global dask settings
+    dask.config.set({
+        # Memory management - more aggressive for large climate data
+        'distributed.worker.memory.target': 0.70,  # Start spilling at 70%
+        'distributed.worker.memory.spill': 0.80,   # Agressively spill at 80%
+        'distributed.worker.memory.pause': 0.85,   # Pause at 85%
+        'distributed.worker.memory.terminate': 0.95,  # Kill worker at 95%
+        
+        # Optimize for I/O with zarr
+        'distributed.comm.timeouts.tcp': '120s',
+        'distributed.scheduler.bandwidth': 1e9,  # Assume 1 Gbps network
+        
+        # Array optimization
+        'array.slicing.split_large_chunks': True,
+        'array.chunk-size': '128 MiB',  # Target chunk size
+        
+        # Disable work stealing for deterministic results
+        'distributed.scheduler.work-stealing': False,
+    })
+    
+    # Create LocalCluster with explicit resource limits
+    cluster = LocalCluster(
+        n_workers=n_workers,
+        threads_per_worker=threads_per_worker,
+        memory_limit=memory_limit,
+        processes=True,  # Use processes not threads for GIL-bound work
+        dashboard_address=None,  # Disable dashboard on compute nodes
+    )
+    
+    client = Client(cluster)
+    
+    logging.info(f"Dask cluster configured:")
+    logging.info(f"  Workers: {n_workers}")
+    logging.info(f"  Threads per worker: {threads_per_worker}")
+    logging.info(f"  Memory per worker: {memory_limit}")
+    logging.info(f"  Total memory: {n_workers * 30} GB (out of ~128 GB available)")
+    logging.info(f"  Dashboard: {client.dashboard_link}")
+    
+    return client
 
 
 
@@ -87,17 +151,26 @@ def parse_args():
 
 # --- Utility functions for diagnostics and jitter ---
 def check_data_validity(ds, var_id, label):
-    """Check if the dataset variable is all NaN or empty and log a warning."""
+    """Check if the dataset variable is all NaN or empty and raise an error if invalid."""
     if var_id not in ds.data_vars:
-        logging.warning(f"{label} variable '{var_id}' not found in dataset.")
-        return False
+        error_msg = f"{label} variable '{var_id}' not found in dataset."
+        logging.error(error_msg)
+        raise ValueError(error_msg)
+    
     arr = ds[var_id]
     if arr.size == 0:
-        logging.warning(f"{label} data for variable '{var_id}' is empty!")
-        return False
-    if arr.isnull().all():
-        logging.warning(f"{label} data for variable '{var_id}' is all NaN!")
-        return False
+        error_msg = f"{label} data for variable '{var_id}' is empty!"
+        logging.error(error_msg)
+        raise ValueError(error_msg)
+    
+    # Compute a sample to check for all NaN (avoid loading entire array)
+    sample = arr.isel({dim: slice(0, min(10, arr.sizes[dim])) for dim in arr.dims})
+    if sample.isnull().all().compute():
+        error_msg = f"{label} data for variable '{var_id}' appears to be all NaN!"
+        logging.error(error_msg)
+        raise ValueError(error_msg)
+    
+    logging.info(f"{label} data validation passed for variable '{var_id}'")
     return True
 
 def apply_jitter(da):
@@ -189,40 +262,172 @@ def keep_attrs(train_ds, hist_ds, hist_path):
     return train_ds
 
 
+def validate_training_output(qm_train, var_id):
+    """Validate that the training produced valid quantile mappings.
+    
+    Args:
+        qm_train: The trained QDM object
+        var_id: Variable identifier
+        
+    Raises:
+        ValueError: If training output is invalid
+    """
+    logging.info(f"Validating training output for {var_id}...")
+    
+    # Check that the dataset exists and has the variable
+    if not hasattr(qm_train, 'ds'):
+        raise ValueError("Trained QM object has no 'ds' attribute")
+    
+    if var_id not in qm_train.ds.data_vars:
+        raise ValueError(f"Variable '{var_id}' not found in trained QM dataset")
+    
+    # Check that quantiles exist and are not all NaN
+    arr = qm_train.ds[var_id]
+    if arr.size == 0:
+        raise ValueError(f"Trained QM data for '{var_id}' is empty")
+    
+    # Sample check for NaN values
+    sample = arr.isel({dim: slice(0, min(10, arr.sizes[dim])) for dim in arr.dims})
+    if sample.isnull().all().compute():
+        raise ValueError(f"Trained QM data for '{var_id}' is all NaN")
+    
+    # Check for 'quantiles' dimension (expected in QDM output)
+    if 'quantiles' not in qm_train.ds.dims:
+        logging.warning("No 'quantiles' dimension found in QDM output - this may indicate a problem")
+    
+    logging.info(f"Training output validation passed for {var_id}")
+    return True
+
+
+def validate_written_zarr(train_path, var_id, min_size_mb=1):
+    """Validate that the written zarr store is valid and has reasonable size.
+    
+    Args:
+        train_path: Path to the zarr store
+        var_id: Variable identifier
+        min_size_mb: Minimum expected size in MB
+        
+    Raises:
+        ValueError: If output is invalid
+    """
+    import os
+    
+    logging.info(f"Validating written zarr store at {train_path}...")
+    
+    # Check that the path exists
+    if not train_path.exists():
+        raise ValueError(f"Output zarr store was not created at {train_path}")
+    
+    # Check directory size
+    total_size = 0
+    for dirpath, dirnames, filenames in os.walk(train_path):
+        for filename in filenames:
+            filepath = os.path.join(dirpath, filename)
+            if os.path.exists(filepath):
+                total_size += os.path.getsize(filepath)
+    
+    size_mb = total_size / (1024 * 1024)
+    logging.info(f"Output zarr store size: {size_mb:.2f} MB")
+    
+    if size_mb < min_size_mb:
+        raise ValueError(
+            f"Output zarr store is suspiciously small ({size_mb:.2f} MB < {min_size_mb} MB). "
+            "Training may have failed."
+        )
+    
+    # Try to open and validate the zarr store
+    try:
+        out_ds_check = xr.open_zarr(train_path)
+    except Exception as e:
+        raise ValueError(f"Cannot open output zarr store: {e}")
+    
+    if var_id not in out_ds_check.data_vars:
+        raise ValueError(f"Output variable '{var_id}' not found in {train_path}")
+    
+    arr = out_ds_check[var_id]
+    if arr.size == 0:
+        raise ValueError(f"Output for {train_path} is empty")
+    
+    # Sample check (avoid loading entire array)
+    sample = arr.isel({dim: slice(0, min(10, arr.sizes[dim])) for dim in arr.dims})
+    if sample.isnull().all().compute():
+        raise ValueError(f"Output for {train_path} is all NaN")
+    
+    logging.info(f"Written zarr validation passed for {train_path}")
+    return True
+
+
 if __name__ == "__main__":
     (sim_path, ref_path, train_path, tmp_path) = parse_args()
+    
+    # Track success/failure for proper exit code
+    success = False
+    client = None
 
     try:
-        # open connection to data with explicit chunking
-        hist_ds = xr.open_zarr(sim_path).chunk({"x": 50, "y": 50})
-        # convert calendar to noleap to match CMIP6
-        ref_ds = xr.open_zarr(ref_path).convert_calendar("noleap").chunk({"x": 50, "y": 50})
+        # Configure Dask with explicit cluster
+        logging.info("Configuring Dask cluster...")
+        client = configure_dask_for_training(
+            n_workers=4,
+            threads_per_worker=4,
+            memory_limit='28GB'  # 4 workers × 28GB = 112GB, leaving 16GB for system
+        )
+        
+        logging.info(f"Starting QM training for {sim_path.name}")
+        logging.info(f"Opening input datasets...")
+        
+        # Optimized chunking strategy:
+        # - Time: chunk into ~2 year blocks (730 days) for QDM dayofyear grouping
+        # - Spatial: larger chunks (100x100) to reduce overhead
+        # This balances memory usage with computational efficiency
+        time_chunk = 730  # ~2 years
+        spatial_chunk = 100
+        
+        chunk_dict = {
+            "time": time_chunk,
+            "x": spatial_chunk,
+            "y": spatial_chunk
+        }
+        
+        logging.info(f"Using chunk strategy: time={time_chunk}, x={spatial_chunk}, y={spatial_chunk}")
+        
+        # Open with optimized chunking
+        hist_ds = xr.open_zarr(sim_path, chunks=chunk_dict)
+        
+        # Convert calendar and rechunk - this is expensive, so log it
+        logging.info("Converting reference calendar to noleap...")
+        ref_ds = xr.open_zarr(ref_path).convert_calendar("noleap", align_on="date")
+        ref_ds = ref_ds.chunk(chunk_dict)
         hist_ds, ref_ds = ensure_matching_time_coords(hist_ds, ref_ds)
 
         var_id = get_var_id(hist_ds)
+        logging.info(f"Processing variable: {var_id}")
+        
         if var_id not in ref_ds.data_vars:
             ref_var_id = sim_ref_var_lu[var_id]
-            # keep the variable names the same
+            logging.info(f"Renaming reference variable {ref_var_id} to {var_id}")
             ref_ds = ref_ds.rename({ref_var_id: var_id})
 
-        # Input data validation
-        valid_hist = check_data_validity(hist_ds, var_id, "Historical")
-        valid_ref = check_data_validity(ref_ds, var_id, "Reference")
-        if not (valid_hist and valid_ref):
-            raise ValueError(f"Input data for {var_id} is invalid (empty or all NaN). Aborting.")
+        # Input data validation - these now raise errors instead of returning False
+        logging.info("Validating input data...")
+        check_data_validity(hist_ds, var_id, "Historical")
+        check_data_validity(ref_ds, var_id, "Reference")
 
         # get dataarrays
         ref = ref_ds[var_id]
         hist = hist_ds[var_id]
 
         if var_id == "pr":
+            logging.info("Ensuring correct precipitation units for reference data")
             ref = ensure_correct_ref_precip_units(ref)
 
         # ensure data does not have zeros, depending on variable
         if var_id in jitter_under_lu.keys():
+            logging.info(f"Applying jitter to {var_id}")
             hist = apply_jitter(hist)
             ref = apply_jitter(ref)
 
+        logging.info(f"Starting QDM training for {var_id}...")
         train_kwargs = dict(
             ref=ref,
             hist=hist,
@@ -233,30 +438,81 @@ if __name__ == "__main__":
         )
         if var_id == "pr":
             # do the adapt frequency thingy for precipitation data
+            logging.info("Using adapt_freq_thresh for precipitation")
             train_kwargs.update(adapt_freq_thresh="0.254 mm d-1")
 
         qm_train = sdba.QuantileDeltaMapping.train(**train_kwargs)
+        logging.info(f"QDM training completed for {var_id}")
+
+        # Validate training output before writing
+        validate_training_output(qm_train, var_id)
 
         qm_train.ds = keep_attrs(qm_train.ds, hist_ds, sim_path)
 
-        logging.info(f"Writing QDM object to {train_path}")
+        # Remove existing output if present
         if train_path.exists():
-            shutil.rmtree(train_path, ignore_errors=True)
+            logging.info(f"Removing existing output at {train_path}")
+            try:
+                shutil.rmtree(train_path)
+            except Exception as e:
+                logging.error(f"Failed to remove existing output: {e}")
+                raise
 
+        # Write output with optimized zarr settings
+        logging.info(f"Writing QDM object to {train_path}")
         synchronizer = ThreadSynchronizer()
-        qm_train.ds.to_zarr(train_path, synchronizer=synchronizer)
+        
+        # Configure compression for trained data (quantiles compress well)
+        encoding = {}
+        for var in qm_train.ds.data_vars:
+            encoding[var] = {
+                'compressor': numcodecs.Blosc(
+                    cname='zstd',
+                    clevel=5,
+                    shuffle=numcodecs.Blosc.SHUFFLE
+                )
+            }
+        
+        try:
+            qm_train.ds.to_zarr(
+                train_path,
+                encoding=encoding,
+                synchronizer=synchronizer,
+                consolidated=True  # Faster subsequent reads
+            )
+            logging.info(f"Successfully wrote QDM object to {train_path}")
+        except Exception as e:
+            logging.error(f"Failed to write zarr store: {e}")
+            # Clean up partial write
+            if train_path.exists():
+                shutil.rmtree(train_path, ignore_errors=True)
+            raise
 
-        # Output validation
-        out_ds_check = xr.open_zarr(train_path)
-        if var_id in out_ds_check.data_vars:
-            arr = out_ds_check[var_id]
-            if arr.size == 0:
-                logging.warning(f"Output for {train_path} is empty!")
-            elif arr.isnull().all():
-                logging.warning(f"Output for {train_path} is all NaN!")
-        else:
-            logging.warning(f"Output variable '{var_id}' not found in {train_path}!")
+        # Output validation - this now raises errors instead of warnings
+        validate_written_zarr(train_path, var_id, min_size_mb=1)
+        
+        logging.info(f"QM training pipeline completed successfully for {var_id}")
+        success = True
 
     except Exception as e:
-        logging.error(f"Error during training or writing: {e}")
-        raise
+        logging.error(f"FATAL ERROR during training or writing: {e}")
+        logging.error(f"Training FAILED for {sim_path.name}")
+        # Clean up any partial output
+        if train_path.exists():
+            logging.info(f"Cleaning up failed output at {train_path}")
+            shutil.rmtree(train_path, ignore_errors=True)
+        # Exit with error code
+        sys.exit(1)
+    
+    if not success:
+        logging.error("Training did not complete successfully")
+        sys.exit(1)
+    
+    finally:
+        # Always cleanup Dask client
+        if client is not None:
+            logging.info("Closing Dask client...")
+            client.close()
+    
+    logging.info("Exiting with success")
+    sys.exit(0)
