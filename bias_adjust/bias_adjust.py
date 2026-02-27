@@ -8,7 +8,9 @@ import argparse
 import datetime
 import logging
 import shutil
+import subprocess
 import sys
+import time
 
 # import multiprocessing as mp
 from itertools import product
@@ -415,6 +417,12 @@ if __name__ == "__main__":
                 compute=True
             )
             logging.info(f"Successfully wrote adjusted data to {adj_path}")
+            
+            # Force filesystem sync for beegfs cache coherency
+            logging.info("Forcing filesystem sync...")
+            subprocess.run(['sync'], check=True)
+            time.sleep(10)
+            logging.info("Filesystem sync complete")
         except Exception as e:
             logging.error(f"Failed to write zarr store: {e}")
             if adj_path.exists():

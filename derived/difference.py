@@ -14,7 +14,9 @@ Example usage:
 import argparse
 import logging
 import shutil
+import subprocess
 import sys
+import time
 from pathlib import Path
 import numpy as np
 import xarray as xr
@@ -287,6 +289,12 @@ if __name__ == "__main__":
         try:
             diff_ds.to_zarr(output_store, synchronizer=synchronizer, compute=True)
             logging.info(f"Successfully wrote difference data to {output_store}")
+            
+            # Force filesystem sync for beegfs cache coherency
+            logging.info("Forcing filesystem sync...")
+            subprocess.run(['sync'], check=True)
+            time.sleep(10)
+            logging.info("Filesystem sync complete")
         except Exception as e:
             logging.error(f"Failed to write zarr store: {e}")
             # Clean up partial write

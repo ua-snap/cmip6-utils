@@ -14,7 +14,9 @@ Example usage:
 import argparse
 import logging
 import shutil
+import subprocess
 import sys
+import time
 from pathlib import Path
 
 # import icclim
@@ -482,6 +484,12 @@ if __name__ == "__main__":
                 compute=True  # Force synchronous write completion
             )
             logging.info(f"Successfully wrote QDM object to {train_path}")
+            
+            # Force filesystem sync for beegfs cache coherency
+            logging.info("Forcing filesystem sync...")
+            subprocess.run(['sync'], check=True)
+            time.sleep(10)
+            logging.info("Filesystem sync complete")
         except Exception as e:
             logging.error(f"Failed to write zarr store: {e}")
             # Clean up partial write

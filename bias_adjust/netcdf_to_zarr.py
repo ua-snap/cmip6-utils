@@ -15,6 +15,8 @@ import argparse
 import logging
 import json
 import shutil
+import subprocess
+import time
 from pathlib import Path
 import xarray as xr
 from dask.distributed import Client
@@ -223,5 +225,12 @@ if __name__ == "__main__":
 
     synchronizer = ThreadSynchronizer()
     ds.to_zarr(zarr_path, synchronizer=synchronizer)
+    logging.info(f"Successfully wrote zarr store to {zarr_path}")
+    
+    # Force filesystem sync for beegfs cache coherency
+    logging.info("Forcing filesystem sync...")
+    subprocess.run(['sync'], check=True)
+    time.sleep(10)
+    logging.info("Filesystem sync complete")
 
     logging.info(f"Conversion complete.")
