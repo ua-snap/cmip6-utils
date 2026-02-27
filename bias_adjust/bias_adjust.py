@@ -271,7 +271,7 @@ def validate_output_zarr(adj_path, var_id, min_size_mb=10):
     
     # Validate content
     try:
-        adj_ds_check = xr.open_zarr(adj_path)
+        adj_ds_check = xr.open_zarr(adj_path, consolidated=True)
     except Exception as e:
         raise ValueError(f"Cannot open output zarr: {e}")
     
@@ -308,12 +308,12 @@ if __name__ == "__main__":
         
         # open connection to trained QM dataset
         logging.info(f"Loading trained QM dataset from {train_path}")
-        train_ds = xr.open_zarr(train_path)  # Training data is small, no need to chunk
+        train_ds = xr.open_zarr(train_path, consolidated=True)  # Training data is small, no need to chunk
         qm = sdba.QuantileDeltaMapping.from_dataset(train_ds)
 
         # Load simulation data with optimized chunks
         logging.info(f"Loading simulation dataset from {sim_path}")
-        sim_ds = xr.open_zarr(sim_path, chunks=chunk_dict)
+        sim_ds = xr.open_zarr(sim_path, chunks=chunk_dict, consolidated=True)
         
         # Validate source matching
         validate_sim_source(train_ds, sim_ds)

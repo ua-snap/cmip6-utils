@@ -337,7 +337,7 @@ def validate_written_zarr(train_path, var_id, min_size_mb=1):
     
     # Try to open and validate the zarr store
     try:
-        out_ds_check = xr.open_zarr(train_path)
+        out_ds_check = xr.open_zarr(train_path, consolidated=True)
     except Exception as e:
         raise ValueError(f"Cannot open output zarr store: {e}")
     
@@ -392,11 +392,11 @@ if __name__ == "__main__":
         logging.info(f"Using chunk strategy: time={time_chunk}, x={spatial_chunk}, y={spatial_chunk}")
         
         # Open with optimized chunking
-        hist_ds = xr.open_zarr(sim_path, chunks=chunk_dict)
+        hist_ds = xr.open_zarr(sim_path, chunks=chunk_dict, consolidated=True)
         
         # Convert calendar and rechunk - this is expensive, so log it
         logging.info("Converting reference calendar to noleap...")
-        ref_ds = xr.open_zarr(ref_path).convert_calendar("noleap", align_on="date")
+        ref_ds = xr.open_zarr(ref_path, consolidated=True).convert_calendar("noleap", align_on="date")
         ref_ds = ref_ds.chunk(chunk_dict)
         hist_ds, ref_ds = ensure_matching_time_coords(hist_ds, ref_ds)
 
