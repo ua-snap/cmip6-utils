@@ -227,9 +227,19 @@ if __name__ == "__main__":
         
         logging.info(f"Using chunk strategy: time={chunk_dict['time']}, x={chunk_dict['x']}, y={chunk_dict['y']}")
         
+        # Force beegfs cache refresh for minuend data
+        logging.info(f"Forcing cache refresh for {minuend_store}...")
+        subprocess.run(['ls', '-lR', str(minuend_store)], capture_output=True, check=False)
+        time.sleep(5)
+        
         # Open datasets with explicit chunking
         logging.info("Opening minuend dataset...")
         minu_ds = xr.open_dataset(minuend_store, engine="zarr", chunks=chunk_dict)
+        
+        # Force beegfs cache refresh for subtrahend data
+        logging.info(f"Forcing cache refresh for {subtrahend_store}...")
+        subprocess.run(['ls', '-lR', str(subtrahend_store)], capture_output=True, check=False)
+        time.sleep(5)
         
         logging.info("Opening subtrahend dataset...")
         subtr_ds = xr.open_dataset(subtrahend_store, engine="zarr", chunks=chunk_dict)

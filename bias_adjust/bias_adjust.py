@@ -308,14 +308,24 @@ if __name__ == "__main__":
         
         logging.info(f"Using chunk strategy: time={chunk_dict['time']}, x={chunk_dict['x']}, y={chunk_dict['y']}")
         
+        # Force beegfs cache refresh for trained QM data
+        logging.info(f"Forcing cache refresh for {train_path}...")
+        subprocess.run(['ls', '-lR', str(train_path)], capture_output=True, check=False)
+        time.sleep(5)
+        
         # open connection to trained QM dataset
         logging.info(f"Loading trained QM dataset from {train_path}")
-        train_ds = xr.open_zarr(train_path, consolidated=True)  # Training data is small, no need to chunk
+        train_ds = xr.open_zarr(train_path, consolidated=False)  # Use consolidated=False to avoid stale metadata
         qm = sdba.QuantileDeltaMapping.from_dataset(train_ds)
 
+        # Force beegfs cache refresh for simulation data
+        logging.info(f"Forcing cache refresh for {sim_path}...")
+        subprocess.run(['ls', '-lR', str(sim_path)], capture_output=True, check=False)
+        time.sleep(5)
+        
         # Load simulation data with optimized chunks
         logging.info(f"Loading simulation dataset from {sim_path}")
-        sim_ds = xr.open_zarr(sim_path, chunks=chunk_dict, consolidated=True)
+        sim_ds = xr.open_zarr(sim_path, chunks=chunk_dict, consolidated=False)
         
         # Validate source matching
         validate_sim_source(train_ds, sim_ds)

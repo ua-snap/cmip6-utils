@@ -393,12 +393,22 @@ if __name__ == "__main__":
         
         logging.info(f"Using chunk strategy: time={time_chunk}, x={spatial_chunk}, y={spatial_chunk}")
         
-        # Open with optimized chunking
-        hist_ds = xr.open_zarr(sim_path, chunks=chunk_dict, consolidated=True)
+        # Force beegfs cache refresh for simulation data
+        logging.info(f"Forcing cache refresh for {sim_path}...")
+        subprocess.run(['ls', '-lR', str(sim_path)], capture_output=True, check=False)
+        time.sleep(5)
+        
+        # Open with optimized chunking (consolidated=False to avoid stale metadata)
+        hist_ds = xr.open_zarr(sim_path, chunks=chunk_dict, consolidated=False)
+        
+        # Force beegfs cache refresh for reference data
+        logging.info(f"Forcing cache refresh for {ref_path}...")
+        subprocess.run(['ls', '-lR', str(ref_path)], capture_output=True, check=False)
+        time.sleep(5)
         
         # Convert calendar and rechunk - this is expensive, so log it
         logging.info("Converting reference calendar to noleap...")
-        ref_ds = xr.open_zarr(ref_path, consolidated=True).convert_calendar("noleap", align_on="date")
+        ref_ds = xr.open_zarr(ref_path, consolidated=False).convert_calendar("noleap", align_on="date")
         ref_ds = ref_ds.chunk(chunk_dict)
         hist_ds, ref_ds = ensure_matching_time_coords(hist_ds, ref_ds)
 
