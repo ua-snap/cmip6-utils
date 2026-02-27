@@ -31,17 +31,75 @@ Example usage:
 import argparse
 import logging
 from pathlib import Path
+import sys
 import numpy as np
 import xarray as xr
 import string
 from datetime import datetime
 import os
+import dask
+from dask.distributed import Client, LocalCluster
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[logging.StreamHandler()],
 )
+
+
+def configure_dask_for_dtr(n_workers=4, threads_per_worker=4, memory_limit='28GB'):
+    """Configure Dask LocalCluster optimized for DTR calculation on 128GB nodes.
+    
+    DTR calculation is I/O intensive (reading many files) and compute simple (subtraction).
+    
+    Args:
+        n_workers: Number of worker processes (default: 4)
+        threads_per_worker: Threads per worker (default: 4)
+        memory_limit: Memory limit per worker (default: 28GB)
+        
+    Returns:
+        client: Dask distributed client
+    """
+    # Close any existing clients
+    try:
+        client = Client.current()
+        client.close()
+    except ValueError:
+        pass
+    
+    # Configure global dask settings
+    dask.config.set({
+        # Memory management
+        'distributed.worker.memory.target': 0.75,
+        'distributed.worker.memory.spill': 0.85,
+        'distributed.worker.memory.pause': 0.90,
+        'distributed.worker.memory.terminate': 0.95,
+        
+        # I/O optimization for reading many files
+        'distributed.comm.timeouts.tcp': '120s',
+        'distributed.scheduler.bandwidth': 1e9,
+        
+        # Array settings
+        'array.slicing.split_large_chunks': True,
+        'array.chunk-size': '128 MiB',
+    })
+    
+    cluster = LocalCluster(
+        n_workers=n_workers,
+        threads_per_worker=threads_per_worker,
+        memory_limit=memory_limit,
+        processes=True,
+        dashboard_address=None,
+    )
+    
+    client = Client(cluster)
+    
+    logging.info(f"Dask cluster configured for DTR calculation:")
+    logging.info(f"  Workers: {n_workers}, Threads/worker: {threads_per_worker}")
+    logging.info(f"  Memory per worker: {memory_limit}")
+    logging.info(f"  Dashboard: {client.dashboard_link}")
+    
+    return client
 
 
 def parse_args():
@@ -215,52 +273,178 @@ def make_output_filepath(output_dir, dtr_tmp_fn, start_date, end_date):
     return output_fp
 
 
+def validate_output_file(output_fp, var_id="dtr"):
+    """Validate that the output file exists and contains valid data.
+    
+    Args:
+        output_fp: Path to output file
+        var_id: Variable identifier to check
+        
+    Raises:
+        ValueError: If output is invalid
+    """
+    if not output_fp.exists():
+        raise ValueError(f"Output file not created: {output_fp}")
+    
+    # Check file size
+    size_mb = output_fp.stat().st_size / (1024 * 1024)
+    if size_mb < 0.1:
+        raise ValueError(f"Output file suspiciously small ({size_mb:.2f} MB): {output_fp}")
+    
+    # Try to open and check variable
+    try:
+        with xr.open_dataset(output_fp) as ds:
+            if var_id not in ds.data_vars:
+                raise ValueError(f"Variable '{var_id}' not found in output: {output_fp}")
+            
+            arr = ds[var_id]
+            if arr.size == 0:
+                raise ValueError(f"Variable '{var_id}' is empty in: {output_fp}")
+            
+            # Quick check for all NaN
+            sample = arr.isel({dim: slice(0, min(10, arr.sizes[dim])) for dim in arr.dims})
+            if sample.isnull().all().compute():
+                raise ValueError(f"Variable '{var_id}' is all NaN in: {output_fp}")
+    except Exception as e:
+        raise ValueError(f"Cannot validate output {output_fp}: {e}")
+    
+    logging.info(f"✓ Output validated: {output_fp.name} ({size_mb:.2f} MB)")
+
+
 if __name__ == "__main__":
     tmax_dir, tmin_dir, input_dir, output_dir, dtr_tmp_fn, model, scenario = parse_args()
-
-    # assumes all files in one dir have corresponding file in the other
-    if input_dir:
-        tmax_fps, tmin_fps = get_tmax_tmin_fps_cmip6(input_dir, model, scenario)
-    else:
-        tmax_fps, tmin_fps = get_tmax_tmin_fps_era5(tmax_dir, tmin_dir)
-
-    with xr.open_mfdataset(
-        tmax_fps, engine="h5netcdf", parallel=True, use_cftime=True
-    ) as tmax_ds:
-        with xr.open_mfdataset(
-            tmin_fps, engine="h5netcdf", parallel=True, use_cftime=True
-        ) as tmin_ds:
-            tmax_var_id = get_var_id(tmax_ds)
-            tmin_var_id = get_var_id(tmin_ds)
-            dtr = tmax_ds[tmax_var_id] - tmin_ds[tmin_var_id]
-            dtr.persist()
-
-    units = tmax_ds[tmax_var_id].attrs["units"]
-    assert units == tmin_ds[tmin_var_id].attrs["units"]
-
-    dtr.name = "dtr"
-    dtr.attrs = {
-        "long_name": "Daily temperature range",
-        "units": units,
-    }
-    # replace any negative values (tasmax - tasmin < 0) with 0.0000999
-    # using this number instead of zero gives us a way of estimating what spots were tweaked
-    # include the isnull() check so we don't replace nan's
-    dtr = dtr.where((dtr.isnull() | (dtr >= 0)), 0.0000999)
-
-    # the list here at the end is just making sure we have a matching dim order
-    dtr_ds = dtr.to_dataset().transpose(*list(tmax_ds[tmax_var_id].dims))
-    dtr_ds.attrs = {k: v for k, v in tmax_ds.attrs.items() & tmin_ds.attrs.items()}
-    # give this a variable_id attribute for consistency (helps with e.g. regridding with regrid.py)
-    dtr_ds.attrs["variable_id"] = "dtr"
-
-    # write
-    output_dir.mkdir(parents=True, exist_ok=True)
-    for year in np.unique(dtr_ds.time.dt.year):
-        year_ds = dtr_ds.sel(time=str(year))
-        start_date, end_date = get_start_end_dates(year_ds)
-        output_fp = make_output_filepath(output_dir, dtr_tmp_fn, start_date, end_date)
-        logging.info(
-            f"Writing {year_ds.dtr.name} for {start_date} to {end_date} to {output_fp}"
+    
+    success = False
+    client = None
+    
+    try:
+        # Configure Dask
+        logging.info("Configuring Dask cluster...")
+        client = configure_dask_for_dtr(
+            n_workers=4,
+            threads_per_worker=4,
+            memory_limit='28GB'
         )
-        year_ds.to_netcdf(output_fp)
+        
+        # Get file paths
+        logging.info("Collecting input file paths...")
+        if input_dir:
+            tmax_fps, tmin_fps = get_tmax_tmin_fps_cmip6(input_dir, model, scenario)
+            logging.info(f"Processing CMIP6 data: {model} {scenario}")
+        else:
+            tmax_fps, tmin_fps = get_tmax_tmin_fps_era5(tmax_dir, tmin_dir)
+            logging.info(f"Processing ERA5 data")
+        
+        logging.info(f"Found {len(tmax_fps)} tmax files and {len(tmin_fps)} tmin files")
+        
+        # Optimized chunking for DTR calculation
+        # DTR is simple subtraction, so larger chunks are better for I/O efficiency
+        chunks = {
+            'time': 365,  # One year at a time
+            'x': 200,
+            'y': 200
+        }
+        
+        logging.info(f"Using chunk strategy: time={chunks['time']}, x={chunks['x']}, y={chunks['y']}")
+        logging.info("Opening tmax dataset...")
+        
+        # Open with explicit chunking - don't use context managers since we need the data later
+        tmax_ds = xr.open_mfdataset(
+            tmax_fps,
+            engine="h5netcdf",
+            parallel=True,
+            use_cftime=True,
+            chunks=chunks
+        )
+        
+        logging.info("Opening tmin dataset...")
+        tmin_ds = xr.open_mfdataset(
+            tmin_fps,
+            engine="h5netcdf",
+            parallel=True,
+            use_cftime=True,
+            chunks=chunks
+        )
+        
+        # Get variable IDs
+        tmax_var_id = get_var_id(tmax_ds)
+        tmin_var_id = get_var_id(tmin_ds)
+        logging.info(f"Processing variables: {tmax_var_id}, {tmin_var_id}")
+        
+        # Validate units match
+        units = tmax_ds[tmax_var_id].attrs["units"]
+        if units != tmin_ds[tmin_var_id].attrs["units"]:
+            raise ValueError(
+                f"Units mismatch: tmax has '{units}', tmin has '{tmin_ds[tmin_var_id].attrs['units']}'"
+            )
+        
+        # Calculate DTR (lazy evaluation - no persist()!)
+        logging.info("Calculating DTR (lazy evaluation)...")
+        dtr = tmax_ds[tmax_var_id] - tmin_ds[tmin_var_id]
+        
+        dtr.name = "dtr"
+        dtr.attrs = {
+            "long_name": "Daily temperature range",
+            "units": units,
+        }
+        
+        # Replace negative values (tasmax - tasmin < 0) with 0.0000999
+        # Using this number instead of zero helps identify tweaked spots
+        logging.info("Applying negative value correction...")
+        dtr = dtr.where((dtr.isnull() | (dtr >= 0)), 0.0000999)
+        
+        # Create dataset with matching dimension order
+        dtr_ds = dtr.to_dataset().transpose(*list(tmax_ds[tmax_var_id].dims))
+        dtr_ds.attrs = {k: v for k, v in tmax_ds.attrs.items() & tmin_ds.attrs.items()}
+        dtr_ds.attrs["variable_id"] = "dtr"
+        
+        # Write output files
+        output_dir.mkdir(parents=True, exist_ok=True)
+        years = np.unique(dtr_ds.time.dt.year)
+        total_years = len(years)
+        logging.info(f"Writing {total_years} years of DTR data...")
+        
+        for idx, year in enumerate(years, 1):
+            logging.info(f"Processing year {year} ({idx}/{total_years})...")
+            year_ds = dtr_ds.sel(time=str(year))
+            start_date, end_date = get_start_end_dates(year_ds)
+            output_fp = make_output_filepath(output_dir, dtr_tmp_fn, start_date, end_date)
+            
+            # Check if output already exists
+            if output_fp.exists():
+                logging.info(f"Output already exists, overwriting: {output_fp.name}")
+                output_fp.unlink()
+            
+            logging.info(f"Computing and writing {year_ds.dtr.name} for {start_date}-{end_date}...")
+            try:
+                year_ds.to_netcdf(output_fp, compute=True)
+            except Exception as e:
+                logging.error(f"Failed to write {output_fp}: {e}")
+                if output_fp.exists():
+                    output_fp.unlink()
+                raise
+            
+            # Validate output
+            validate_output_file(output_fp, var_id="dtr")
+            logging.info(f"✓ Completed year {year} ({idx}/{total_years})")
+        
+        logging.info(f"Successfully processed all {total_years} years")
+        success = True
+        
+    except Exception as e:
+        logging.error(f"FATAL ERROR during DTR processing: {e}")
+        logging.error(f"DTR calculation FAILED")
+        sys.exit(1)
+    
+    finally:
+        # Cleanup Dask client
+        if client is not None:
+            logging.info("Closing Dask client...")
+            client.close()
+    
+    if not success:
+        logging.error("DTR processing did not complete successfully")
+        sys.exit(1)
+    
+    logging.info("DTR processing completed successfully")
+    sys.exit(0)
