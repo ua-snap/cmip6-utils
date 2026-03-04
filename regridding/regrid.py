@@ -35,16 +35,18 @@ logging.basicConfig(
 )
 
 
-def configure_dask_for_regridding(n_workers=4, threads_per_worker=4, memory_limit='28GB'):
+def configure_dask_for_regridding(
+    n_workers=4, threads_per_worker=4, memory_limit="28GB"
+):
     """Configure Dask LocalCluster optimized for regridding on 128GB nodes.
-    
+
     Regridding is memory-intensive (large spatial grids) and compute-bound (interpolation).
-    
+
     Args:
         n_workers: Number of worker processes (default: 4)
         threads_per_worker: Threads per worker (default: 4)
         memory_limit: Memory limit per worker (default: 28GB)
-        
+
     Returns:
         client: Dask distributed client
     """
@@ -54,27 +56,26 @@ def configure_dask_for_regridding(n_workers=4, threads_per_worker=4, memory_limi
         client.close()
     except ValueError:
         pass
-    
+
     # Configure global dask settings
-    dask.config.set({
-        # Memory management - regridding can use a lot of memory
-        'distributed.worker.memory.target': 0.70,
-        'distributed.worker.memory.spill': 0.80,
-        'distributed.worker.memory.pause': 0.85,
-        'distributed.worker.memory.terminate': 0.95,
-        
-        # I/O and network
-        'distributed.comm.timeouts.tcp': '120s',
-        'distributed.scheduler.bandwidth': 1e9,
-        
-        # Array settings for regridding
-        'array.slicing.split_large_chunks': True,
-        'array.chunk-size': '128 MiB',
-        
-        # Disable work stealing for more predictable memory usage
-        'distributed.scheduler.work-stealing': False,
-    })
-    
+    dask.config.set(
+        {
+            # Memory management - regridding can use a lot of memory
+            "distributed.worker.memory.target": 0.70,
+            "distributed.worker.memory.spill": 0.80,
+            "distributed.worker.memory.pause": 0.85,
+            "distributed.worker.memory.terminate": 0.95,
+            # I/O and network
+            "distributed.comm.timeouts.tcp": "120s",
+            "distributed.scheduler.bandwidth": 1e9,
+            # Array settings for regridding
+            "array.slicing.split_large_chunks": True,
+            "array.chunk-size": "128 MiB",
+            # Disable work stealing for more predictable memory usage
+            "distributed.scheduler.work-stealing": False,
+        }
+    )
+
     cluster = LocalCluster(
         n_workers=n_workers,
         threads_per_worker=threads_per_worker,
@@ -82,14 +83,14 @@ def configure_dask_for_regridding(n_workers=4, threads_per_worker=4, memory_limi
         processes=True,
         dashboard_address=None,
     )
-    
+
     client = Client(cluster)
-    
+
     logging.info(f"Dask cluster configured for regridding:")
     logging.info(f"  Workers: {n_workers}, Threads/worker: {threads_per_worker}")
     logging.info(f"  Memory per worker: {memory_limit}")
     logging.info(f"  Total memory: {n_workers * 28} GB (out of ~128 GB available)")
-    
+
     return client
 
 
@@ -757,10 +758,13 @@ def fix_time(out_ds, src_ds):
 def write_regridded_files(out_ds, out_fp):
     """Write a regridded dataset to files for each year.
 
+    Uses streaming computation - computes and writes each year incrementally
+    rather than loading entire dataset into memory.
+
     Parameters
     ----------
     out_ds : xarray.Dataset
-        Dataset to write to a file
+        Dataset to write to a file (can be lazy/dask-backed)
     out_fp : pathlib.Path
         Filepath to write the dataset to
 
@@ -771,6 +775,10 @@ def write_regridded_files(out_ds, out_fp):
     """
     # write out everything (monthly and daily freqs) by year
     out_fps = []
+    year_count = 0
+
+    logging.info(f"  Writing data by year (streaming computation)...")
+
     for year, year_ds in out_ds.groupby("time.year"):
         if year_ds.time.shape[0] == 1:
             # skip weird files where first time value is last day of a year
@@ -778,13 +786,18 @@ def write_regridded_files(out_ds, out_fp):
         if year < 1950:
             # skip any years before 1950
             continue
+
+        year_count += 1
         year_out_fp = generate_single_year_filename(out_fp, year_ds)
         # Make sure we are writing the time dimension as noleap
         assert year_ds.time.encoding["calendar"] == "noleap"
 
-        year_ds.to_netcdf(year_out_fp)
+        logging.info(f"    Writing year {year}...")
+        # Explicitly compute during write for streaming/incremental processing
+        year_ds.to_netcdf(year_out_fp, compute=True)
         out_fps.append(year_out_fp)
 
+    logging.info(f"  ✓ Completed writing {len(out_fps)} files")
     [print(f"{fp} done") for fp in out_fps]
 
     return out_fp
@@ -792,38 +805,40 @@ def write_regridded_files(out_ds, out_fp):
 
 def validate_regridded_output(out_fps, var_id):
     """Validate that regridded output files exist and contain valid data.
-    
+
     Args:
         out_fps: List of output file paths
         var_id: Variable identifier to check
-        
+
     Raises:
         ValueError: If any output is invalid
     """
     if not out_fps:
         raise ValueError("No output files were created")
-    
+
     for out_fp in out_fps:
         if not out_fp.exists():
             raise ValueError(f"Output file not created: {out_fp}")
-        
+
         # Check file size
         size_mb = out_fp.stat().st_size / (1024 * 1024)
         if size_mb < 0.5:
-            raise ValueError(f"Output file suspiciously small ({size_mb:.2f} MB): {out_fp}")
-        
+            raise ValueError(
+                f"Output file suspiciously small ({size_mb:.2f} MB): {out_fp}"
+            )
+
         # Quick validation - open and check variable exists
         try:
             with xr.open_dataset(out_fp) as ds:
                 if var_id not in ds.data_vars:
                     raise ValueError(f"Variable '{var_id}' not found in: {out_fp}")
-                
+
                 arr = ds[var_id]
                 if arr.size == 0:
                     raise ValueError(f"Variable '{var_id}' is empty in: {out_fp}")
         except Exception as e:
             raise ValueError(f"Cannot validate {out_fp}: {e}")
-        
+
         logging.info(f"✓ Validated: {out_fp.name} ({size_mb:.2f} MB)")
 
 
@@ -1244,8 +1259,35 @@ def regrid_dataset(fp, regridder, out_fp, src_mask=None, rasdafy=False):
     print("Output: ", out_fp, flush=True)
     print("--------------------", flush=True)
 
-    # open the source dataset
-    src_ds = xr.open_dataset(fp)
+    # Determine adaptive chunk sizes based on approximate grid resolution
+    # First, peek at dataset dimensions without loading data
+    with xr.open_dataset(fp) as peek_ds:
+        if "x" in peek_ds.dims and "y" in peek_ds.dims:
+            x_size = peek_ds.dims["x"]
+            y_size = peek_ds.dims["y"]
+            # Adaptive spatial chunking: smaller chunks for finer grids
+            if x_size * y_size > 1_000_000:  # Fine grid (>1M pixels, e.g., 4km)
+                spatial_chunk = 100
+            elif x_size * y_size > 400_000:  # Medium grid (e.g., 12km)
+                spatial_chunk = 150
+            else:  # Coarse grid (e.g., native GCM)
+                spatial_chunk = 200
+
+            chunks = {"time": 365, "x": spatial_chunk, "y": spatial_chunk}
+            logging.info(f"  Grid size: {x_size}×{y_size} ({x_size*y_size:,} pixels)")
+            logging.info(
+                f"  Using adaptive chunks: time=365, x={spatial_chunk}, y={spatial_chunk}"
+            )
+        elif "lat" in peek_ds.dims and "lon" in peek_ds.dims:
+            # Fall back for lat/lon grids
+            chunks = {"time": 365, "lat": 150, "lon": 150}
+            logging.info(f"  Using default lat/lon chunks: time=365, lat=150, lon=150")
+        else:
+            chunks = {"time": 365}
+            logging.info(f"  Using time-only chunks: time=365")
+
+    # Open the source dataset with chunking for memory efficiency
+    src_ds = xr.open_dataset(fp, chunks=chunks)
     var_id = get_var_id(src_ds)
 
     # add mask if not none
@@ -1253,9 +1295,9 @@ def regrid_dataset(fp, regridder, out_fp, src_mask=None, rasdafy=False):
         src_ds["mask"] = src_mask
 
     logging.info(f"  Applying regridding for {var_id}...")
-    regrid_task = regridder(src_ds, keep_attrs=True)
-    regrid_ds = regrid_task.compute()
-    logging.info(f"  Regridding computation complete")
+    # Keep regridding lazy - don't compute() here, let write process handle it incrementally
+    regrid_ds = regridder(src_ds, keep_attrs=True)
+    logging.info(f"  Regridding prepared (lazy evaluation - will compute during write)")
 
     # if the variable is a fixed frequency variable, just write it as is without any time modifications
     # this should never occur because only daily and monthly frequency data should be regridded,
@@ -1273,16 +1315,16 @@ def regrid_dataset(fp, regridder, out_fp, src_mask=None, rasdafy=False):
 
     # fix attributes
     regrid_ds = fix_attrs(regrid_ds)
-    
+
     # write and get list of output files
     logging.info(f"  Writing output files...")
     out_fp = write_regridded_files(regrid_ds, out_fp)
-    
+
     # Validate output files
     # Get all the year files that were written
     nodate_out_fn = "_".join(out_fp.name.split(".nc")[0].split("_")[:-1])
     written_fps = list(out_fp.parent.glob(f"{nodate_out_fn}*.nc"))
-    
+
     try:
         validate_regridded_output(written_fps, var_id)
         logging.info(f"  ✓ Successfully validated {len(written_fps)} output files")
@@ -1309,25 +1351,25 @@ if __name__ == "__main__":
         rasdafy,
         no_clobber,
     ) = parse_args()
-    
+
     client = None
     success = False
-    
+
     try:
         # Configure Dask
         logging.info("Configuring Dask cluster...")
         client = configure_dask_for_regridding(
-            n_workers=4,
-            threads_per_worker=4,
-            memory_limit='28GB'
+            n_workers=4, threads_per_worker=4, memory_limit="28GB"
         )
 
         # get the paths of files to regrid from the batch file
         with open(regrid_batch_fp) as f:
             lines = f.readlines()
         src_fps = [Path(line.replace("\n", "")) for line in lines]
-        
-        logging.info(f"Loaded {len(src_fps)} files from batch file: {regrid_batch_fp.name}")
+
+        logging.info(
+            f"Loaded {len(src_fps)} files from batch file: {regrid_batch_fp.name}"
+        )
 
         # cannot open / crop if dataset is irregular in lat / lon.
         # I think we should shift to simply regridding to the destination grid,
@@ -1372,7 +1414,7 @@ if __name__ == "__main__":
             logging.info(f"\n{'='*80}")
             logging.info(f"Processing file {idx}/{total_files}: {fp.name}")
             logging.info(f"{'='*80}")
-            
+
             out_fp = generate_regrid_filepath(fp, out_dir)
 
             # make sure the parent dirs exist
@@ -1440,23 +1482,23 @@ if __name__ == "__main__":
             logging.error(f"\n{len(errs)} files failed - retry batch file written")
             # Set exit code to 1 if there were errors
             sys.exit(1)
-        
+
         success = True
         logging.info("\n✓ Regridding completed successfully")
-        
+
     except Exception as e:
         logging.error(f"\nFATAL ERROR in regridding pipeline: {e}")
         traceback.print_exc()
         sys.exit(1)
-    
+
     finally:
         # Always cleanup Dask client
         if client is not None:
             logging.info("Closing Dask client...")
             client.close()
-    
+
     if not success:
         logging.error("Regridding did not complete successfully")
         sys.exit(1)
-    
+
     sys.exit(0)
