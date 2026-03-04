@@ -534,35 +534,45 @@ def validate_training_output(qm_train, var_id):
 
     Args:
         qm_train: The trained QDM object
-        var_id: Variable identifier
+        var_id: Variable identifier (for logging only)
 
     Raises:
         ValueError: If training output is invalid
     """
     logging.info(f"Validating training output for {var_id}...")
 
-    # Check that the dataset exists and has the variable
+    # Check that the dataset exists
     if not hasattr(qm_train, "ds"):
         raise ValueError("Trained QM object has no 'ds' attribute")
 
-    if var_id not in qm_train.ds.data_vars:
-        raise ValueError(f"Variable '{var_id}' not found in trained QM dataset")
+    # Check that the dataset has data variables (xclim stores QDM parameters, not the original variable)
+    if len(qm_train.ds.data_vars) == 0:
+        raise ValueError("Trained QM dataset has no data variables")
 
-    # Check that quantiles exist and are not all NaN
-    arr = qm_train.ds[var_id]
-    if arr.size == 0:
-        raise ValueError(f"Trained QM data for '{var_id}' is empty")
-
-    # Sample check for NaN values
-    sample = arr.isel({dim: slice(0, min(10, arr.sizes[dim])) for dim in arr.dims})
-    if sample.isnull().all().compute():
-        raise ValueError(f"Trained QM data for '{var_id}' is all NaN")
+    logging.info(f"  Trained QM dataset contains: {list(qm_train.ds.data_vars.keys())}")
 
     # Check for 'quantiles' dimension (expected in QDM output)
     if "quantiles" not in qm_train.ds.dims:
-        logging.warning(
-            "No 'quantiles' dimension found in QDM output - this may indicate a problem"
+        raise ValueError(
+            "No 'quantiles' dimension found in QDM output - training may have failed"
         )
+
+    # Check that at least one quantile variable is not all NaN
+    # Common xclim QDM variables: hist_q, ref_q, af (adjustment factors)
+    has_valid_data = False
+    for var_name in qm_train.ds.data_vars:
+        arr = qm_train.ds[var_name]
+        if arr.size > 0:
+            sample = arr.isel(
+                {dim: slice(0, min(10, arr.sizes[dim])) for dim in arr.dims}
+            )
+            if not sample.isnull().all().compute():
+                has_valid_data = True
+                logging.info(f"  ✓ Variable '{var_name}' contains valid data")
+                break
+
+    if not has_valid_data:
+        raise ValueError("All variables in trained QM dataset are NaN or empty")
 
     logging.info(f"Training output validation passed for {var_id}")
     return True
