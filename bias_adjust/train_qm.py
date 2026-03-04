@@ -729,6 +729,19 @@ if __name__ == "__main__":
             hist = apply_jitter(hist)
             ref = apply_jitter(ref)
 
+        # CRITICAL: Rechunk time dimension for training
+        # xclim's QDM training requires time to be in a single chunk
+        # Use smaller spatial chunks to compensate for large time chunk
+        # Memory per chunk: 18,250 × 50 × 50 × 4 bytes = ~1.8GB (×2 for hist+ref = 3.6GB)
+        logging.info("Rechunking data for training (time=-1 required by xclim)...")
+        training_chunks = {"time": -1, "x": 50, "y": 50}
+        hist = hist.chunk(training_chunks)
+        ref = ref.chunk(training_chunks)
+        logging.info(f"  Training chunks: time=-1, x=50, y=50")
+        logging.info(f"  Memory per spatial chunk: ~3.6GB (both arrays)")
+        logging.info(f"  hist chunks: {hist.chunks}")
+        logging.info(f"  ref chunks: {ref.chunks}")
+
         logging.info(f"Starting QDM training for {var_id}...")
         train_kwargs = dict(
             ref=ref,
