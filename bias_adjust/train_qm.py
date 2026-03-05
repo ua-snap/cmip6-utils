@@ -193,7 +193,7 @@ def validate_zarr_readback(zarr_path, expected_var_id, max_retries=120, retry_de
 
     Args:
         zarr_path: Path to zarr store
-        expected_var_id: Variable to check
+        expected_var_id: Variable to check (for logging only - trained QDM has different vars)
         max_retries: Number of read attempts (default: 120 = 2 hours with 60s delay)
         retry_delay: Seconds between retries (default: 60)
 
@@ -225,13 +225,21 @@ def validate_zarr_readback(zarr_path, expected_var_id, max_retries=120, retry_de
             # Open fresh without any caching
             ds = xr.open_zarr(zarr_path, consolidated=False)
 
-            if expected_var_id not in ds.data_vars:
-                raise ValueError(f"Variable '{expected_var_id}' not found in dataset")
+            # Trained QDM datasets don't contain the original variable
+            # They contain xclim parameters like hist_q, ref_q, af, etc.
+            if len(ds.data_vars) == 0:
+                raise ValueError("Dataset has no data variables")
 
-            arr = ds[expected_var_id]
+            logging.info(f"Dataset contains variables: {list(ds.data_vars.keys())}")
+
+            # Pick first variable to validate (they should all be present or all absent)
+            var_name = list(ds.data_vars.keys())[0]
+            arr = ds[var_name]
 
             # Check actual data, not just metadata
-            logging.info(f"Checking data validity by loading a sample...")
+            logging.info(
+                f"Checking data validity by loading a sample from '{var_name}'..."
+            )
             sample = arr.isel(
                 {dim: slice(0, min(50, arr.sizes[dim])) for dim in arr.dims}
             )
@@ -245,21 +253,20 @@ def validate_zarr_readback(zarr_path, expected_var_id, max_retries=120, retry_de
 
             # Check that we can access actual chunk files
             z = zarr.open_group(zarr_path, "r")
-            if expected_var_id not in z:
-                raise ValueError(f"Variable {expected_var_id} not in zarr group")
+            if var_name not in z:
+                raise ValueError(f"Variable {var_name} not in zarr group")
 
-            var_array = z[expected_var_id]
-            chunk_keys = [
-                k for k in var_array.chunk_store.keys() if expected_var_id in str(k)
-            ]
+            var_array = z[var_name]
+            chunk_keys = [k for k in var_array.chunk_store.keys() if var_name in str(k)]
             chunk_count = len(chunk_keys)
-            logging.info(f"Found {chunk_count} chunk files for {expected_var_id}")
+            logging.info(f"Found {chunk_count} chunk files for {var_name}")
 
             if chunk_count == 0:
                 raise ValueError("No chunk files found!")
 
             # Success!
             logging.info(f"✓ Read-back validation PASSED on attempt {attempt}")
+            logging.info(f"  - Validated variable: {var_name}")
             logging.info(f"  - Sample shape: {sample_data.shape}")
             logging.info(f"  - Sample mean: {float(sample_data.mean()):.4f}")
             logging.info(
