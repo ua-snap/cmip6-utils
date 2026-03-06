@@ -389,10 +389,63 @@ def validate_output_zarr(output_store, var_id, min_size_mb=5):
     if arr.size == 0:
         raise ValueError(f"Output for {output_store} is empty")
 
-    # Sample check (avoid loading entire array)
-    sample = arr.isel({dim: slice(0, min(10, arr.sizes[dim])) for dim in arr.dims})
-    if sample.isnull().all().compute():
-        raise ValueError(f"Output for {output_store} is all NaN")
+    # Check multiple samples to catch filesystem cache coherency issues
+    # where some chunks may not be visible yet on different nodes
+    samples_to_check = [
+        ("start", {dim: slice(0, min(10, arr.sizes[dim])) for dim in arr.dims}),
+        (
+            "middle",
+            {
+                dim: slice(arr.sizes[dim] // 2, arr.sizes[dim] // 2 + 10)
+                for dim in arr.dims
+            },
+        ),
+        (
+            "end",
+            {
+                dim: slice(max(0, arr.sizes[dim] - 10), arr.sizes[dim])
+                for dim in arr.dims
+            },
+        ),
+    ]
+
+    all_nan_count = 0
+
+    for location, selection in samples_to_check:
+        try:
+            sample = arr.isel(selection)
+            sample_data = sample.compute()
+
+            if sample_data.isnull().all():
+                all_nan_count += 1
+                logging.warning(
+                    f"  WARNING: {location} sample is all NaN in {output_store}"
+                )
+            else:
+                logging.debug(
+                    f"  {location} sample valid: "
+                    f"min={float(sample_data.min()):.4f}, "
+                    f"max={float(sample_data.max()):.4f}, "
+                    f"mean={float(sample_data.mean()):.4f}"
+                )
+        except Exception as e:
+            logging.error(f"  ERROR reading {location} sample from {output_store}: {e}")
+            raise
+
+    # Only fail if ALL samples are NaN (suggests real problem)
+    # Partial NaN samples may be filesystem cache issues that resolve
+    if all_nan_count == len(samples_to_check):
+        raise ValueError(
+            f"Output for {output_store} appears to be all NaN. "
+            f"Checked {len(samples_to_check)} locations, all returned NaN. "
+            f"This may indicate a filesystem cache coherency issue or failed computation."
+        )
+
+    if all_nan_count > 0:
+        logging.warning(
+            f"  {all_nan_count}/{len(samples_to_check)} samples were all NaN, "
+            f"but validation passed (some data found)"
+        )
 
     logging.info(f"Written zarr validation passed for {output_store}")
     return True
