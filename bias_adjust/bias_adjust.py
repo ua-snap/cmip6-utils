@@ -73,17 +73,12 @@ def configure_dask_for_adjustment(
         }
     )
 
-    # Explicitly set worker space directory
-    worker_space = Path.home() / "dask-worker-space"
-    worker_space.mkdir(exist_ok=True)
-
     cluster = LocalCluster(
         n_workers=n_workers,
         threads_per_worker=threads_per_worker,
         memory_limit=memory_limit,
         processes=True,
         dashboard_address=None,
-        local_directory=str(worker_space),  # Ensure consistent worker space
     )
 
     client = Client(cluster)
@@ -91,7 +86,6 @@ def configure_dask_for_adjustment(
     logging.info(f"Dask cluster configured for adjustment:")
     logging.info(f"  Workers: {n_workers}, Threads/worker: {threads_per_worker}")
     logging.info(f"  Memory per worker: {memory_limit}")
-    logging.info(f"  Worker space: {worker_space}")
     logging.info(f"  Dashboard: {client.dashboard_link}")
 
     return client
@@ -733,6 +727,7 @@ if __name__ == "__main__":
 
         # Configure compression optimized for climate data
         # Output chunks optimized for downstream analysis (year-by-year reads)
+        output_chunks = (365, 150, 150)
         encoding = {
             var_id: {
                 "compressor": numcodecs.Blosc(
@@ -740,9 +735,17 @@ if __name__ == "__main__":
                     clevel=3,  # Lower compression for faster writes
                     shuffle=numcodecs.Blosc.BITSHUFFLE,
                 ),
-                "chunks": (365, 150, 150),  # Year-at-a-time for downstream reads
+                "chunks": output_chunks,
             }
         }
+
+        # CRITICAL: Rechunk to match output encoding before writing
+        # Current chunks are (365, 100, 100) from squeeze operations
+        # Need to align with zarr output chunks (365, 150, 150)
+        logging.info(f"Rechunking to match output encoding: {output_chunks}")
+        scen_ds = scen_ds.chunk(
+            {"time": output_chunks[0], "y": output_chunks[1], "x": output_chunks[2]}
+        )
 
         try:
             # Use compute with progress tracking
