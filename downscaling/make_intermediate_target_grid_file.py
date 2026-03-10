@@ -1,13 +1,17 @@
-"""This script creates a grid with 0.5 degree resolution on 0-360 degree longitude for a domain slightly larger than the 4km ERA5 WRF data
+"""This script creates a grid with user-defined degree resolution on 0-360 degree longitude for a domain slightly larger than the ERA5 WRF data
 
-# ERA5 extent is slightly smaller than this: (-177, 54, -128, 73)
-# so we will create a grid with 0.5 degree resolution on 0-360 degree longitude
+# 4km ERA5 extent is slightly smaller than this: (-177, 54, -128, 73)
+    # in 0-360 longitude format, this is (183, 54, 232, 73)
+# 12km ERA5 extent is slightly smaller than this: (-178, 48, -106, 71)
+    # in 0-360 longitude format, this is (182, 48, 254, 71)
+# so we will create a grid with user-defined degree resolution on 0-360 degree longitude
 
 Example usage:
     python make_intermediate_target_grid_file.py \
         --src_file /beegfs/CMIP6/arctic-cmip6/CMIP6/ScenarioMIP/NCAR/CESM2/ssp370/r11i1p1f1/Amon/tas/gn/v20200528/tas_Amon_CESM2_ssp370_r11i1p1f1_gn_206501-210012.nc \
-        --out_file /center1/CMIP6/kmredilla/cmip6_4km_downscaling/intermediate_target.nc
-        --step 0.5
+        --out_file /center1/CMIP6/kmredilla/cmip6_4km_downscaling/intermediate_target.nc \
+        --step 0.5 \
+        --resolution 4
 """
 
 import argparse
@@ -40,7 +44,13 @@ def parse_args():
     parser.add_argument(
         "--step",
         type=float,
-        help="Step size for the target grid",
+        help="Step size for the target grid (degrees)",
+        required=True,
+    )
+    parser.add_argument(
+        "--resolution",
+        type=int,
+        help="Resolution of the target grid",
         required=True,
     )
     args = parser.parse_args()
@@ -72,10 +82,16 @@ def create_intermediate_target_grid(src_file, out_file, step):
         out_file (str): path to output file
         step (float): step size for target grid
     """
-    # hardcoded values for just larger than the 4km ERA5 WRF data
-    min_lon, max_lon = 183, 232
+    if resolution == 4:
+        min_lon, max_lon = 183, 232
+        min_lat, max_lat = 54, 73
+    elif resolution == 12:
+        min_lon, max_lon = 182, 254
+        min_lat, max_lat = 48, 71
+    else:
+        raise ValueError(f"Unsupported resolution: {resolution}")
+
     lon_num = get_num(min_lon, max_lon, step)
-    min_lat, max_lat = 54, 73
     lat_num = get_num(min_lat, max_lat, step)
 
     new_lon = np.linspace(min_lon, max_lon, lon_num)
@@ -98,5 +114,5 @@ def create_intermediate_target_grid(src_file, out_file, step):
 
 
 if __name__ == "__main__":
-    src_file, out_file, step = parse_args()
-    create_intermediate_target_grid(src_file, out_file, step)
+    src_file, out_file, step, resolution = parse_args()
+    create_intermediate_target_grid(src_file, out_file, step, resolution)
