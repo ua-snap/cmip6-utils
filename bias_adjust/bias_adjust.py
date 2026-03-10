@@ -747,8 +747,26 @@ if __name__ == "__main__":
         synchronizer = ThreadSynchronizer()
 
         # Configure compression optimized for climate data
-        # Output chunks optimized for downstream analysis (year-by-year reads)
-        output_chunks = (365, 150, 150)
+        # Output chunks: Use current dask chunks to avoid alignment errors
+        # Only enforce time=365 for year-at-a-time downstream reads
+        current_var = scen_ds[var_id]
+        time_chunksize = 365
+
+        # Get current spatial chunksizes (use first chunk size for each dimension)
+        y_chunksize = (
+            current_var.chunks[1][0]
+            if len(current_var.chunks) > 1
+            else current_var.sizes["y"]
+        )
+        x_chunksize = (
+            current_var.chunks[2][0]
+            if len(current_var.chunks) > 2
+            else current_var.sizes["x"]
+        )
+
+        output_chunks = (time_chunksize, y_chunksize, x_chunksize)
+        logging.info(f"Output encoding chunks: {output_chunks} (time, y, x)")
+
         encoding = {
             var_id: {
                 "compressor": numcodecs.Blosc(
@@ -761,12 +779,11 @@ if __name__ == "__main__":
         }
 
         # CRITICAL: Rechunk to match output encoding before writing
-        # Current chunks are (365, 100, 100) from squeeze operations
-        # Need to align with zarr output chunks (365, 150, 150)
-        logging.info(f"Rechunking to match output encoding: {output_chunks}")
-        scen_ds = scen_ds.chunk(
-            {"time": output_chunks[0], "y": output_chunks[1], "x": output_chunks[2]}
+        # Only rechunk time dimension; keep spatial chunks unchanged to avoid misalignment
+        logging.info(
+            f"Rechunking time dimension to {time_chunksize} for year-based access"
         )
+        scen_ds = scen_ds.chunk({"time": time_chunksize})
 
         try:
             # Use compute with progress tracking
