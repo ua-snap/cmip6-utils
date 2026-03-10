@@ -59,10 +59,10 @@ def configure_dask_for_adjustment(
     # Configure global dask settings
     dask.config.set(
         {
-            # Memory management
-            "distributed.worker.memory.target": 0.75,
-            "distributed.worker.memory.spill": 0.85,
-            "distributed.worker.memory.pause": 0.90,
+            # Memory management - more conservative thresholds to avoid OOM
+            "distributed.worker.memory.target": 0.70,  # Start managing at 70%
+            "distributed.worker.memory.spill": 0.80,  # Spill to disk at 80%
+            "distributed.worker.memory.pause": 0.85,  # Pause at 85%
             "distributed.worker.memory.terminate": 0.95,
             # I/O optimization
             "distributed.comm.timeouts.tcp": "120s",
@@ -73,12 +73,17 @@ def configure_dask_for_adjustment(
         }
     )
 
+    # Explicitly set worker space directory
+    worker_space = Path.home() / "dask-worker-space"
+    worker_space.mkdir(exist_ok=True)
+
     cluster = LocalCluster(
         n_workers=n_workers,
         threads_per_worker=threads_per_worker,
         memory_limit=memory_limit,
         processes=True,
         dashboard_address=None,
+        local_directory=str(worker_space),  # Ensure consistent worker space
     )
 
     client = Client(cluster)
@@ -86,6 +91,7 @@ def configure_dask_for_adjustment(
     logging.info(f"Dask cluster configured for adjustment:")
     logging.info(f"  Workers: {n_workers}, Threads/worker: {threads_per_worker}")
     logging.info(f"  Memory per worker: {memory_limit}")
+    logging.info(f"  Worker space: {worker_space}")
     logging.info(f"  Dashboard: {client.dashboard_link}")
 
     return client
@@ -637,6 +643,14 @@ if __name__ == "__main__":
         scen_ds = drop_non_coord_vars(scen_ds)
         scen_ds = add_global_attrs(scen_ds, sim_ds)
         logging.info(f"Bias adjustment completed for {var_id}")
+
+        # CRITICAL: Rechunk after adjustment to avoid memory issues during squeeze operations
+        # The adjustment step requires time=-1, but squeeze operations need smaller chunks
+        # Use moderate time chunks to balance memory and task overhead
+        logging.info("Rechunking adjusted data for squeeze operations...")
+        squeeze_chunks = {"time": 365, "x": 100, "y": 100}
+        scen_ds = scen_ds.chunk(squeeze_chunks)
+        logging.info(f"  Rechunked to: time=365, x=100, y=100 for memory efficiency")
 
         # Remove existing output
         if adj_path.exists():
