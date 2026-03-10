@@ -11,6 +11,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 
 # import multiprocessing as mp
@@ -35,7 +36,7 @@ logging.basicConfig(
 
 
 def configure_dask_for_adjustment(
-    n_workers=4, threads_per_worker=4, memory_limit="30GB"
+    n_workers=4, threads_per_worker=4, memory_limit="30GB", worker_dir=None
 ):
     """Configure Dask LocalCluster optimized for bias adjustment on 128GB nodes.
 
@@ -45,6 +46,7 @@ def configure_dask_for_adjustment(
         n_workers: Number of worker processes (default: 4)
         threads_per_worker: Threads per worker (default: 4)
         memory_limit: Memory limit per worker (default: 30GB)
+        worker_dir: Directory for dask worker files (default: None, uses dask default)
 
     Returns:
         client: Dask distributed client
@@ -73,19 +75,29 @@ def configure_dask_for_adjustment(
         }
     )
 
-    cluster = LocalCluster(
-        n_workers=n_workers,
-        threads_per_worker=threads_per_worker,
-        memory_limit=memory_limit,
-        processes=True,
-        dashboard_address=None,
-    )
+    # Set up worker directory if provided
+    cluster_kwargs = {
+        "n_workers": n_workers,
+        "threads_per_worker": threads_per_worker,
+        "memory_limit": memory_limit,
+        "processes": True,
+        "dashboard_address": None,
+    }
 
+    if worker_dir is not None:
+        worker_dir = Path(worker_dir)
+        worker_dir.mkdir(parents=True, exist_ok=True)
+        cluster_kwargs["local_directory"] = str(worker_dir)
+        logging.info(f"Using explicit worker directory: {worker_dir}")
+
+    cluster = LocalCluster(**cluster_kwargs)
     client = Client(cluster)
 
     logging.info(f"Dask cluster configured for adjustment:")
     logging.info(f"  Workers: {n_workers}, Threads/worker: {threads_per_worker}")
     logging.info(f"  Memory per worker: {memory_limit}")
+    if worker_dir:
+        logging.info(f"  Worker directory: {worker_dir}")
     logging.info(f"  Dashboard: {client.dashboard_link}")
 
     return client
@@ -576,12 +588,21 @@ if __name__ == "__main__":
 
     success = False
     client = None
+    dask_worker_dir = None
 
     try:
+        # Create dedicated dask worker space in tmp_path to avoid spill-to-disk errors
+        dask_worker_dir = tmp_path / f"dask-worker-{sim_path.stem}-{os.getpid()}"
+        logging.info(f"Creating dask worker directory: {dask_worker_dir}")
+        dask_worker_dir.mkdir(parents=True, exist_ok=True)
+
         # Configure Dask
         logging.info("Configuring Dask cluster...")
         client = configure_dask_for_adjustment(
-            n_workers=4, threads_per_worker=4, memory_limit="28GB"
+            n_workers=4,
+            threads_per_worker=4,
+            memory_limit="28GB",
+            worker_dir=dask_worker_dir,
         )
 
         logging.info(f"Starting bias adjustment for {sim_path.name}")
@@ -801,6 +822,14 @@ if __name__ == "__main__":
         if client is not None:
             logging.info("Closing Dask client...")
             client.close()
+
+        # Clean up dask worker directory
+        if dask_worker_dir is not None and dask_worker_dir.exists():
+            logging.info(f"Cleaning up dask worker directory: {dask_worker_dir}")
+            try:
+                shutil.rmtree(dask_worker_dir, ignore_errors=True)
+            except Exception as e:
+                logging.warning(f"Failed to remove dask worker directory: {e}")
 
     if not success:
         logging.error("Bias adjustment did not complete successfully")
