@@ -127,6 +127,13 @@ def parse_args():
         help="Remove output files in the output directory before running the job",
         default=True,
     )
+    parser.add_argument(
+        "--resolution",
+        type=str,
+        help="Resolution of ERA5 data in km (e.g., '4' for 4km, '12' for 12km)",
+        required=False,
+        default="4",
+    )
     args = parser.parse_args()
     args = validate_args(args)
 
@@ -140,6 +147,7 @@ def parse_args():
         args.chunks_dict,
         args.slurm_dir,
         args.clear_out_files,
+        args.resolution,
     )
 
 
@@ -197,6 +205,7 @@ def write_sbatch_netcdf_to_zarr_era5(
     output_dir,
     sbatch_head,
     config_file,
+    resolution,
 ):
     """Write an sbatch script for executing the bias adjustment script for a given model, scenario, and variable.
     Hardcoded for daily data.
@@ -208,6 +217,7 @@ def write_sbatch_netcdf_to_zarr_era5(
         output_dir (path-like): directory to write the zarr data
         sbatch_head (dict): string for sbatch head script
         config_file (path_like): path to the config file for the slurm job array
+        resolution (str): Resolution of ERA5 data in km
     Returns:
         None, writes the commands to sbatch_path
     """
@@ -215,6 +225,7 @@ def write_sbatch_netcdf_to_zarr_era5(
     era5_fn_format = {
         "var_id": "${var_id}",
         "year": "{year}",
+        "resolution": resolution,
     }
     zarr_fn_format = era5_fn_format.copy()
     del zarr_fn_format["year"]
@@ -256,6 +267,7 @@ if __name__ == "__main__":
         chunks_dict,
         slurm_dir,
         clear_out_files,
+        resolution,
     ) = parse_args()
 
     output_dir.mkdir(exist_ok=True)
@@ -295,6 +307,7 @@ if __name__ == "__main__":
         "output_dir": output_dir,
         "sbatch_head": sbatch_head,
         "config_file": config_path,
+        "resolution": resolution,
     }
     if chunks_dict is not None:
         sbatch_kwargs["chunks_dict"] = chunks_dict
