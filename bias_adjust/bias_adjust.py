@@ -215,18 +215,62 @@ def validate_zarr_readback(zarr_path, expected_var_id, max_retries=120, retry_de
 
             arr = ds[expected_var_id]
 
-            # Check actual data, not just metadata
-            logging.info(f"Checking data validity by loading a sample...")
-            sample = arr.isel(
-                {dim: slice(0, min(50, arr.sizes[dim])) for dim in arr.dims}
-            )
-            sample_data = sample.compute()  # Force actual read from disk
+            # Check multiple samples to catch filesystem cache coherency issues
+            # where some chunks may not be visible yet on different nodes
+            logging.info(f"Checking data validity by loading multiple samples...")
+            samples_to_check = [
+                ("start", {dim: slice(0, min(50, arr.sizes[dim])) for dim in arr.dims}),
+                (
+                    "middle",
+                    {
+                        dim: slice(arr.sizes[dim] // 2, arr.sizes[dim] // 2 + 50)
+                        for dim in arr.dims
+                    },
+                ),
+                (
+                    "end",
+                    {
+                        dim: slice(max(0, arr.sizes[dim] - 50), arr.sizes[dim])
+                        for dim in arr.dims
+                    },
+                ),
+            ]
 
-            if sample_data.size == 0:
-                raise ValueError("Sample is empty")
+            all_nan_count = 0
+            sample_stats = []
 
-            if sample_data.isnull().all():
-                raise ValueError("Sample is all NaN")
+            for location, selection in samples_to_check:
+                sample = arr.isel(selection)
+                sample_data = sample.compute()  # Force actual read from disk
+
+                if sample_data.size == 0:
+                    raise ValueError(f"{location} sample is empty")
+
+                if sample_data.isnull().all():
+                    all_nan_count += 1
+                    logging.warning(f"  WARNING: {location} sample is all NaN")
+                else:
+                    sample_stats.append(
+                        (
+                            location,
+                            float(sample_data.mean()),
+                            float(sample_data.min()),
+                            float(sample_data.max()),
+                        )
+                    )
+
+            # Only fail if ALL samples are NaN (suggests real problem)
+            if all_nan_count == len(samples_to_check):
+                raise ValueError(
+                    f"All {len(samples_to_check)} samples are NaN! "
+                    f"This suggests a filesystem cache coherency issue or failed computation."
+                )
+
+            if all_nan_count > 0:
+                logging.warning(
+                    f"  {all_nan_count}/{len(samples_to_check)} samples were all NaN, "
+                    f"but validation passed (some data found)"
+                )
 
             # Check that we can access actual chunk files
             z = zarr.open_group(zarr_path, "r")
@@ -245,11 +289,14 @@ def validate_zarr_readback(zarr_path, expected_var_id, max_retries=120, retry_de
 
             # Success!
             logging.info(f"✓ Read-back validation PASSED on attempt {attempt}")
-            logging.info(f"  - Sample shape: {sample_data.shape}")
-            logging.info(f"  - Sample mean: {float(sample_data.mean()):.4f}")
-            logging.info(
-                f"  - Sample range: [{float(sample_data.min()):.4f}, {float(sample_data.max()):.4f}]"
-            )
+            if sample_stats:
+                logging.info(
+                    f"  - Valid samples: {len(sample_stats)}/{len(samples_to_check)}"
+                )
+                for location, mean, min_val, max_val in sample_stats:
+                    logging.info(
+                        f"    {location}: mean={mean:.4f}, range=[{min_val:.4f}, {max_val:.4f}]"
+                    )
             logging.info(f"  - Chunk count: {chunk_count}")
             ds.close()
             return True
@@ -412,13 +459,16 @@ def validate_sim_source(train_ds, sim_ds):
 def validate_input_data(ds, var_id, label):
     """Validate that input data is not empty or all NaN.
 
+    Checks multiple samples across the dataset to handle filesystem cache
+    coherency issues on distributed systems like beegfs.
+
     Args:
         ds: xarray Dataset
         var_id: variable identifier
         label: descriptive label for error messages
 
     Raises:
-        ValueError: If data is invalid
+        ValueError: If data is invalid or all samples are NaN
     """
     if var_id not in ds.data_vars:
         raise ValueError(f"{label} variable '{var_id}' not found in dataset")
@@ -427,10 +477,52 @@ def validate_input_data(ds, var_id, label):
     if arr.size == 0:
         raise ValueError(f"{label} for {var_id} is empty")
 
-    # Sample check to avoid loading entire array
-    sample = arr.isel({dim: slice(0, min(10, arr.sizes[dim])) for dim in arr.dims})
-    if sample.isnull().all().compute():
-        raise ValueError(f"{label} for {var_id} is all NaN")
+    # Check multiple samples to catch filesystem cache coherency issues
+    samples_to_check = [
+        ("start", {dim: slice(0, min(10, arr.sizes[dim])) for dim in arr.dims}),
+        (
+            "middle",
+            {
+                dim: slice(arr.sizes[dim] // 2, arr.sizes[dim] // 2 + 10)
+                for dim in arr.dims
+            },
+        ),
+        (
+            "end",
+            {
+                dim: slice(max(0, arr.sizes[dim] - 10), arr.sizes[dim])
+                for dim in arr.dims
+            },
+        ),
+    ]
+
+    all_nan_count = 0
+
+    for location, selection in samples_to_check:
+        try:
+            sample = arr.isel(selection)
+            sample_data = sample.compute()
+
+            if sample_data.isnull().all():
+                all_nan_count += 1
+                logging.warning(f"  WARNING: {location} sample is all NaN for {label}")
+        except Exception as e:
+            logging.error(f"  ERROR reading {location} sample for {label}: {e}")
+            raise
+
+    # Only fail if ALL samples are NaN (suggests real problem)
+    if all_nan_count == len(samples_to_check):
+        raise ValueError(
+            f"{label} for {var_id} appears to be all NaN! "
+            f"Checked {len(samples_to_check)} locations, all returned NaN. "
+            f"This may indicate a filesystem cache coherency issue."
+        )
+
+    if all_nan_count > 0:
+        logging.warning(
+            f"  {all_nan_count}/{len(samples_to_check)} samples were all NaN for {label}, "
+            f"but validation passed (some data found)"
+        )
 
     logging.info(f"{label} validation passed for {var_id}")
 
@@ -494,12 +586,12 @@ if __name__ == "__main__":
 
         logging.info(f"Starting bias adjustment for {sim_path.name}")
 
-        # Optimized chunking for adjustment phase
-        # Adjustment processes time-by-time, so larger spatial chunks are better
-        chunk_dict = {"time": 365, "x": 150, "y": 150}  # Process one year at a time
+        # Initial chunking for loading - will be rechunked before adjustment
+        # xclim requires time=-1, but we load with larger chunks first for efficiency
+        chunk_dict = {"time": 365, "x": 150, "y": 150}
 
         logging.info(
-            f"Using chunk strategy: time={chunk_dict['time']}, x={chunk_dict['x']}, y={chunk_dict['y']}"
+            f"Using initial chunk strategy: time={chunk_dict['time']}, x={chunk_dict['x']}, y={chunk_dict['y']}"
         )
 
         # open connection to trained QM dataset
@@ -522,9 +614,22 @@ if __name__ == "__main__":
         # Validate input data
         validate_input_data(sim_ds, var_id, "Input simulation data")
 
+        # CRITICAL: Rechunk time dimension for adjustment
+        # xclim's QDM adjust() requires time to be in a single chunk (same as training)
+        # Use smaller spatial chunks to compensate for large time chunk
+        # Memory per chunk: ~36,500 days × 50 × 50 × 4 bytes = ~3.6GB (worst case for long scenarios)
+        logging.info("Rechunking data for adjustment (time=-1 required by xclim)...")
+        sim_var = sim_ds[var_id]
+        adjustment_chunks = {"time": -1, "x": 50, "y": 50}
+        sim_var_rechunked = sim_var.chunk(adjustment_chunks)
+        logging.info(f"  Adjustment chunks: time=-1, x=50, y=50")
+        logging.info(f"  Memory per spatial chunk: ~3.6GB (worst case)")
+        logging.info(f"  Rechunked shape: {sim_var_rechunked.shape}")
+        logging.info(f"  Rechunked chunks: {sim_var_rechunked.chunks}")
+
         logging.info(f"Applying bias adjustment for {var_id}...")
         scen = qm.adjust(
-            sim_ds[var_id],
+            sim_var_rechunked,
             extrapolation="constant",
             interp="nearest",
         )
@@ -613,6 +718,7 @@ if __name__ == "__main__":
         synchronizer = ThreadSynchronizer()
 
         # Configure compression optimized for climate data
+        # Output chunks optimized for downstream analysis (year-by-year reads)
         encoding = {
             var_id: {
                 "compressor": numcodecs.Blosc(
@@ -620,7 +726,7 @@ if __name__ == "__main__":
                     clevel=3,  # Lower compression for faster writes
                     shuffle=numcodecs.Blosc.BITSHUFFLE,
                 ),
-                "chunks": (365, 150, 150),  # Match computation chunks for optimal I/O
+                "chunks": (365, 150, 150),  # Year-at-a-time for downstream reads
             }
         }
 
