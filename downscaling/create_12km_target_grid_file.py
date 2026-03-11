@@ -57,15 +57,29 @@ def add_lonlat_coordinates(ds):
         print("  No x/y dimensions found, skipping lon/lat generation...")
         return ds
 
-    # Get CRS information
+    # Get CRS information from spatial_ref (check both coords and data_vars)
     crs = None
+    spatial_ref = None
+
     if "spatial_ref" in ds.coords:
+        spatial_ref = ds.coords["spatial_ref"]
+    elif "spatial_ref" in ds.data_vars:
+        spatial_ref = ds.data_vars["spatial_ref"]
+
+    if spatial_ref is not None:
         try:
-            crs_wkt = ds.spatial_ref.attrs.get("crs_wkt")
+            # Try to get crs_wkt from attributes
+            crs_wkt = spatial_ref.attrs.get("crs_wkt")
             if crs_wkt:
+                print(f"  Found crs_wkt in spatial_ref attributes")
                 crs = CRS.from_wkt(crs_wkt)
-        except:
-            pass
+            else:
+                print(f"  spatial_ref found but no crs_wkt attribute")
+                print(f"  Available attributes: {list(spatial_ref.attrs.keys())}")
+        except Exception as e:
+            print(f"  Error parsing CRS: {e}")
+    else:
+        print("  No spatial_ref variable found in dataset")
 
     if crs is None:
         print("  Warning: No CRS information found, cannot compute lon/lat")
@@ -154,8 +168,22 @@ def create_target_grid_file(input_file: Path, output_file: Path) -> None:
     print(f"Time dimension size: {time_size}")
     print(f"Extracting first time slice...")
 
+    # Preserve spatial_ref if it exists (it might get dropped during isel)
+    spatial_ref_var = None
+    if "spatial_ref" in ds.coords:
+        spatial_ref_var = ds.coords["spatial_ref"]
+        print("  Found spatial_ref in coordinates")
+    elif "spatial_ref" in ds.data_vars:
+        spatial_ref_var = ds.data_vars["spatial_ref"]
+        print("  Found spatial_ref in data variables")
+
     # Extract first time slice (index 0)
     ds_slice = ds.isel(time=0)
+
+    # Restore spatial_ref if it was dropped and we had saved it
+    if spatial_ref_var is not None and "spatial_ref" not in ds_slice:
+        print("  Restoring spatial_ref after time slice")
+        ds_slice = ds_slice.assign_coords({"spatial_ref": spatial_ref_var})
 
     # Add lon/lat coordinates if they don't exist
     print("Checking for lon/lat coordinates...")
