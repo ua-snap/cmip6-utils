@@ -834,24 +834,17 @@ if __name__ == "__main__":
                     logging.info("Loading dataset to memory (compute)...")
                     scen_ds_computed = scen_ds.compute()
 
-                    # Now rechunk the numpy-backed dataset
-                    logging.info("Rechunking computed dataset...")
-                    scen_ds_rechunked = scen_ds_computed.chunk(
-                        {
-                            "time": output_chunks[0],
-                            "y": output_chunks[1],
-                            "x": output_chunks[2],
-                        }
+                    # Write directly from numpy-backed dataset
+                    # No need to rechunk - that would create a lazy graph again!
+                    # xarray/zarr will chunk the numpy arrays during write based on encoding
+                    logging.info(
+                        "Writing numpy-backed dataset directly (no lazy rechunking)..."
                     )
-
-                    # Write from memory
-                    logging.info("Writing from memory...")
-                    scen_ds_rechunked.to_zarr(
+                    scen_ds_computed.to_zarr(
                         adj_path,
                         encoding=encoding,
                         synchronizer=synchronizer,
                         consolidated=True,
-                        compute=True,
                     )
                     logging.info("✓ Strategy 3 succeeded - write completed from memory")
                     write_success = True
