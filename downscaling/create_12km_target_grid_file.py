@@ -3,13 +3,16 @@
 Script to create a target grid file by extracting the first time slice from an ERA5 NetCDF file.
 
 This script takes a NetCDF file with a time dimension and extracts only the first time step,
-preserving all variables, coordinates, and encoding settings.
+preserving all variables, coordinates, and encoding settings. Also adds lon/lat coordinates
+if they don't exist (for projected coordinate systems).
 """
 
 import argparse
 import sys
 from pathlib import Path
+import numpy as np
 import xarray as xr
+from pyproj import CRS, Transformer
 
 
 def parse_args():
@@ -25,6 +28,92 @@ def parse_args():
     )
 
     return parser.parse_args()
+
+
+def add_lonlat_coordinates(ds):
+    """
+    Add lon/lat coordinates to a dataset if they don't exist.
+
+    For projected coordinate systems (x/y in meters), this computes
+    2D lon/lat arrays from the x/y coordinates using the CRS information.
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        Dataset with x/y coordinates and spatial_ref CRS info
+
+    Returns
+    -------
+    ds : xarray.Dataset
+        Dataset with lon/lat coordinates added (if they didn't exist)
+    """
+    # Skip if lon/lat already exist
+    if "lon" in ds.coords or "lon" in ds.data_vars:
+        print("  lon/lat coordinates already present, skipping...")
+        return ds
+
+    # Check if we have x/y projected coordinates
+    if "x" not in ds.dims or "y" not in ds.dims:
+        print("  No x/y dimensions found, skipping lon/lat generation...")
+        return ds
+
+    # Get CRS information
+    crs = None
+    if "spatial_ref" in ds.coords:
+        try:
+            crs_wkt = ds.spatial_ref.attrs.get("crs_wkt")
+            if crs_wkt:
+                crs = CRS.from_wkt(crs_wkt)
+        except:
+            pass
+
+    if crs is None:
+        print("  Warning: No CRS information found, cannot compute lon/lat")
+        return ds
+
+    print(f"  Found CRS: {crs.name}")
+    print(f"  Computing lon/lat from x/y coordinates...")
+
+    # Create 2D meshgrid from x and y coordinates
+    x_coords = ds.x.values
+    y_coords = ds.y.values
+    x_grid, y_grid = np.meshgrid(x_coords, y_coords)
+
+    # Transform from projected coordinates to geographic (lon/lat)
+    transformer = Transformer.from_crs(crs, "EPSG:4326", always_xy=True)
+    lon_grid, lat_grid = transformer.transform(x_grid, y_grid)
+
+    # Add as coordinates with proper dimensions and attributes
+    ds = ds.assign_coords(
+        {
+            "lon": (
+                ("y", "x"),
+                lon_grid,
+                {
+                    "_FillValue": np.nan,
+                    "long_name": "longitude",
+                    "standard_name": "longitude",
+                    "units": "degrees_east",
+                },
+            ),
+            "lat": (
+                ("y", "x"),
+                lat_grid,
+                {
+                    "_FillValue": np.nan,
+                    "long_name": "latitude",
+                    "standard_name": "latitude",
+                    "units": "degrees_north",
+                },
+            ),
+        }
+    )
+
+    print(f"  ✓ Added lon/lat coordinates (shape: {lon_grid.shape})")
+    print(f"    Longitude range: [{lon_grid.min():.2f}, {lon_grid.max():.2f}]")
+    print(f"    Latitude range: [{lat_grid.min():.2f}, {lat_grid.max():.2f}]")
+
+    return ds
 
 
 def create_target_grid_file(input_file: Path, output_file: Path) -> None:
@@ -67,6 +156,10 @@ def create_target_grid_file(input_file: Path, output_file: Path) -> None:
 
     # Extract first time slice (index 0)
     ds_slice = ds.isel(time=0)
+
+    # Add lon/lat coordinates if they don't exist
+    print("Checking for lon/lat coordinates...")
+    ds_slice = add_lonlat_coordinates(ds_slice)
 
     # Get encoding from original dataset to preserve compression settings
     # We need to handle this carefully for each variable
@@ -113,6 +206,9 @@ def create_target_grid_file(input_file: Path, output_file: Path) -> None:
                     var_encoding["chunksizes"] = tuple(chunksizes)
 
             encoding[var] = var_encoding
+        elif var in ["lon", "lat"]:
+            # These were added by add_lonlat_coordinates, use simple encoding
+            encoding[var] = {"dtype": "float64"}
 
     print(f"Variables in output: {list(ds_slice.data_vars.keys())}")
     print(f"Coordinates in output: {list(ds_slice.coords.keys())}")
