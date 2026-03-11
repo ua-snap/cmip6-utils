@@ -59,6 +59,7 @@ def parse_args():
         args.src_file,
         args.out_file,
         args.step,
+        args.resolution,
     )
 
 
@@ -75,12 +76,13 @@ def get_num(min_val, max_val, step):
     return int((max_val - min_val) / step) + 1
 
 
-def create_intermediate_target_grid(src_file, out_file, step):
+def create_intermediate_target_grid(src_file, out_file, step, resolution):
     """Create intermediate target grid for regridding
     Args:
         src_file (str): path to input file
         out_file (str): path to output file
         step (float): step size for target grid
+        resolution (int): resolution of the target grid (4 or 12 km)
     """
     if resolution == 4:
         min_lon, max_lon = 183, 232
