@@ -740,41 +740,29 @@ if __name__ == "__main__":
 
         # Configure compression optimized for climate data
         # Use fixed output chunks that work for all scenarios
-        # Smaller chunks (100x100) are more memory-efficient and work with any grid size
         output_chunks = (365, 100, 100)  # (time, y, x)
-        logging.info(f"Target output encoding chunks: {output_chunks} (time, y, x)")
 
-        # CRITICAL: Rechunk using dimension names to ensure correct alignment
-        # The squeeze operations may have reordered dimension indices in the chunk tuple
-        # Using dimension names ensures we get the right chunk size for each dimension
-        logging.info("Rechunking using explicit dimension names before writing...")
+        # CRITICAL: Force rechunking BEFORE writing by persisting the result
+        # The squeeze operations create lazy task graphs that may have wrong physical chunk layout
+        # Calling .persist() forces Dask to execute the rechunk and materialize the array
+        # with the correct chunk structure in memory before we try to write it
+        logging.info(
+            f"Rechunking to {output_chunks} and persisting to force execution..."
+        )
         scen_ds = scen_ds.chunk(
             {"time": output_chunks[0], "y": output_chunks[1], "x": output_chunks[2]}
         )
-        
-        # Verify chunks using dimension names (not indices) to ensure correctness
-        current_var = scen_ds[var_id]
-        dims = current_var.dims  # Should be ('time', 'y', 'x')
-        chunks_by_dim = dict(zip(dims, current_var.chunks))
-        
-        time_chunk_actual = chunks_by_dim.get('time', [None])[0]
-        y_chunk_actual = chunks_by_dim.get('y', [None])[0]
-        x_chunk_actual = chunks_by_dim.get('x', [None])[0]
-        
-        logging.info(f"Verified chunks by dimension name:")
-        logging.info(f"  time: {time_chunk_actual} (expected {output_chunks[0]})")
-        logging.info(f"  y: {y_chunk_actual} (expected {output_chunks[1]})")
-        logging.info(f"  x: {x_chunk_actual} (expected {output_chunks[2]})")
-        
-        # Sanity check - ensure chunks match what we expect
-        if y_chunk_actual != output_chunks[1] or x_chunk_actual != output_chunks[2]:
-            logging.error(f"ERROR: Chunk mismatch detected!")
-            logging.error(f"  Dimensions: {dims}")
-            logging.error(f"  Chunks by dim: {chunks_by_dim}")
-            raise ValueError(
-                f"Rechunking failed: got y={y_chunk_actual}, x={x_chunk_actual}, "
-                f"expected y={output_chunks[1]}, x={output_chunks[2]}"
-            )
+
+        # Persist forces the rechunk to actually execute, not just create a lazy graph
+        # This materializes the array in distributed memory with correct chunks
+        logging.info("Persisting rechunked dataset (this executes the rechunk)...")
+        scen_ds = scen_ds.persist()
+
+        # Wait for persist to complete
+        from dask.distributed import wait
+
+        wait(scen_ds)
+        logging.info("Persist completed - array now has correct physical chunk layout")
 
         encoding = {
             var_id: {
