@@ -11,7 +11,6 @@ import os
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
 
 # import multiprocessing as mp
@@ -75,22 +74,15 @@ def configure_dask_for_adjustment(
         }
     )
 
-    # Set up worker directory if provided
-    cluster_kwargs = {
-        "n_workers": n_workers,
-        "threads_per_worker": threads_per_worker,
-        "memory_limit": memory_limit,
-        "processes": True,
-        "dashboard_address": None,
-    }
+    cluster = LocalCluster(
+        n_workers=n_workers,
+        threads_per_worker=threads_per_worker,
+        memory_limit=memory_limit,
+        processes=True,
+        dashboard_address=None,
+        local_directory=str(worker_dir) if worker_dir else None,
+    )
 
-    if worker_dir is not None:
-        worker_dir = Path(worker_dir)
-        worker_dir.mkdir(parents=True, exist_ok=True)
-        cluster_kwargs["local_directory"] = str(worker_dir)
-        logging.info(f"Using explicit worker directory: {worker_dir}")
-
-    cluster = LocalCluster(**cluster_kwargs)
     client = Client(cluster)
 
     logging.info(f"Dask cluster configured for adjustment:")
@@ -588,13 +580,13 @@ if __name__ == "__main__":
 
     success = False
     client = None
-    dask_worker_dir = None
 
     try:
-        # Create dedicated dask worker space in tmp_path to avoid spill-to-disk errors
-        dask_worker_dir = tmp_path / f"dask-worker-{sim_path.stem}-{os.getpid()}"
-        logging.info(f"Creating dask worker directory: {dask_worker_dir}")
-        dask_worker_dir.mkdir(parents=True, exist_ok=True)
+        # Create dedicated worker directory in tmp_path
+        # Name it without "dask-worker" prefix to avoid nested dask-worker-space directories
+        worker_base_dir = tmp_path / f"bias-adjust-{sim_path.stem}-{os.getpid()}"
+        logging.info(f"Creating worker base directory: {worker_base_dir}")
+        worker_base_dir.mkdir(parents=True, exist_ok=True)
 
         # Configure Dask
         logging.info("Configuring Dask cluster...")
@@ -602,7 +594,7 @@ if __name__ == "__main__":
             n_workers=4,
             threads_per_worker=4,
             memory_limit="28GB",
-            worker_dir=dask_worker_dir,
+            worker_dir=worker_base_dir,
         )
 
         logging.info(f"Starting bias adjustment for {sim_path.name}")
@@ -747,24 +739,9 @@ if __name__ == "__main__":
         synchronizer = ThreadSynchronizer()
 
         # Configure compression optimized for climate data
-        # Output chunks: Use current dask chunks to avoid alignment errors
-        # Only enforce time=365 for year-at-a-time downstream reads
-        current_var = scen_ds[var_id]
-        time_chunksize = 365
-
-        # Get current spatial chunksizes (use first chunk size for each dimension)
-        y_chunksize = (
-            current_var.chunks[1][0]
-            if len(current_var.chunks) > 1
-            else current_var.sizes["y"]
-        )
-        x_chunksize = (
-            current_var.chunks[2][0]
-            if len(current_var.chunks) > 2
-            else current_var.sizes["x"]
-        )
-
-        output_chunks = (time_chunksize, y_chunksize, x_chunksize)
+        # Use fixed output chunks that work for all scenarios
+        # Smaller chunks (100x100) are more memory-efficient and work with any grid size
+        output_chunks = (365, 100, 100)  # (time, y, x)
         logging.info(f"Output encoding chunks: {output_chunks} (time, y, x)")
 
         encoding = {
@@ -779,11 +756,22 @@ if __name__ == "__main__":
         }
 
         # CRITICAL: Rechunk to match output encoding before writing
-        # Only rechunk time dimension; keep spatial chunks unchanged to avoid misalignment
+        # The squeeze operations may have changed the chunking, so explicitly rechunk ALL dimensions
+        # This ensures dask chunks perfectly align with zarr encoding chunks
         logging.info(
-            f"Rechunking time dimension to {time_chunksize} for year-based access"
+            f"Rechunking to match output encoding: time={output_chunks[0]}, y={output_chunks[1]}, x={output_chunks[2]}"
         )
-        scen_ds = scen_ds.chunk({"time": time_chunksize})
+        scen_ds = scen_ds.chunk(
+            {"time": output_chunks[0], "y": output_chunks[1], "x": output_chunks[2]}
+        )
+
+        # Verify chunks after rechunking
+        actual_chunks = scen_ds[var_id].chunks
+        logging.info(
+            f"Verified dask chunks after rechunking: time={actual_chunks[0][0] if actual_chunks[0] else 'N/A'}, "
+            f"y={actual_chunks[1][0] if len(actual_chunks) > 1 else 'N/A'}, "
+            f"x={actual_chunks[2][0] if len(actual_chunks) > 2 else 'N/A'}"
+        )
 
         try:
             # Use compute with progress tracking
@@ -835,19 +823,12 @@ if __name__ == "__main__":
         sys.exit(1)
 
     finally:
-        # Always cleanup Dask client
+        # Cleanup Dask client (but leave worker directory - Dask may still be using it)
         if client is not None:
             logging.info("Closing Dask client...")
             client.close()
-
-        # Clean up dask worker directory
-        if dask_worker_dir is not None and dask_worker_dir.exists():
-            logging.info(f"Cleaning up dask worker directory: {dask_worker_dir}")
-            try:
-                shutil.rmtree(dask_worker_dir, ignore_errors=True)
-            except Exception as e:
-                logging.warning(f"Failed to remove dask worker directory: {e}")
-
+            # Note: Not removing worker_base_dir to avoid race conditions with Dask cleanup
+            # These directories can be cleaned up periodically with a separate maintenance script
     if not success:
         logging.error("Bias adjustment did not complete successfully")
         sys.exit(1)
