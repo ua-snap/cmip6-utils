@@ -742,7 +742,39 @@ if __name__ == "__main__":
         # Use fixed output chunks that work for all scenarios
         # Smaller chunks (100x100) are more memory-efficient and work with any grid size
         output_chunks = (365, 100, 100)  # (time, y, x)
-        logging.info(f"Output encoding chunks: {output_chunks} (time, y, x)")
+        logging.info(f"Target output encoding chunks: {output_chunks} (time, y, x)")
+
+        # CRITICAL: Rechunk using dimension names to ensure correct alignment
+        # The squeeze operations may have reordered dimension indices in the chunk tuple
+        # Using dimension names ensures we get the right chunk size for each dimension
+        logging.info("Rechunking using explicit dimension names before writing...")
+        scen_ds = scen_ds.chunk(
+            {"time": output_chunks[0], "y": output_chunks[1], "x": output_chunks[2]}
+        )
+        
+        # Verify chunks using dimension names (not indices) to ensure correctness
+        current_var = scen_ds[var_id]
+        dims = current_var.dims  # Should be ('time', 'y', 'x')
+        chunks_by_dim = dict(zip(dims, current_var.chunks))
+        
+        time_chunk_actual = chunks_by_dim.get('time', [None])[0]
+        y_chunk_actual = chunks_by_dim.get('y', [None])[0]
+        x_chunk_actual = chunks_by_dim.get('x', [None])[0]
+        
+        logging.info(f"Verified chunks by dimension name:")
+        logging.info(f"  time: {time_chunk_actual} (expected {output_chunks[0]})")
+        logging.info(f"  y: {y_chunk_actual} (expected {output_chunks[1]})")
+        logging.info(f"  x: {x_chunk_actual} (expected {output_chunks[2]})")
+        
+        # Sanity check - ensure chunks match what we expect
+        if y_chunk_actual != output_chunks[1] or x_chunk_actual != output_chunks[2]:
+            logging.error(f"ERROR: Chunk mismatch detected!")
+            logging.error(f"  Dimensions: {dims}")
+            logging.error(f"  Chunks by dim: {chunks_by_dim}")
+            raise ValueError(
+                f"Rechunking failed: got y={y_chunk_actual}, x={x_chunk_actual}, "
+                f"expected y={output_chunks[1]}, x={output_chunks[2]}"
+            )
 
         encoding = {
             var_id: {
@@ -754,24 +786,6 @@ if __name__ == "__main__":
                 "chunks": output_chunks,
             }
         }
-
-        # CRITICAL: Rechunk to match output encoding before writing
-        # The squeeze operations may have changed the chunking, so explicitly rechunk ALL dimensions
-        # This ensures dask chunks perfectly align with zarr encoding chunks
-        logging.info(
-            f"Rechunking to match output encoding: time={output_chunks[0]}, y={output_chunks[1]}, x={output_chunks[2]}"
-        )
-        scen_ds = scen_ds.chunk(
-            {"time": output_chunks[0], "y": output_chunks[1], "x": output_chunks[2]}
-        )
-
-        # Verify chunks after rechunking
-        actual_chunks = scen_ds[var_id].chunks
-        logging.info(
-            f"Verified dask chunks after rechunking: time={actual_chunks[0][0] if actual_chunks[0] else 'N/A'}, "
-            f"y={actual_chunks[1][0] if len(actual_chunks) > 1 else 'N/A'}, "
-            f"x={actual_chunks[2][0] if len(actual_chunks) > 2 else 'N/A'}"
-        )
 
         try:
             # Use compute with progress tracking
