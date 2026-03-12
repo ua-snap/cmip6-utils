@@ -2,6 +2,7 @@
 
 import subprocess
 import argparse
+import sys
 from pathlib import Path
 from config import *
 
@@ -130,11 +131,25 @@ def submit_sbatch(sbatch_fp):
     -------
     str
         job id for submitted job
-    """
-    out = subprocess.check_output(["sbatch", str(sbatch_fp)])
-    job_id = out.decode().replace("\n", "").split(" ")[-1]
 
-    return job_id
+    Raises
+    ------
+    Exception
+        If sbatch submission fails
+    """
+    try:
+        out = subprocess.check_output(
+            ["sbatch", str(sbatch_fp)], stderr=subprocess.STDOUT
+        )
+        job_id = out.decode().replace("\n", "").split(" ")[-1]
+        print(f"  Submitted {sbatch_fp.name}: job ID {job_id}")
+        return job_id
+    except subprocess.CalledProcessError as e:
+        error_msg = (
+            f"Failed to submit {sbatch_fp}: {e.output.decode() if e.output else str(e)}"
+        )
+        print(f"ERROR: {error_msg}", file=sys.stderr)
+        raise Exception(error_msg)
 
 
 def parse_args():
@@ -311,6 +326,10 @@ if __name__ == "__main__":
     #  Easier to keep track of things when the only jobs are those submitted from this directory.
     _ = [fp.unlink() for fp in sbatch_dir.glob("*.slurm")]
 
+    print(f"Searching for batch files in {regrid_batch_dir}...")
+    expected_jobs = 0
+    found_batch_files = []
+
     for var in vars.split():
         for freq in freqs.split():
             for model in models.split():
@@ -318,9 +337,19 @@ if __name__ == "__main__":
                     # find the batch file for this model, scenario, variable, and frequency
                     # now that they are split up by model and scenario as well,
                     # most will only be one single file, but it's not garuanteed
-                    for fp in regrid_batch_dir.glob(
-                        f"batch_{model}*{scenario}*{freq}*{var}*.txt"
-                    ):
+                    pattern = f"batch_{model}*{scenario}*{freq}*{var}*.txt"
+                    expected_jobs += 1
+                    matches = list(regrid_batch_dir.glob(pattern))
+
+                    if not matches:
+                        print(
+                            f"WARNING: No batch file found for {model}/{scenario}/{freq}/{var} (pattern: {pattern})",
+                            file=sys.stderr,
+                        )
+                        continue
+
+                    for fp in matches:
+                        found_batch_files.append((var, model, scenario, freq, fp))
                         sbatch_str = fp.name.split("batch_")[1].split(".txt")[0]
                         sbatch_fp = sbatch_dir.joinpath(f"regrid_{sbatch_str}.slurm")
                         # filepath for slurm stdout
@@ -358,10 +387,45 @@ if __name__ == "__main__":
                         write_sbatch_regrid(**sbatch_regrid_kwargs)
                         sbatch_fps.append(sbatch_fp)
 
+    # Report batch file discovery results
+    print(f"\nBatch file discovery complete:")
+    print(f"  Expected jobs: {expected_jobs}")
+    print(f"  Found batch files: {len(found_batch_files)}")
+    print(f"  SLURM scripts created: {len(sbatch_fps)}")
+    if len(found_batch_files) != expected_jobs:
+        print(
+            f"WARNING: Mismatch between expected ({expected_jobs}) and found ({len(found_batch_files)}) batch files!",
+            file=sys.stderr,
+        )
+
     # remove existing slurm output files
     _ = [fp.unlink() for fp in sbatch_dir.glob("*.out")]
 
-    # submit jobs
-    job_ids = [submit_sbatch(fp) for fp in sbatch_fps]
-    # print job ids as " "-separated string to parsed for prefect flow
+    print(f"\nSubmitting {len(sbatch_fps)} regridding jobs...")
+
+    # submit jobs with explicit error handling
+    job_ids = []
+    failed_submissions = []
+
+    for fp in sbatch_fps:
+        try:
+            job_id = submit_sbatch(fp)
+            job_ids.append(job_id)
+        except Exception as e:
+            failed_submissions.append((fp, str(e)))
+            print(f"ERROR: Failed to submit {fp.name}: {e}", file=sys.stderr)
+
+    # Report summary
+    print(
+        f"\nSubmission complete: {len(job_ids)} succeeded, {len(failed_submissions)} failed"
+    )
+
+    if failed_submissions:
+        print("\nFailed submissions:", file=sys.stderr)
+        for fp, error in failed_submissions:
+            print(f"  - {fp.name}: {error}", file=sys.stderr)
+        # Raise exception if any submissions failed
+        raise Exception(f"{len(failed_submissions)} job submission(s) failed")
+
+    # print job ids as " "-separated string to be parsed for prefect flow
     print(" ".join(job_ids))

@@ -93,6 +93,18 @@ def validate_args(args):
         logging.warning(
             f"Some specified model/scenario combinations were not found in the input directory: {set(modscens_from_args) - set(model_scenarios_in_input_dir)}. Skipping these model/scenario combinations."
         )
+    
+    # CRITICAL FIX: Actually filter args to only include validated combinations
+    validated_scenarios = sorted(set(s for m, s in model_scenarios_in_input_dir))
+    validated_models = sorted(set(m for m, s in model_scenarios_in_input_dir))
+    
+    if validated_scenarios != args.scenarios or validated_models != args.models:
+        logging.info(f"Filtering to validated model/scenario combinations:")
+        logging.info(f"  Models: {validated_models}")
+        logging.info(f"  Scenarios: {validated_scenarios}")
+        args.scenarios = validated_scenarios
+        args.models = validated_models
+    
     args.variables = args.variables.split(" ")
 
     return args
