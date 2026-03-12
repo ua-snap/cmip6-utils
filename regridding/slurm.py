@@ -29,7 +29,7 @@ def make_sbatch_head(partition, sbatch_out_file, conda_env_name):
         "#SBATCH --nodes=1\n"
         f"#SBATCH --cpus-per-task=24\n"
         f"#SBATCH -p {partition}\n"
-        f"#SBATCH --time=01:00:00\n"
+        f"#SBATCH --time=04:00:00\n"
         f"#SBATCH --output {sbatch_out_file}\n"
         # print start time
         "echo Start slurm && date\n"
