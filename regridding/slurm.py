@@ -119,6 +119,123 @@ def write_sbatch_regrid(
     return
 
 
+def write_config_file(config_path, batch_files_info):
+    """Write a config file for array job mapping task IDs to batch files.
+
+    Parameters
+    ----------
+    config_path : pathlib.PosixPath
+        path to write the config file
+    batch_files_info : list of tuples
+        list of (var, model, scenario, freq, batch_file_path) tuples
+
+    Returns
+    -------
+    array_range : str
+        string to use in SLURM array (e.g., "1-20")
+    """
+    array_list = []
+    with open(config_path, "w") as f:
+        f.write(
+            "array_id\tvar\tmodel\tscenario\tfreq\tbatch_file\tsrc_sftlf\tdst_sftlf\n"
+        )
+        for array_id, (
+            var,
+            model,
+            scenario,
+            freq,
+            batch_fp,
+            src_sftlf,
+            dst_sftlf,
+        ) in enumerate(batch_files_info, start=1):
+            src_sftlf_str = src_sftlf if src_sftlf else "NONE"
+            dst_sftlf_str = dst_sftlf if dst_sftlf else "NONE"
+            f.write(
+                f"{array_id}\t{var}\t{model}\t{scenario}\t{freq}\t{batch_fp}\t{src_sftlf_str}\t{dst_sftlf_str}\n"
+            )
+            array_list.append(array_id)
+
+    array_range = f"{min(array_list)}-{max(array_list)}"
+    print(f"Wrote config file to {config_path}")
+    return array_range
+
+
+def write_sbatch_array_regrid(
+    sbatch_fp,
+    config_file,
+    regrid_script,
+    regrid_dir,
+    target_grid_fp,
+    no_clobber,
+    interp_method,
+    rasdafy,
+    sbatch_head,
+):
+    """Write an sbatch script for array job regridding.
+
+    Parameters
+    ----------
+    sbatch_fp : pathlib.Path
+        path to .slurm script to write
+    config_file : pathlib.Path
+        path to config file with array task mappings
+    regrid_script : pathlib.Path
+        path to regrid.py script
+    regrid_dir : pathlib.Path
+        output directory for regridded files
+    target_grid_fp : pathlib.Path
+        target grid file
+    no_clobber : bool
+        if True, don't overwrite existing files
+    interp_method : str
+        interpolation method
+    rasdafy : bool
+        Rasdaman-specific tweaks
+    sbatch_head : str
+        sbatch header commands
+    """
+    pycommands = "\n"
+    pycommands += (
+        # Extract task info from config file
+        f"config={config_file}\n"
+        "var=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $2}' $config)\n"
+        "model=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $3}' $config)\n"
+        "scenario=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $4}' $config)\n"
+        "freq=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $5}' $config)\n"
+        "batch_file=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $6}' $config)\n"
+        "src_sftlf=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $7}' $config)\n"
+        "dst_sftlf=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $8}' $config)\n"
+        "\n"
+        # Build sftlf arguments conditionally
+        'sftlf_args=""\n'
+        'if [ "$src_sftlf" != "NONE" ]; then sftlf_args="--src_sftlf_fp $src_sftlf"; fi\n'
+        'if [ "$dst_sftlf" != "NONE" ]; then sftlf_args="$sftlf_args --dst_sftlf_fp $dst_sftlf"; fi\n'
+        "\n"
+        # Run the python regridding command
+        f"python {regrid_script} "
+        f"-b $batch_file "
+        f"-d {target_grid_fp} "
+        f"-o {regrid_dir} "
+        f"--interp_method {interp_method} "
+        "$sftlf_args"
+    )
+
+    if rasdafy:
+        pycommands += " --rasdafy"
+    if no_clobber:
+        pycommands += " --no-clobber"
+
+    pycommands += "\n\necho End regridding && date\n"
+
+    commands = sbatch_head + pycommands
+
+    with open(sbatch_fp, "w") as f:
+        f.write(commands)
+
+    print(f"Wrote sbatch array script to {sbatch_fp}")
+    return
+
+
 def submit_sbatch(sbatch_fp):
     """Submit a script to slurm via sbatch.
 
@@ -325,18 +442,19 @@ if __name__ == "__main__":
     # remove any existing sbatch files in this directory.
     #  Easier to keep track of things when the only jobs are those submitted from this directory.
     _ = [fp.unlink() for fp in sbatch_dir.glob("*.slurm")]
+    _ = [fp.unlink() for fp in sbatch_dir.glob("*.out")]
 
     print(f"Searching for batch files in {regrid_batch_dir}...")
     expected_jobs = 0
-    found_batch_files = []
+    batch_files_info = (
+        []
+    )  # Will store (var, model, scenario, freq, batch_fp, src_sftlf, dst_sftlf)
 
     for var in vars.split():
         for freq in freqs.split():
             for model in models.split():
                 for scenario in scenarios.split():
                     # find the batch file for this model, scenario, variable, and frequency
-                    # now that they are split up by model and scenario as well,
-                    # most will only be one single file, but it's not garuanteed
                     pattern = f"batch_{model}*{scenario}*{freq}*{var}*.txt"
                     expected_jobs += 1
                     matches = list(regrid_batch_dir.glob(pattern))
@@ -349,83 +467,72 @@ if __name__ == "__main__":
                         continue
 
                     for fp in matches:
-                        found_batch_files.append((var, model, scenario, freq, fp))
-                        sbatch_str = fp.name.split("batch_")[1].split(".txt")[0]
-                        sbatch_fp = sbatch_dir.joinpath(f"regrid_{sbatch_str}.slurm")
-                        # filepath for slurm stdout
-                        sbatch_out_fp = sbatch_dir.joinpath(
-                            sbatch_fp.name.replace(".slurm", "_%j.out")
-                        )
-
-                        sbatch_head = make_sbatch_head(
-                            partition, sbatch_out_fp, conda_env_name
-                        )
-                        sbatch_regrid_kwargs = {
-                            "sbatch_fp": sbatch_fp,
-                            "sbatch_out_fp": sbatch_out_fp,
-                            "regrid_script": regrid_script,
-                            "regrid_dir": regrid_dir,
-                            "regrid_batch_fp": fp,
-                            "dst_fp": target_grid_fp,
-                            "no_clobber": no_clobber,
-                            "interp_method": interp_method,
-                            "sbatch_head": sbatch_head,
-                            "rasdafy": rasdafy,
-                        }
+                        # Determine sftlf files if needed
+                        src_sftlf = None
+                        dst_sftlf = None
                         if var in landsea_variables:
                             assert (
                                 target_sftlf_fp is not None
                             ), "A target sftlf file must be supplied if any variables are land/sea"
                             try:
-                                sbatch_regrid_kwargs["src_sftlf_fp"] = model_sftlf_lu[
-                                    model
-                                ]
+                                src_sftlf = model_sftlf_lu[model]
                             except KeyError:
-                                sbatch_regrid_kwargs["src_sftlf_fp"] = None
-                            sbatch_regrid_kwargs["dst_sftlf_fp"] = target_sftlf_fp
+                                src_sftlf = None
+                            dst_sftlf = target_sftlf_fp
 
-                        write_sbatch_regrid(**sbatch_regrid_kwargs)
-                        sbatch_fps.append(sbatch_fp)
+                        batch_files_info.append(
+                            (var, model, scenario, freq, fp, src_sftlf, dst_sftlf)
+                        )
 
     # Report batch file discovery results
     print(f"\nBatch file discovery complete:")
     print(f"  Expected jobs: {expected_jobs}")
-    print(f"  Found batch files: {len(found_batch_files)}")
-    print(f"  SLURM scripts created: {len(sbatch_fps)}")
-    if len(found_batch_files) != expected_jobs:
+    print(f"  Found batch files: {len(batch_files_info)}")
+
+    if len(batch_files_info) == 0:
+        raise Exception("No batch files found!")
+
+    if len(batch_files_info) != expected_jobs:
         print(
-            f"WARNING: Mismatch between expected ({expected_jobs}) and found ({len(found_batch_files)}) batch files!",
+            f"WARNING: Mismatch between expected ({expected_jobs}) and found ({len(batch_files_info)}) batch files!",
             file=sys.stderr,
         )
 
-    # remove existing slurm output files
-    _ = [fp.unlink() for fp in sbatch_dir.glob("*.out")]
+    # Write config file for array job
+    config_file = sbatch_dir.joinpath("regrid_config.txt")
+    array_range = write_config_file(config_file, batch_files_info)
 
-    print(f"\nSubmitting {len(sbatch_fps)} regridding jobs...")
+    # Create single array job script
+    sbatch_fp = sbatch_dir.joinpath("regrid_array.slurm")
+    sbatch_out_fp = sbatch_dir.joinpath(
+        "regrid_array_%A_%a.out"
+    )  # %A = job ID, %a = array task ID
 
-    # submit jobs with explicit error handling
-    job_ids = []
-    failed_submissions = []
-
-    for fp in sbatch_fps:
-        try:
-            job_id = submit_sbatch(fp)
-            job_ids.append(job_id)
-        except Exception as e:
-            failed_submissions.append((fp, str(e)))
-            print(f"ERROR: Failed to submit {fp.name}: {e}", file=sys.stderr)
-
-    # Report summary
-    print(
-        f"\nSubmission complete: {len(job_ids)} succeeded, {len(failed_submissions)} failed"
+    sbatch_head = make_sbatch_head(
+        partition, sbatch_out_fp, conda_env_name, array_range=array_range
     )
 
-    if failed_submissions:
-        print("\nFailed submissions:", file=sys.stderr)
-        for fp, error in failed_submissions:
-            print(f"  - {fp.name}: {error}", file=sys.stderr)
-        # Raise exception if any submissions failed
-        raise Exception(f"{len(failed_submissions)} job submission(s) failed")
+    write_sbatch_array_regrid(
+        sbatch_fp=sbatch_fp,
+        config_file=config_file,
+        regrid_script=regrid_script,
+        regrid_dir=regrid_dir,
+        target_grid_fp=target_grid_fp,
+        no_clobber=no_clobber,
+        interp_method=interp_method,
+        rasdafy=rasdafy,
+        sbatch_head=sbatch_head,
+    )
 
-    # print job ids as " "-separated string to be parsed for prefect flow
-    print(" ".join(job_ids))
+    # Submit the array job
+    print(f"\nSubmitting array job with {len(batch_files_info)} tasks...")
+    try:
+        job_id = submit_sbatch(sbatch_fp)
+        print(
+            f"\nSubmission complete: Job ID {job_id} with {len(batch_files_info)} array tasks"
+        )
+        # Print single job ID for prefect flow parsing
+        print(job_id)
+    except Exception as e:
+        print(f"ERROR: Failed to submit array job: {e}", file=sys.stderr)
+        raise
