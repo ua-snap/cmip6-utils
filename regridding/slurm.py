@@ -156,7 +156,7 @@ def write_config_file(config_path, batch_files_info):
             array_list.append(array_id)
 
     array_range = f"{min(array_list)}-{max(array_list)}"
-    print(f"Wrote config file to {config_path}")
+    print(f"Wrote config file to {config_path}", file=sys.stderr)
     return array_range
 
 
@@ -232,7 +232,7 @@ def write_sbatch_array_regrid(
     with open(sbatch_fp, "w") as f:
         f.write(commands)
 
-    print(f"Wrote sbatch array script to {sbatch_fp}")
+    print(f"Wrote sbatch array script to {sbatch_fp}", file=sys.stderr)
     return
 
 
@@ -259,7 +259,7 @@ def submit_sbatch(sbatch_fp):
             ["sbatch", str(sbatch_fp)], stderr=subprocess.STDOUT
         )
         job_id = out.decode().replace("\n", "").split(" ")[-1]
-        print(f"  Submitted {sbatch_fp.name}: job ID {job_id}")
+        print(f"  Submitted {sbatch_fp.name}: job ID {job_id}", file=sys.stderr)
         return job_id
     except subprocess.CalledProcessError as e:
         error_msg = (
@@ -444,7 +444,7 @@ if __name__ == "__main__":
     _ = [fp.unlink() for fp in sbatch_dir.glob("*.slurm")]
     _ = [fp.unlink() for fp in sbatch_dir.glob("*.out")]
 
-    print(f"Searching for batch files in {regrid_batch_dir}...")
+    print(f"Searching for batch files in {regrid_batch_dir}...", file=sys.stderr)
     expected_jobs = 0
     batch_files_info = (
         []
@@ -485,9 +485,9 @@ if __name__ == "__main__":
                         )
 
     # Report batch file discovery results
-    print(f"\nBatch file discovery complete:")
-    print(f"  Expected jobs: {expected_jobs}")
-    print(f"  Found batch files: {len(batch_files_info)}")
+    print(f"\nBatch file discovery complete:", file=sys.stderr)
+    print(f"  Expected jobs: {expected_jobs}", file=sys.stderr)
+    print(f"  Found batch files: {len(batch_files_info)}", file=sys.stderr)
 
     if len(batch_files_info) == 0:
         raise Exception("No batch files found!")
@@ -525,13 +525,16 @@ if __name__ == "__main__":
     )
 
     # Submit the array job
-    print(f"\nSubmitting array job with {len(batch_files_info)} tasks...")
+    print(
+        f"\nSubmitting array job with {len(batch_files_info)} tasks...", file=sys.stderr
+    )
     try:
         job_id = submit_sbatch(sbatch_fp)
         print(
-            f"\nSubmission complete: Job ID {job_id} with {len(batch_files_info)} array tasks"
+            f"\nSubmission complete: Job ID {job_id} with {len(batch_files_info)} array tasks",
+            file=sys.stderr,
         )
-        # Print single job ID for prefect flow parsing
+        # Print single job ID for prefect flow parsing (stdout only)
         print(job_id)
     except Exception as e:
         print(f"ERROR: Failed to submit array job: {e}", file=sys.stderr)
