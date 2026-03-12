@@ -284,9 +284,21 @@ def write_batch_files(group_df, model, scenario, var_id, frequency, regrid_batch
             # Warn if file already exists to detect concurrent writes or re-runs
             if batch_file.exists():
                 print(f"WARNING: Overwriting existing batch file: {batch_file}")
+
+            # Calculate total size of this batch for diagnostics
+            total_size_gb = sum(
+                [group_df[group_df.fp == fp]["filesize"].values[0] for fp in chunk]
+            )
+
             with open(batch_file, "w") as f:
                 for fp in chunk:
                     f.write(f"{fp}\n")
+
+            print(
+                f"Created {batch_file.name}: {len(chunk)} files, {total_size_gb:.2f} GB"
+            )
+            if total_size_gb > 50:
+                print(f"  WARNING: Batch exceeds 50GB size target!")
 
     return
 
@@ -433,6 +445,15 @@ if __name__ == "__main__":
     assert (
         len(fps) > 0
     ), f"No files found with given parameters ({vars}; {freqs}; {models}; {scenarios})"
+
+    # Check for duplicates and warn
+    initial_count = len(fps)
+    fps_unique = list(set(fps))
+    if initial_count != len(fps_unique):
+        dup_count = initial_count - len(fps_unique)
+        print(f"WARNING: Found {dup_count} duplicate file paths! Removing duplicates.")
+        print(f"  Before: {initial_count} files, After: {len(fps_unique)} files")
+        fps = fps_unique
 
     grids = []
     # pool seems to be more likely to hang on larger batches of inputs, so we will break up into smaller batches
