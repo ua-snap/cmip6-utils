@@ -794,7 +794,8 @@ def write_regridded_files(out_ds, out_fp):
 
         logging.info(f"    Writing year {year}...")
         # Explicitly compute during write for streaming/incremental processing
-        year_ds.to_netcdf(year_out_fp, compute=True)
+        # Use mode='w' to force overwrite and prevent file corruption from concurrent writes
+        year_ds.to_netcdf(year_out_fp, mode="w", compute=True)
         out_fps.append(year_out_fp)
 
     logging.info(f"  ✓ Completed writing {len(out_fps)} files")

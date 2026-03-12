@@ -1,4 +1,4 @@
-"""Generate text files ("batch" files) containing all of the files we want to regrid broken up by frequency, model, scenario, and variable. 
+"""Generate text files ("batch" files) containing all of the files we want to regrid broken up by frequency, model, scenario, and variable.
 It utilizes code from the explore_grids.ipynb notebook to select the files which need to be regridded.
 """
 
@@ -250,11 +250,12 @@ def write_batch_files(group_df, model, scenario, var_id, frequency, regrid_batch
         for i, row in df.iterrows():
             if ((k + row["filesize"]) > max_size) or (len(chunk) >= max_count):
                 fp_chunks.append(chunk)
-                k = 0
-                # re-initialize with current filepath
+                # re-initialize with current filepath and its size
+                k = row["filesize"]
                 chunk = [row["fp"]]
             else:
                 chunk.append(row["fp"])
+                k += row["filesize"]
 
         if len(chunk) > 0:
             fp_chunks.append(chunk)
@@ -280,6 +281,9 @@ def write_batch_files(group_df, model, scenario, var_id, frequency, regrid_batch
                     count=i,
                 )
             )
+            # Warn if file already exists to detect concurrent writes or re-runs
+            if batch_file.exists():
+                print(f"WARNING: Overwriting existing batch file: {batch_file}")
             with open(batch_file, "w") as f:
                 for fp in chunk:
                     f.write(f"{fp}\n")
@@ -401,19 +405,29 @@ if __name__ == "__main__":
 
     # read the grid info from all files
     fps = []
+    # Handle DTR files separately (not organized by exp_id)
+    for var in vars.split():
+        if var == "dtr":
+            for freq in freqs.split():
+                for model in models.split():
+                    for scenario in scenarios.split():
+                        cmip6_dir_glob = cmip6_dir.joinpath(
+                            model, scenario, freq, var
+                        ).glob("*.nc")
+                        fps.extend(list(cmip6_dir_glob))
+
+    # Handle standard CMIP6 variables
     for exp_id in ["ScenarioMIP", "CMIP"]:
-        # add only daily and monthly files
         for var in vars.split():
+            if var == "dtr":  # Skip DTR, already handled above
+                continue
             for freq in freqs.split():
                 for model in models.split():
                     for scenario in scenarios.split():
                         inst = get_institution_id(model, scenario)
-                        if var == "dtr":
-                            cmip6_dir_glob = cmip6_dir.joinpath(model, scenario, freq, var).glob("*.nc")
-                        else:
-                            cmip6_dir_glob = cmip6_dir.joinpath(exp_id, inst, model, scenario).glob(
-                                f"*/*{freq}/{var}/**/*.nc"
-                            )
+                        cmip6_dir_glob = cmip6_dir.joinpath(
+                            exp_id, inst, model, scenario
+                        ).glob(f"*/*{freq}/{var}/**/*.nc")
                         fps.extend(list(cmip6_dir_glob))
 
     assert (
@@ -431,7 +445,7 @@ if __name__ == "__main__":
     results_df = pd.DataFrame(grids)
 
     # Print results_df with all columns and values
-    pd.set_option('display.max_columns', None)
+    pd.set_option("display.max_columns", None)
 
     for name, group_df in results_df.groupby(
         ["model", "scenario", "variable_id", "frequency"]
