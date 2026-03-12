@@ -7,7 +7,7 @@ from pathlib import Path
 from config import *
 
 
-def make_sbatch_head(partition, sbatch_out_file, conda_env_name):
+def make_sbatch_head(partition, sbatch_out_file, conda_env_name, array_range=None):
     """Make a string of SBATCH commands that can be written into a .slurm script.
 
     Parameters
@@ -18,28 +18,40 @@ def make_sbatch_head(partition, sbatch_out_file, conda_env_name):
         path to where sbatch stdout should be written
     conda_env_name : str
         name of the conda environment to activate
+    array_range : str, optional
+        array range for array jobs (e.g., "1-20")
 
     Returns
     -------
     str
-        string of SBATCH commands ready to be used as parameter in sbatch-writing functions. The following gaps are left for filling with .format:
-            - output slurm filename
+        string of SBATCH commands ready to be used as parameter in sbatch-writing functions.
     """
-    sbatch_head = (
-        "#!/bin/sh\n"
-        "#SBATCH --nodes=1\n"
-        f"#SBATCH --cpus-per-task=24\n"
-        f"#SBATCH -p {partition}\n"
-        f"#SBATCH --time=04:00:00\n"
-        f"#SBATCH --output {sbatch_out_file}\n"
-        # print start time
-        "echo Start slurm && date\n"
-        # prepare shell for using activate
-        'eval "$($HOME/miniconda3/bin/conda shell.bash hook)"\n'
-        f"conda activate {conda_env_name}\n"
+    sbatch_lines = [
+        "#!/bin/sh\n",
+    ]
+
+    if array_range:
+        sbatch_lines.append(
+            f"#SBATCH --array={array_range}%10\n"
+        )  # max 10 concurrent tasks
+        sbatch_lines.append("#SBATCH --job-name=regrid_cmip6\n")
+
+    sbatch_lines.extend(
+        [
+            "#SBATCH --nodes=1\n",
+            f"#SBATCH --cpus-per-task=24\n",
+            f"#SBATCH -p {partition}\n",
+            f"#SBATCH --time=04:00:00\n",
+            f"#SBATCH --output {sbatch_out_file}\n",
+            # print start time
+            "echo Start slurm && date\n",
+            # prepare shell for using activate
+            'eval "$($HOME/miniconda3/bin/conda shell.bash hook)"\n',
+            f"conda activate {conda_env_name}\n",
+        ]
     )
 
-    return sbatch_head
+    return "".join(sbatch_lines)
 
 
 def write_sbatch_regrid(
