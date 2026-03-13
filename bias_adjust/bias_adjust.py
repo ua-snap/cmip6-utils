@@ -675,19 +675,61 @@ if __name__ == "__main__":
         # Apply variable-specific thresholding
         if var_id == "dtr":
             logging.info("##### START SQUEEZING DTR #####")
-            # Rechunk only time dimension for global statistics
-            # This allows quantile to work without loading all spatial data into one chunk
-            # Memory per chunk: 31,390 × 50 × 50 × 4 bytes = ~1.25 GB (manageable)
-            logging.info(
-                "Rechunking time dimension for global statistics computation..."
-            )
-            stats_var = scen_ds[var_id].chunk(dict(time=-1))
+            import numpy as np
+            import dask.array as da
 
-            # Compute global statistics from appropriately chunked array
-            max_value = stats_var.max().compute().item()
-            min_value = stats_var.min().compute().item()
-            lower_thresh = stats_var.quantile(0.0000002).compute().item()
-            upper_thresh = stats_var.quantile(0.9999998).compute().item()
+            logging.info(
+                "Computing quantile-based thresholds using histogram method..."
+            )
+            arr = scen_ds[var_id]
+
+            # Use histogram-based quantile estimation to avoid loading entire array
+            # This works efficiently with chunked dask arrays
+            logging.info("Building histogram of DTR values...")
+
+            # Compute min/max for histogram range (reduction ops work efficiently with chunks)
+            arr_min = float(arr.min().compute())
+            arr_max = float(arr.max().compute())
+            logging.info(f"DTR range: [{arr_min:.2f}, {arr_max:.2f}] K")
+
+            # Create histogram with sufficient bins to capture extreme quantiles
+            # Use 10000 bins to get good resolution for 0.0000002 quantile
+            n_bins = 10000
+            hist_range = (arr_min, arr_max)
+
+            logging.info(
+                f"Computing histogram with {n_bins} bins (processes chunks efficiently)..."
+            )
+            # dask.array.histogram works with chunks without loading full array
+            hist, bin_edges = da.histogram(arr.data, bins=n_bins, range=hist_range)
+            hist = (
+                hist.compute()
+            )  # Only histogram counts need to be in memory, not raw data
+
+            # Build cumulative distribution from histogram
+            cumsum = np.cumsum(hist)
+            total_count = cumsum[-1]
+            cdf = cumsum / total_count
+
+            # Find quantile values from CDF
+            lower_quantile = 0.0000002
+            upper_quantile = 0.9999998
+
+            lower_idx = np.searchsorted(cdf, lower_quantile)
+            upper_idx = np.searchsorted(cdf, upper_quantile)
+
+            lower_thresh = float(bin_edges[lower_idx])
+            upper_thresh = float(bin_edges[upper_idx + 1])  # Use upper edge of bin
+
+            logging.info(
+                f"Computed quantile-based thresholds: [{lower_thresh:.2f}, {upper_thresh:.2f}] K"
+            )
+            logging.info(
+                f"  Lower threshold (q={lower_quantile}): {lower_thresh:.2f} K"
+            )
+            logging.info(
+                f"  Upper threshold (q={upper_quantile}): {upper_thresh:.2f} K"
+            )
 
             # Count the number of pixels above and below the thresholds
             num_below = (
@@ -716,10 +758,10 @@ if __name__ == "__main__":
                 other=upper_thresh,
             )
 
-            logging.info(f"Max DTR value: {max_value}")
-            logging.info(f"Min DTR value: {min_value}")
-            logging.info(f"Set values below {lower_thresh} to {lower_thresh}")
-            logging.info(f"Set values above {upper_thresh} to {upper_thresh}")
+            logging.info(f"Max DTR value: {arr_max:.2f} K")
+            logging.info(f"Min DTR value: {arr_min:.2f} K")
+            logging.info(f"Set values below {lower_thresh:.2f} to {lower_thresh:.2f}")
+            logging.info(f"Set values above {upper_thresh:.2f} to {upper_thresh:.2f}")
             logging.info("##### FINISH SQUEEZING DTR #####")
 
         max_tasmax = 333.15
