@@ -675,11 +675,19 @@ if __name__ == "__main__":
         # Apply variable-specific thresholding
         if var_id == "dtr":
             logging.info("##### START SQUEEZING DTR #####")
-            rechunked = scen_ds[var_id].chunk(dict(time=-1, y=-1, x=-1))
-            max_value = rechunked.max().values
-            min_value = rechunked.min().values
-            lower_thresh = rechunked.quantile(0.0000002).values
-            upper_thresh = rechunked.quantile(0.9999998).values
+            # Rechunk only time dimension for global statistics
+            # This allows quantile to work without loading all spatial data into one chunk
+            # Memory per chunk: 31,390 × 50 × 50 × 4 bytes = ~1.25 GB (manageable)
+            logging.info(
+                "Rechunking time dimension for global statistics computation..."
+            )
+            stats_var = scen_ds[var_id].chunk(dict(time=-1))
+
+            # Compute global statistics from appropriately chunked array
+            max_value = stats_var.max().compute().item()
+            min_value = stats_var.min().compute().item()
+            lower_thresh = stats_var.quantile(0.0000002).compute().item()
+            upper_thresh = stats_var.quantile(0.9999998).compute().item()
 
             # Count the number of pixels above and below the thresholds
             num_below = (
