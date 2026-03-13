@@ -218,6 +218,51 @@ def write_sbatch_regrid_again(
     return sbatch_file
 
 
+def precreate_output_directories(src_fps, output_dir):
+    """Pre-create all output directories to avoid race conditions in parallel jobs.
+    
+    When multiple array jobs run simultaneously, they may all try to create the same
+    directory structure, leading to FileExistsError even with exist_ok=True due to
+    timing issues with parents=True. Pre-creating avoids this race condition.
+    
+    Parameters
+    ----------
+    src_fps : list of Path
+        List of source file paths to be regridded
+    output_dir : Path
+        Root output directory
+    """
+    logging.info("Pre-creating output directory structure to avoid race conditions...")
+    
+    # Extract unique directory paths that will be needed
+    unique_dirs = set()
+    for fp in src_fps:
+        # Parse the path structure: .../model/scenario/frequency/variable/file.nc
+        parts = fp.parts
+        # Find indices of key directories by working backwards from filename
+        if len(parts) >= 4:
+            # Last 4 parts before filename: model/scenario/frequency/variable
+            model = parts[-4]
+            scenario = parts[-3]
+            frequency = parts[-2]
+            variable = fp.parent.name  # variable is the immediate parent
+            
+            out_dir = output_dir / model / scenario / frequency / variable
+            unique_dirs.add(out_dir)
+    
+    # Create all directories
+    created_count = 0
+    for dir_path in sorted(unique_dirs):
+        try:
+            dir_path.mkdir(parents=True, exist_ok=True)
+            created_count += 1
+        except FileExistsError:
+            # Safe to ignore - directory already exists
+            pass
+    
+    logging.info(f"Pre-created {created_count} output directories")
+
+
 if __name__ == "__main__":
     (
         partition,
@@ -233,6 +278,9 @@ if __name__ == "__main__":
 
     src_fps = list(regridded_dir.glob("**/*.nc"))
     regrid_again_batch_dir.mkdir(exist_ok=True)
+
+    # Pre-create all output directories to avoid race conditions in parallel array jobs
+    precreate_output_directories(src_fps, output_dir)
 
     # write batch files for the regrid again job
     batch_files = write_batch_files(src_fps, regrid_again_batch_dir)

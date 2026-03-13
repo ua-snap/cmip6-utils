@@ -586,7 +586,11 @@ if __name__ == "__main__":
         # Name it without "dask-worker" prefix to avoid nested dask-worker-space directories
         worker_base_dir = tmp_path / f"bias-adjust-{sim_path.stem}-{os.getpid()}"
         logging.info(f"Creating worker base directory: {worker_base_dir}")
-        worker_base_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            worker_base_dir.mkdir(parents=True, exist_ok=True)
+        except FileExistsError:
+            # Race condition in parallel jobs - safe to ignore
+            pass
 
         # Configure Dask
         logging.info("Configuring Dask cluster...")

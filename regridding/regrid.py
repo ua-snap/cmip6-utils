@@ -1419,7 +1419,14 @@ if __name__ == "__main__":
             out_fp = generate_regrid_filepath(fp, out_dir)
 
             # make sure the parent dirs exist
-            out_fp.parent.mkdir(exist_ok=True, parents=True)
+            # Catch FileExistsError to handle race condition when multiple array jobs
+            # attempt to create the same directory structure simultaneously
+            try:
+                out_fp.parent.mkdir(exist_ok=True, parents=True)
+            except FileExistsError:
+                # Another parallel job created this directory between our check and creation
+                # This is safe to ignore - the directory exists, which is what we wanted
+                pass
 
             # remove date from filename about to be regridded
             #  and list all existing files created from the source file being examined

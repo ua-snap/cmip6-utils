@@ -460,7 +460,11 @@ if __name__ == "__main__":
         dtr_ds.attrs["variable_id"] = "dtr"
 
         # Write output files
-        output_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            output_dir.mkdir(parents=True, exist_ok=True)
+        except FileExistsError:
+            # Race condition in parallel jobs - safe to ignore
+            pass
         years = np.unique(dtr_ds.time.dt.year)
         total_years = len(years)
         logging.info(f"Writing {total_years} years of DTR data...")
