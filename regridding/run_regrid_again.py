@@ -240,12 +240,12 @@ def precreate_output_directories(src_fps, output_dir):
         # Parse the path structure: .../model/scenario/frequency/variable/file.nc
         parts = fp.parts
         # Find indices of key directories by working backwards from filename
-        if len(parts) >= 4:
-            # Last 4 parts before filename: model/scenario/frequency/variable
-            model = parts[-4]
-            scenario = parts[-3]
-            frequency = parts[-2]
-            variable = fp.parent.name  # variable is the immediate parent
+        if len(parts) >= 5:
+            # Last 5 parts before filename: model/scenario/frequency/variable/filename
+            model = parts[-5]
+            scenario = parts[-4]
+            frequency = parts[-3]
+            variable = parts[-2]
             
             out_dir = output_dir / model / scenario / frequency / variable
             unique_dirs.add(out_dir)
