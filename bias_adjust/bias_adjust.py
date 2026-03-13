@@ -675,7 +675,7 @@ if __name__ == "__main__":
         # Apply variable-specific thresholding
         if var_id == "dtr":
             logging.info("##### START SQUEEZING DTR #####")
-            rechunked = scen_ds[var_id].chunk(dict(y=-1, x=-1))
+            rechunked = scen_ds[var_id].chunk(dict(time=-1, y=-1, x=-1))
             max_value = rechunked.max().values
             min_value = rechunked.min().values
             lower_thresh = rechunked.quantile(0.0000002).values
