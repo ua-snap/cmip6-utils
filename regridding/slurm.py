@@ -448,7 +448,7 @@ if __name__ == "__main__":
 
     # build and write sbatch files
     sbatch_fps = []
-    sbatch_dir = slurm_dir.joinpath("regrid")
+    sbatch_dir = slurm_dir.joinpath("first_regrid")
     sbatch_dir.mkdir(exist_ok=True)
 
     # remove any existing sbatch files in this directory.
@@ -511,13 +511,13 @@ if __name__ == "__main__":
         )
 
     # Write config file for array job
-    config_file = sbatch_dir.joinpath("regrid_config.txt")
+    config_file = sbatch_dir.joinpath("regrid_first_config.txt")
     array_range = write_config_file(config_file, batch_files_info)
 
     # Create single array job script
-    sbatch_fp = sbatch_dir.joinpath("regrid_array.slurm")
+    sbatch_fp = sbatch_dir.joinpath("regrid_first.slurm")
     sbatch_out_fp = sbatch_dir.joinpath(
-        "regrid_array_%A_%a.out"
+        "regrid_first_%A_%a.out"
     )  # %A = job ID, %a = array task ID
 
     sbatch_head = make_sbatch_head(

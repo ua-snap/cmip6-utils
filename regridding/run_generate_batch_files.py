@@ -6,7 +6,7 @@ from pathlib import Path
 # project
 from slurm import submit_sbatch
 
-batch_file_dir_name = "regrid_batch_files"
+batch_file_dir_name = "first_regrid/batch"
 
 
 def parse_args():
@@ -109,7 +109,7 @@ if __name__ == "__main__":
     ) = parse_args()
 
     regrid_batch_dir = slurm_dir.joinpath(batch_file_dir_name)
-    regrid_batch_dir.mkdir(exist_ok=True)
+    regrid_batch_dir.mkdir(parents=True, exist_ok=True)
     generate_batch_files_sbatch_fp = slurm_dir.joinpath(
         "generate_regrid_batch_files.slurm"
     )
