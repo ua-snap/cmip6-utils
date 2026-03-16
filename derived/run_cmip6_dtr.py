@@ -161,7 +161,10 @@ def parse_args():
         default=True,
     )
     args = parser.parse_args()
-    args = validate_args(args)
+
+    # TODO: This was commented out during CMIP6 downscale work.
+    # There is probably more work to do here to get it working properly again.
+    # args = validate_args(args)
 
     return (
         args.worker_script,
@@ -281,8 +284,9 @@ def write_sbatch_dtr(
         "model=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $2}' $config)\n"
         "scenario=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $3}' $config)\n"
         f"python {worker_script} "
-        f"--tmax_dir {input_dir}/$model/$scenario/day/tasmax "
-        f"--tmin_dir {input_dir}/$model/$scenario/day/tasmin "
+        f"--input_dir {input_dir} "
+        f"--scenario $scenario "
+        f"--model $model "
         f"--output_dir {output_dir}/$model/$scenario/day/dtr "
         f"--dtr_tmp_fn {dtr_tmp_fn.format(**dtr_fn_format)}\n"
     )
@@ -325,6 +329,13 @@ if __name__ == "__main__":
         partition,
         clear_out_files,
     ) = parse_args()
+
+    output_dir = Path(output_dir)
+    input_dir = Path(input_dir)
+    slurm_dir = Path(slurm_dir)
+
+    models = models.split(" ")
+    scenarios = scenarios.split(" ")
 
     output_dir.mkdir(exist_ok=True)
     # make the output directories

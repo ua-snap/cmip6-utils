@@ -166,6 +166,50 @@ if __name__ == "__main__":
         logging.info(f"Adjusted data store exists, removing ({adj_path}).")
         shutil.rmtree(adj_path, ignore_errors=True)
 
+    if var_id == "dtr":
+        logging.info("##### START SQUEEZING DTR #####")
+        rechunked = scen_ds[var_id].chunk(dict(y=-1, x=-1))
+        max_value = rechunked.max().values
+        min_value = rechunked.min().values
+        lower_thresh = rechunked.quantile(0.0000002).values
+        upper_thresh = rechunked.quantile(0.9999998).values
+
+        # Count the number of pixels above and below the thresholds
+        num_below = scen_ds[var_id].where(scen_ds[var_id] < lower_thresh).count().compute().item()
+        num_above = scen_ds[var_id].where(scen_ds[var_id] > upper_thresh).count().compute().item()
+        logging.info("Number of pixels below lower threshold: ", num_below)
+        logging.info("Number of pixels above upper threshold: ", num_above)
+
+        scen_ds[var_id] = scen_ds[var_id].where((scen_ds[var_id] >= lower_thresh) | scen_ds[var_id].isnull(), other=lower_thresh)
+        scen_ds[var_id] = scen_ds[var_id].where((scen_ds[var_id] <= upper_thresh) | scen_ds[var_id].isnull(), other=upper_thresh)
+
+        logging.info(f"Max DTR value: {max_value}")
+        logging.info(f"Min DTR value: {min_value}")
+        logging.info(f"Set values below {lower_thresh} to {lower_thresh}")
+        logging.info(f"Set values above {upper_thresh} to {upper_thresh}")
+        logging.info("##### FINISH SQUEEZING DTR #####")
+
+    max_tasmax = 333.15
+    max_pr = 1650
+    min_pr = 0
+
+    # tasmin is squeezed separately in the derived/difference.py script
+    var_ds = scen_ds[var_id]
+    if var_id == "tasmax":
+        logging.info("Squeezing tasmax values above limit")
+        count_above_threshold = (var_ds > max_tasmax).sum().compute().item()
+        logging.info(f"Count of values above {max_tasmax} K: {count_above_threshold}")
+        var_ds = var_ds.where((var_ds <= max_tasmax) | var_ds.isnull(), max_tasmax)
+    elif var_id == "pr":
+        logging.info("Squeezing pr values above and below limits")
+        count_above_threshold = (var_ds > max_pr).sum().compute().item()
+        count_below_zero = (var_ds < min_pr).sum().compute().item()
+        logging.info(f"Count of values above {max_pr} mm/day: {count_above_threshold}")
+        logging.info(f"Count of values below {min_pr} mm/day: {count_below_zero}")
+        var_ds = var_ds.where((var_ds <= max_pr) | var_ds.isnull(), max_pr)
+        var_ds = var_ds.where((var_ds >= min_pr) | var_ds.isnull(), min_pr)
+    scen_ds[var_id] = var_ds
+
     logging.info(f"Writing adjusted data to {adj_path}")
     synchronizer = ThreadSynchronizer()
     scen_ds.to_zarr(adj_path, synchronizer=synchronizer)

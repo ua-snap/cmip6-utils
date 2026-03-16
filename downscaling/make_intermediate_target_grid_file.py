@@ -7,6 +7,7 @@ Example usage:
     python make_intermediate_target_grid_file.py \
         --src_file /beegfs/CMIP6/arctic-cmip6/CMIP6/ScenarioMIP/NCAR/CESM2/ssp370/r11i1p1f1/Amon/tas/gn/v20200528/tas_Amon_CESM2_ssp370_r11i1p1f1_gn_206501-210012.nc \
         --out_file /center1/CMIP6/kmredilla/cmip6_4km_downscaling/intermediate_target.nc
+        --step 0.5
 """
 
 import argparse
@@ -36,11 +37,18 @@ def parse_args():
         help="Path to write intermediate target grid file for cascade regridding",
         required=True,
     )
+    parser.add_argument(
+        "--step",
+        type=float,
+        help="Step size for the target grid",
+        required=True,
+    )
     args = parser.parse_args()
 
     return (
         args.src_file,
         args.out_file,
+        args.step,
     )
 
 
@@ -57,17 +65,18 @@ def get_num(min_val, max_val, step):
     return int((max_val - min_val) / step) + 1
 
 
-def create_intermediate_target_grid(src_file, out_file):
+def create_intermediate_target_grid(src_file, out_file, step):
     """Create intermediate target grid for regridding
     Args:
         src_file (str): path to input file
         out_file (str): path to output file
+        step (float): step size for target grid
     """
     # hardcoded values for just larger than the 4km ERA5 WRF data
     min_lon, max_lon = 183, 232
-    lon_num = get_num(min_lon, max_lon, 0.5)
+    lon_num = get_num(min_lon, max_lon, step)
     min_lat, max_lat = 54, 73
-    lat_num = get_num(min_lat, max_lat, 0.5)
+    lat_num = get_num(min_lat, max_lat, step)
 
     new_lon = np.linspace(min_lon, max_lon, lon_num)
     new_lat = np.linspace(min_lat, max_lat, lat_num)
@@ -83,11 +92,11 @@ def create_intermediate_target_grid(src_file, out_file):
     del mid_res_ds.encoding["unlimited_dims"]
 
     logger.info(
-        f"Creating intermediate target grid file at {out_file} with {lon_num} lon and {lat_num} lat points at {0.5} degree resolution"
+        f"Creating intermediate target grid file at {out_file} with {lon_num} lon and {lat_num} lat points at {step} degree resolution"
     )
     mid_res_ds.to_netcdf(out_file)
 
 
 if __name__ == "__main__":
-    src_file, out_file = parse_args()
-    create_intermediate_target_grid(src_file, out_file)
+    src_file, out_file, step = parse_args()
+    create_intermediate_target_grid(src_file, out_file, step)

@@ -35,6 +35,7 @@ import numpy as np
 import xarray as xr
 import string
 from datetime import datetime
+import os
 
 logging.basicConfig(
     level=logging.INFO,
@@ -49,14 +50,20 @@ def parse_args():
     parser.add_argument(
         "--tmax_dir",
         type=str,
-        help="Directory containing daily maximum temperature data saved by year (and nothing else)",
-        required=True,
+        help="ERA5: Directory containing daily maximum temperature data saved by year (and nothing else)",
+        required=False,
     )
     parser.add_argument(
         "--tmin_dir",
         type=str,
-        help="Directory containing daily minimum temperature data saved by year (and nothing else)",
-        required=True,
+        help="ERA5: Directory containing daily minimum temperature data saved by year (and nothing else)",
+        required=False,
+    )
+    parser.add_argument(
+        "--input_dir",
+        type=str,
+        help="CMIP6: Directory containing batch files of source CMIP6 filepaths",
+        required=False,
     )
     parser.add_argument(
         "--output_dir",
@@ -70,17 +77,30 @@ def parse_args():
         help="Template filename for the daily temperature range data",
         required=True,
     )
+    parser.add_argument(
+        "--model",
+        type=str,
+        required=False,
+    )
+    parser.add_argument(
+        "--scenario",
+        type=str,
+        required=False,
+    )
     args = parser.parse_args()
 
     return (
-        Path(args.tmax_dir),
-        Path(args.tmin_dir),
+        Path(args.tmax_dir) if args.tmax_dir is not None else None,
+        Path(args.tmin_dir) if args.tmin_dir is not None else None,
+        Path(args.input_dir) if args.input_dir is not None else None,
         Path(args.output_dir),
         args.dtr_tmp_fn,
+        args.model,
+        args.scenario,
     )
 
 
-def get_tmax_tmin_fps(tmax_dir, tmin_dir):
+def get_tmax_tmin_fps_era5(tmax_dir, tmin_dir):
     """Helper function for getting tasmax and tasmin filepaths. Put in function for checking prior to slurming.
     Assumes that all files in the input directories are the target input files.
     """
@@ -96,6 +116,41 @@ def get_tmax_tmin_fps(tmax_dir, tmin_dir):
     assert len(tmax_fps) == len(
         tmin_fps
     ), f"Number of tmax and tmin files must be the same. tmax: {len(tmax_fps)} files in {tmax_dir}, tmin: {len(tmin_fps)} files in {tmin_dir}"
+
+    return tmax_fps, tmin_fps
+
+
+def get_tmax_tmin_fps_cmip6(input_dir, model, scenario):
+    """Helper function for getting tasmax and tasmin filepaths. Put in function for checking prior to slurming.
+    Assumes that all files in the input directories are the target input files.
+    """
+
+    # Read all of the files in cmip6_files_dir and concatenate them into a single list
+    cmip6_file_list = []
+    for filename in os.listdir(input_dir):
+        file_path = os.path.join(input_dir, filename)
+        if os.path.isfile(file_path):
+            with open(file_path, "r") as f:
+                cmip6_file_list.extend([line.strip() for line in f if line.strip()])
+
+    tmax_fps = [fp for fp in cmip6_file_list if "tasmax" in fp and model in fp and scenario in fp]
+    tmin_fps = [fp for fp in cmip6_file_list if "tasmin" in fp and model in fp and scenario in fp]
+
+    tmax_fps.sort()
+    tmin_fps.sort()
+
+    print("tmax_fps:", tmax_fps)
+    print("tmin_fps:", tmin_fps)
+
+    assert (
+        len(tmax_fps) > 0
+    ), f"No tasmax files found in the input directory, in {input_dir}"
+    assert (
+        len(tmin_fps) > 0
+    ), f"No tasmin files found in the input directory, in {input_dir}"
+    assert len(tmax_fps) == len(
+        tmin_fps
+    ), f"Number of tmax and tmin files must be the same. tmax: {len(tmax_fps)} files in {input_dir}, tmin: {len(tmin_fps)} files in {input_dir}"
 
     return tmax_fps, tmin_fps
 
@@ -161,16 +216,19 @@ def make_output_filepath(output_dir, dtr_tmp_fn, start_date, end_date):
 
 
 if __name__ == "__main__":
-    tmax_dir, tmin_dir, output_dir, dtr_tmp_fn = parse_args()
+    tmax_dir, tmin_dir, input_dir, output_dir, dtr_tmp_fn, model, scenario = parse_args()
 
     # assumes all files in one dir have corresponding file in the other
-    tmax_fps, tmin_fps = get_tmax_tmin_fps(tmax_dir, tmin_dir)
+    if input_dir:
+        tmax_fps, tmin_fps = get_tmax_tmin_fps_cmip6(input_dir, model, scenario)
+    else:
+        tmax_fps, tmin_fps = get_tmax_tmin_fps_era5(tmax_dir, tmin_dir)
 
     with xr.open_mfdataset(
-        tmax_fps, engine="h5netcdf", parallel=True, chunks="auto"
+        tmax_fps, engine="h5netcdf", parallel=True, use_cftime=True
     ) as tmax_ds:
         with xr.open_mfdataset(
-            tmin_fps, engine="h5netcdf", parallel=True, chunks="auto"
+            tmin_fps, engine="h5netcdf", parallel=True, use_cftime=True
         ) as tmin_ds:
             tmax_var_id = get_var_id(tmax_ds)
             tmin_var_id = get_var_id(tmin_ds)

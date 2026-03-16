@@ -408,13 +408,13 @@ if __name__ == "__main__":
                 for model in models.split():
                     for scenario in scenarios.split():
                         inst = get_institution_id(model, scenario)
-                        fps.extend(
-                            list(
-                                cmip6_dir.joinpath(exp_id, inst, model, scenario).glob(
-                                    f"*/*{freq}/{var}/**/*.nc"
-                                )
+                        if var == "dtr":
+                            cmip6_dir_glob = cmip6_dir.joinpath(model, scenario, freq, var).glob("*.nc")
+                        else:
+                            cmip6_dir_glob = cmip6_dir.joinpath(exp_id, inst, model, scenario).glob(
+                                f"*/*{freq}/{var}/**/*.nc"
                             )
-                        )
+                        fps.extend(list(cmip6_dir_glob))
 
     assert (
         len(fps) > 0
@@ -430,27 +430,26 @@ if __name__ == "__main__":
 
     results_df = pd.DataFrame(grids)
 
-    # here we will exclude some files.
-    # we are only going to worry about regridding those which have a latitude dimension for now.
-    results_df = results_df.query("~lat_min.isnull()")
-    # we are also going to exclude files which cannot form a panarctic result (very few so far).
-    results_df = results_df.query("lat_max > 50")
-    # drop any subdaily frequencies.
-    results_df = results_df.query(
-        "frequency.str.contains('day') | frequency.str.contains('mon')"
-    )
-    # only regrid files if their starting date is less than or equal to 2101-01-01.
-    results_df = results_df.query("start_year < @max_year")
-    results_df = results_df.query("end_year >= @min_year")
-
-    # remove all batch files. We will be generating only those which contain files to be regridded based on flow parameters.
-    _ = [fp.unlink() for fp in regrid_batch_dir.glob("*.txt")]
+    # Print results_df with all columns and values
+    pd.set_option('display.max_columns', None)
 
     for name, group_df in results_df.groupby(
         ["model", "scenario", "variable_id", "frequency"]
     ):
-        # make sure that there are not multiple grids within one model/scenario at this point
-        model, scenario, var_id, frequency = name
+        if vars == "dtr":
+            # make sure that there are not multiple grids within one model/scenario at this point
+            model = name[0]
+            scenario = name[2]
+            var_id = "dtr"
+            frequency = "day"
+        else:
+            model, scenario, var_id, frequency = name
+
+        print("model: ", model)
+        print("scenario: ", scenario)
+        print("var_id: ", var_id)
+        print("frequency: ", frequency)
+
         write_batch_files(
             group_df, model, scenario, var_id, frequency, regrid_batch_dir
         )

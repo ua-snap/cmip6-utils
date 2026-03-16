@@ -585,6 +585,7 @@ def get_time_res_days(ds):
     if type(ds.time.values[0]) in [
         cftime._cftime.Datetime360Day,
         cftime._cftime.DatetimeNoLeap,
+        cftime._cftime.DatetimeProlepticGregorian,
     ]:
         # have seen some datasets with a weird first time values
         #  (e.g. DatetimeNoLeap(1849, 12, 31, 23, 44, 59, 999993, has_year_zero=True))
@@ -944,10 +945,6 @@ def apply_wgs84(ds):
             # add a second attribute "spatial_ref" identical to "crs_wkt" (this is redundant, but matches test rioxarray output)
             ds["spatial_ref"].attrs["spatial_ref"] = cf_crs["crs_wkt"]
 
-            # manually link spatial_ref attributes to the data variable via "grid_mapping" encoding
-            # assumes dataset will only have one data variable!
-            var_id = get_var_id(ds)
-            ds[var_id].encoding["grid_mapping"] = "spatial_ref"
             return ds
 
         except:
@@ -1144,11 +1141,12 @@ def regrid_dataset(fp, regridder, out_fp, src_mask=None, rasdafy=False):
     out_fp : pathlib.Path
         Path to output regridded file
     """
+    print("Input: ", fp, flush=True)
+    print("Output: ", out_fp, flush=True)
+    print("--------------------", flush=True)
+
     # open the source dataset
     src_ds = xr.open_dataset(fp)
-    # imposing this restriction will help with datasets that have just tons of
-    # daily data in a single file, far more than we need e.g. back to 1850
-    src_ds = src_ds.sel(time=slice("1950", "2100"))
 
     # add mask if not none
     if src_mask is not None:
@@ -1243,6 +1241,8 @@ if __name__ == "__main__":
 
         # get a list of yearly time ranges from the multi-year source filename
         expected_filename_time_ranges = parse_output_filename_times_from_file(fp)
+
+        print("Regridding the following files...", flush=True)
 
         # search existing filenames for the time range strings
         # if all time range strings are found in existing filenames, and no_clobber=True, then skip regridding

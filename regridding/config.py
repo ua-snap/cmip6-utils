@@ -118,6 +118,10 @@ variables = {
         "name": "surface_upward_sensible_heat_flux",
         "table_ids": ["Amon", "day", "Eday"],
     },
+    "dtr": {
+        "name": "diurnal_temperature_range",
+        "table_ids": ["day"],
+    }
 }
 
 landsea_variables = {
