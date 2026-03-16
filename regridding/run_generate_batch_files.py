@@ -110,7 +110,7 @@ if __name__ == "__main__":
 
     regrid_batch_dir = slurm_dir.joinpath(batch_file_dir_name)
     regrid_batch_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Use vars in filename to avoid overwriting when called multiple times
     vars_slug = vars.replace(" ", "_")
     generate_batch_files_sbatch_fp = slurm_dir.joinpath(
