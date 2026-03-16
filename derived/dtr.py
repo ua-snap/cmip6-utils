@@ -31,7 +31,9 @@ Example usage:
 import argparse
 import logging
 from pathlib import Path
+import subprocess
 import sys
+import time
 import numpy as np
 import xarray as xr
 import string
@@ -100,6 +102,110 @@ def configure_dask_for_dtr(n_workers=4, threads_per_worker=4, memory_limit="28GB
     logging.info(f"  Dashboard: {client.dashboard_link}")
 
     return client
+
+
+def force_filesystem_sync(file_path):
+    """Force filesystem to sync/flush data to disk.
+    
+    Critical for BeeGFS and other distributed filesystems where writes
+    may not be immediately visible across nodes.
+    
+    Args:
+        file_path: Path to file or directory to sync
+    """
+    try:
+        os.sync()
+    except Exception as e:
+        logging.warning(f"os.sync() failed: {e}")
+    
+    # Force metadata refresh by listing directory
+    try:
+        if file_path.is_file():
+            parent = file_path.parent
+        else:
+            parent = file_path
+        subprocess.run(
+            ["ls", "-la", str(parent)],
+            capture_output=True,
+            timeout=10,
+            check=False,
+        )
+    except Exception as e:
+        logging.warning(f"Directory listing for cache refresh failed: {e}")
+
+
+def validate_file_readback(file_path, var_id="dtr", max_retries=10, retry_delay=5):
+    """Validate that a written file can be read back with valid data.
+    
+    Retries multiple times to handle filesystem cache coherency delays.
+    This is critical for multi-node jobs on distributed filesystems.
+    
+    Args:
+        file_path: Path to file to validate
+        var_id: Variable ID to check (default: "dtr")
+        max_retries: Maximum number of read attempts
+        retry_delay: Seconds between retry attempts
+        
+    Returns:
+        True if validation succeeds
+        
+    Raises:
+        ValueError: If file cannot be validated after retries
+    """
+    for attempt in range(1, max_retries + 1):
+        try:
+            # Force sync before attempting read
+            force_filesystem_sync(file_path)
+            
+            # Use existing validation function
+            validate_output_file(file_path, var_id=var_id)
+            
+            # Success!
+            return True
+            
+        except Exception as e:
+            if attempt < max_retries:
+                logging.warning(
+                    f"  Read-back attempt {attempt}/{max_retries} failed for {file_path.name}: {e}"
+                )
+                logging.warning(f"  Retrying in {retry_delay}s...")
+                time.sleep(retry_delay)
+                # Increase delay for next attempt (exponential backoff)
+                retry_delay = min(retry_delay * 1.5, 30)
+            else:
+                raise ValueError(
+                    f"Failed to validate {file_path.name} after {max_retries} attempts. "
+                    f"Last error: {e}"
+                )
+    
+    return False
+
+
+def is_transient_error(error):
+    """Determine if an error is likely transient and worth retrying.
+    
+    Args:
+        error: Exception object
+        
+    Returns:
+        bool: True if error appears transient
+    """
+    error_str = str(error).lower()
+    transient_patterns = [
+        "keyerror",
+        "worker",
+        "compute failed",
+        "memory",
+        "timeout",
+        "connection",
+        "no such file",  # Filesystem visibility issues
+        "file not found",
+        "filesystem",
+        "i/o error",
+        "read-back",  # Our validation failures
+        "cache coherency",
+    ]
+    return any(pattern in error_str for pattern in transient_patterns)
 
 
 def parse_args():
@@ -487,14 +593,19 @@ if __name__ == "__main__":
             )
             try:
                 year_ds.to_netcdf(output_fp, compute=True)
+                
+                # CRITICAL: Force filesystem sync after write
+                # This ensures data is visible across nodes in distributed filesystems like BeeGFS
+                force_filesystem_sync(output_fp)
+                
             except Exception as e:
                 logging.error(f"Failed to write {output_fp}: {e}")
                 if output_fp.exists():
                     output_fp.unlink()
                 raise
 
-            # Validate output
-            validate_output_file(output_fp, var_id="dtr")
+            # Validate output with retry logic
+            validate_file_readback(output_fp, var_id="dtr", max_retries=10, retry_delay=5)
             logging.info(f"✓ Completed year {year} ({idx}/{total_years})")
 
         logging.info(f"Successfully processed all {total_years} years")
