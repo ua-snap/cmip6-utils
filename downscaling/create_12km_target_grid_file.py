@@ -179,7 +179,13 @@ def create_target_grid_file(input_file: Path, output_file: Path) -> None:
 
     # Extract first time slice (index 0)
     ds_slice = ds.isel(time=0)
-
+    
+    # Drop the scalar time coordinate/variable completely
+    # This ensures target grid file has no time dimension/coordinate
+    if "time" in ds_slice.coords:
+        print("  Dropping scalar time coordinate...")
+        ds_slice = ds_slice.drop_vars("time")
+    
     # Restore spatial_ref if it was dropped and we had saved it
     if spatial_ref_var is not None and "spatial_ref" not in ds_slice:
         print("  Restoring spatial_ref after time slice")
@@ -206,6 +212,10 @@ def create_target_grid_file(input_file: Path, output_file: Path) -> None:
 
     encoding = {}
     for var in ds_slice.variables:
+        # Skip time if it still exists somehow (should have been dropped)
+        if var == "time":
+            continue
+            
         if var in ds.variables:
             # Copy encoding from original dataset, keeping only valid keys
             orig_encoding = ds[var].encoding
