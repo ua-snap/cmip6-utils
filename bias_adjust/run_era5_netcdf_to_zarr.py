@@ -272,20 +272,24 @@ if __name__ == "__main__":
 
     output_dir.mkdir(exist_ok=True)
     slurm_dir.mkdir(exist_ok=True)
+    # Create subdirectory for ERA5 conversion slurm outputs
+    convert_era5_slurm_dir = slurm_dir.joinpath("convert_era5")
+    convert_era5_slurm_dir.mkdir(exist_ok=True)
+
     if clear_out_files:
-        for file in slurm_dir.glob(
+        for file in convert_era5_slurm_dir.glob(
             era5_netcdf_to_zarr_sbatch_tmp_fn.replace(".slurm", "*.out")
         ):
             file.unlink()
 
     # filepath for slurm script
-    sbatch_path = slurm_dir.joinpath(era5_netcdf_to_zarr_sbatch_tmp_fn)
+    sbatch_path = convert_era5_slurm_dir.joinpath(era5_netcdf_to_zarr_sbatch_tmp_fn)
     # filepath for slurm stdout
-    sbatch_out_path = slurm_dir.joinpath(
+    sbatch_out_path = convert_era5_slurm_dir.joinpath(
         sbatch_path.name.replace(".slurm", "_%A-%a.out")
     )
 
-    config_path = slurm_dir.joinpath("era5_netcdf_to_zarr_config.txt")
+    config_path = convert_era5_slurm_dir.joinpath("era5_netcdf_to_zarr_config.txt")
     array_range = write_netcdf_to_zarr_era5_config_file(
         config_path=config_path,
         variables=variables,

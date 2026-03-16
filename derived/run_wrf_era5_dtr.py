@@ -229,14 +229,22 @@ if __name__ == "__main__":
     # make the output directories
 
     slurm_dir.mkdir(exist_ok=True)
+    # Create subdirectory for ERA5 DTR processing slurm outputs
+    era5_dtr_slurm_dir = slurm_dir.joinpath("process_era5_dtr")
+    era5_dtr_slurm_dir.mkdir(exist_ok=True)
+
     if clear_out_files:
-        for file in slurm_dir.glob(era5_dtr_sbatch_fn.replace(".slurm", "*.out")):
+        for file in era5_dtr_slurm_dir.glob(
+            era5_dtr_sbatch_fn.replace(".slurm", "*.out")
+        ):
             file.unlink()
 
     # filepath for slurm script
-    sbatch_fp = slurm_dir.joinpath(era5_dtr_sbatch_fn)
+    sbatch_fp = era5_dtr_slurm_dir.joinpath(era5_dtr_sbatch_fn)
     # filepath for slurm stdout
-    sbatch_out_fp = slurm_dir.joinpath(sbatch_fp.name.replace(".slurm", "_%j.out"))
+    sbatch_out_fp = era5_dtr_slurm_dir.joinpath(
+        sbatch_fp.name.replace(".slurm", "_%j.out")
+    )
 
     sbatch_head_kwargs = {
         "partition": partition,

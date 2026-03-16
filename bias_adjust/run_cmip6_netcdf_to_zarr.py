@@ -93,18 +93,18 @@ def validate_args(args):
         logging.warning(
             f"Some specified model/scenario combinations were not found in the input directory: {set(modscens_from_args) - set(model_scenarios_in_input_dir)}. Skipping these model/scenario combinations."
         )
-    
+
     # CRITICAL FIX: Actually filter args to only include validated combinations
     validated_scenarios = sorted(set(s for m, s in model_scenarios_in_input_dir))
     validated_models = sorted(set(m for m, s in model_scenarios_in_input_dir))
-    
+
     if validated_scenarios != args.scenarios or validated_models != args.models:
         logging.info(f"Filtering to validated model/scenario combinations:")
         logging.info(f"  Models: {validated_models}")
         logging.info(f"  Scenarios: {validated_scenarios}")
         args.scenarios = validated_scenarios
         args.models = validated_models
-    
+
     args.variables = args.variables.split(" ")
 
     return args
@@ -332,20 +332,24 @@ if __name__ == "__main__":
 
     output_dir.mkdir(exist_ok=True)
     slurm_dir.mkdir(exist_ok=True)
+    # Create subdirectory for CMIP6 conversion slurm outputs
+    convert_cmip6_slurm_dir = slurm_dir.joinpath("convert_cmip6")
+    convert_cmip6_slurm_dir.mkdir(exist_ok=True)
+
     if clear_out_files:
-        for file in slurm_dir.glob(
+        for file in convert_cmip6_slurm_dir.glob(
             cmip6_netcdf_to_zarr_sbatch_tmp_fn.replace(".slurm", "*.out")
         ):
             file.unlink()
 
     # filepath for slurm script
-    sbatch_path = slurm_dir.joinpath(cmip6_netcdf_to_zarr_sbatch_tmp_fn)
+    sbatch_path = convert_cmip6_slurm_dir.joinpath(cmip6_netcdf_to_zarr_sbatch_tmp_fn)
     # filepath for slurm stdout
-    sbatch_out_path = slurm_dir.joinpath(
+    sbatch_out_path = convert_cmip6_slurm_dir.joinpath(
         sbatch_path.name.replace(".slurm", "_%A-%a.out")
     )
 
-    config_path = slurm_dir.joinpath("cmip6_netcdf_to_zarr_config.txt")
+    config_path = convert_cmip6_slurm_dir.joinpath("cmip6_netcdf_to_zarr_config.txt")
     array_range = write_netcdf_to_zarr_cmip6_config_file(
         config_path=config_path,
         models=models,

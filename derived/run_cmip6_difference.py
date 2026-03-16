@@ -325,16 +325,27 @@ if __name__ == "__main__":
     ) = parse_args()
 
     output_dir.mkdir(exist_ok=True)
+    slurm_dir.mkdir(exist_ok=True)
+    # Create subdirectory for derived variable slurm outputs
+    derive_slurm_dir = slurm_dir.joinpath(f"derive_cmip6_{new_var_id}")
+    derive_slurm_dir.mkdir(exist_ok=True)
+
     if clear_out_files:
-        for file in slurm_dir.glob(diff_sbatch_tmp_fn.replace(".slurm", "*.out")):
+        for file in derive_slurm_dir.glob(
+            diff_sbatch_tmp_fn.replace(".slurm", "*.out")
+        ):
             file.unlink()
 
     # filepath for slurm script
-    sbatch_fp = slurm_dir.joinpath(diff_sbatch_tmp_fn.format(new_var_id=new_var_id))
+    sbatch_fp = derive_slurm_dir.joinpath(
+        diff_sbatch_tmp_fn.format(new_var_id=new_var_id)
+    )
     # filepath for slurm stdout
-    sbatch_out_fp = slurm_dir.joinpath(sbatch_fp.name.replace(".slurm", "_%A-%a.out"))
+    sbatch_out_fp = derive_slurm_dir.joinpath(
+        sbatch_fp.name.replace(".slurm", "_%A-%a.out")
+    )
 
-    config_path = slurm_dir.joinpath(
+    config_path = derive_slurm_dir.joinpath(
         diff_sbatch_config_tmp_fn.format(new_var_id=new_var_id)
     )
     array_range = write_config_file(
