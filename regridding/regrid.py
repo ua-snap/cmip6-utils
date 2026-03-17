@@ -934,11 +934,16 @@ def write_regridded_files(out_ds, out_fp):
     Returns
     -------
     out_fp : pathlib.Path
-        Filepath written to
+        Base filepath written to
+    out_fps : list of pathlib.Path
+        List of actual files written (one per year)
+    skipped_years : list of int
+        List of years that were skipped (e.g., years before 1950)
     """
     # write out everything (monthly and daily freqs) by year
     out_fps = []
     year_count = 0
+    skipped_years = []
 
     logging.info(f"  Writing data by year (streaming computation)...")
 
@@ -948,6 +953,7 @@ def write_regridded_files(out_ds, out_fp):
             continue
         if year < 1950:
             # skip any years before 1950
+            skipped_years.append(year)
             continue
 
         year_count += 1
@@ -968,14 +974,20 @@ def write_regridded_files(out_ds, out_fp):
 
     logging.info(f"  ✓ Completed writing {len(out_fps)} files")
 
+    if skipped_years:
+        year_range = f"{min(skipped_years)}-{max(skipped_years)}"
+        logging.info(
+            f"  ℹ Skipped {len(skipped_years)} years before 1950 (years {year_range})"
+        )
+
     # Final sync of parent directory
     if out_fps:
         force_filesystem_sync(out_fps[0].parent)
 
     [print(f"{fp} done") for fp in out_fps]
 
-    # Return both the base filepath and the list of actually written files
-    return out_fp, out_fps
+    # Return both the base filepath and the list of actually written files, plus skipped years info
+    return out_fp, out_fps, skipped_years
 
 
 def validate_regridded_output(out_fps, var_id):
@@ -1480,9 +1492,17 @@ def regrid_dataset(fp, regridder, out_fp, src_mask=None, rasdafy=False):
 
     # write and get list of output files
     logging.info(f"  Writing output files...")
-    out_fp, written_fps = write_regridded_files(regrid_ds, out_fp)
+    out_fp, written_fps, skipped_years = write_regridded_files(regrid_ds, out_fp)
 
     # Validate output files - use the list of files actually written in this iteration
+    # If no files were written but years were skipped, that's expected behavior
+    if not written_fps and skipped_years:
+        year_range = f"{min(skipped_years)}-{max(skipped_years)}"
+        logging.info(
+            f"  ℹ No output files created - all {len(skipped_years)} years "
+            f"in input ({year_range}) were before 1950 cutoff. This is expected."
+        )
+        return out_fp
 
     try:
         validate_regridded_output(written_fps, var_id)
