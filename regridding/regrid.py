@@ -974,7 +974,8 @@ def write_regridded_files(out_ds, out_fp):
 
     [print(f"{fp} done") for fp in out_fps]
 
-    return out_fp
+    # Return both the base filepath and the list of actually written files
+    return out_fp, out_fps
 
 
 def validate_regridded_output(out_fps, var_id):
@@ -1479,12 +1480,9 @@ def regrid_dataset(fp, regridder, out_fp, src_mask=None, rasdafy=False):
 
     # write and get list of output files
     logging.info(f"  Writing output files...")
-    out_fp = write_regridded_files(regrid_ds, out_fp)
+    out_fp, written_fps = write_regridded_files(regrid_ds, out_fp)
 
-    # Validate output files
-    # Get all the year files that were written
-    nodate_out_fn = "_".join(out_fp.name.split(".nc")[0].split("_")[:-1])
-    written_fps = list(out_fp.parent.glob(f"{nodate_out_fn}*.nc"))
+    # Validate output files - use the list of files actually written in this iteration
 
     try:
         validate_regridded_output(written_fps, var_id)
