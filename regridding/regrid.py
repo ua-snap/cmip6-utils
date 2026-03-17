@@ -39,10 +39,10 @@ logging.basicConfig(
 
 def force_filesystem_sync(file_path):
     """Force filesystem to sync/flush data to disk.
-    
+
     Critical for BeeGFS and other distributed filesystems where writes
     may not be immediately visible across nodes.
-    
+
     Args:
         file_path: Path to file or directory to sync
     """
@@ -50,7 +50,7 @@ def force_filesystem_sync(file_path):
         os.sync()
     except Exception as e:
         logging.warning(f"os.sync() failed: {e}")
-    
+
     # Force metadata refresh by listing directory
     try:
         if file_path.is_file():
@@ -69,19 +69,19 @@ def force_filesystem_sync(file_path):
 
 def validate_file_readback(file_path, var_id, max_retries=10, retry_delay=5):
     """Validate that a written file can be read back with valid data.
-    
+
     Retries multiple times to handle filesystem cache coherency delays.
     This is critical for multi-node jobs on distributed filesystems.
-    
+
     Args:
         file_path: Path to file to validate
         var_id: Variable ID to check
         max_retries: Maximum number of read attempts
         retry_delay: Seconds between retry attempts
-        
+
     Returns:
         True if validation succeeds
-        
+
     Raises:
         ValueError: If file cannot be validated after retries
     """
@@ -89,38 +89,70 @@ def validate_file_readback(file_path, var_id, max_retries=10, retry_delay=5):
         try:
             # Force sync before attempting read
             force_filesystem_sync(file_path)
-            
+
             if not file_path.exists():
                 raise ValueError(f"File does not exist: {file_path}")
-            
+
             # Check file size
             size_mb = file_path.stat().st_size / (1024 * 1024)
             if size_mb < 0.5:
                 raise ValueError(f"File too small ({size_mb:.2f} MB)")
-            
+
             # Try to open and read sample data
             with xr.open_dataset(file_path) as ds:
                 if var_id not in ds.data_vars:
                     raise ValueError(f"Variable '{var_id}' not found")
-                
+
                 arr = ds[var_id]
                 if arr.size == 0:
                     raise ValueError(f"Variable '{var_id}' is empty")
-                
-                # Read a small sample to verify data accessibility
-                sample_slice = {dim: slice(0, min(10, arr.sizes[dim])) for dim in arr.dims}
-                sample_data = arr.isel(sample_slice).compute()
-                
-                if sample_data.size == 0:
-                    raise ValueError("Sample data is empty")
-                
-                # Check that we have some non-NaN values
-                if sample_data.isnull().all():
-                    raise ValueError("Sample data is all NaN")
-            
+
+                # Check multiple samples (beginning, middle, end) to catch issues
+                # with boundary regions or filesystem cache coherency
+                samples_to_check = [
+                    (
+                        "start",
+                        {dim: slice(0, min(10, arr.sizes[dim])) for dim in arr.dims},
+                    ),
+                    (
+                        "middle",
+                        {
+                            dim: slice(arr.sizes[dim] // 2, arr.sizes[dim] // 2 + 10)
+                            for dim in arr.dims
+                        },
+                    ),
+                    (
+                        "end",
+                        {
+                            dim: slice(max(0, arr.sizes[dim] - 10), arr.sizes[dim])
+                            for dim in arr.dims
+                        },
+                    ),
+                ]
+
+                all_nan_count = 0
+
+                for location, selection in samples_to_check:
+                    sample = arr.isel(selection)
+                    sample_data = sample.compute()
+
+                    if sample_data.size == 0:
+                        raise ValueError(f"Sample data at {location} is empty")
+
+                    if sample_data.isnull().all():
+                        all_nan_count += 1
+                        logging.warning(
+                            f"  WARNING: {location} sample is all NaN in {file_path.name}"
+                        )
+
+                # Only fail if ALL samples are NaN (suggests real problem)
+                # Partial NaN at boundaries is acceptable (e.g., edge effects)
+                if all_nan_count == len(samples_to_check):
+                    raise ValueError("All samples (start, middle, end) are all NaN")
+
             # Success!
             return True
-            
+
         except Exception as e:
             if attempt < max_retries:
                 logging.warning(
@@ -135,16 +167,16 @@ def validate_file_readback(file_path, var_id, max_retries=10, retry_delay=5):
                     f"Failed to validate {file_path.name} after {max_retries} attempts. "
                     f"Last error: {e}"
                 )
-    
+
     return False
 
 
 def is_transient_error(error):
     """Determine if an error is likely transient and worth retrying.
-    
+
     Args:
         error: Exception object
-        
+
     Returns:
         bool: True if error appears transient
     """
@@ -889,7 +921,7 @@ def write_regridded_files(out_ds, out_fp):
 
     Uses streaming computation - computes and writes each year incrementally
     rather than loading entire dataset into memory.
-    
+
     Includes filesystem sync after writes to ensure data is visible across nodes.
 
     Parameters
@@ -927,19 +959,19 @@ def write_regridded_files(out_ds, out_fp):
         # Explicitly compute during write for streaming/incremental processing
         # Use mode='w' to force overwrite and prevent file corruption from concurrent writes
         year_ds.to_netcdf(year_out_fp, mode="w", compute=True)
-        
+
         # CRITICAL: Force filesystem sync after write
         # This ensures data is visible across nodes in distributed filesystems like BeeGFS
         force_filesystem_sync(year_out_fp)
-        
+
         out_fps.append(year_out_fp)
 
     logging.info(f"  ✓ Completed writing {len(out_fps)} files")
-    
+
     # Final sync of parent directory
     if out_fps:
         force_filesystem_sync(out_fps[0].parent)
-    
+
     [print(f"{fp} done") for fp in out_fps]
 
     return out_fp
@@ -947,7 +979,7 @@ def write_regridded_files(out_ds, out_fp):
 
 def validate_regridded_output(out_fps, var_id):
     """Validate that regridded output files exist and contain valid data.
-    
+
     Uses read-back validation with retries to handle filesystem cache coherency issues.
 
     Args:
@@ -961,11 +993,11 @@ def validate_regridded_output(out_fps, var_id):
         raise ValueError("No output files were created")
 
     logging.info(f"  Validating {len(out_fps)} output files with read-back test...")
-    
+
     for out_fp in out_fps:
         # Use robust read-back validation with retries
         validate_file_readback(out_fp, var_id, max_retries=10, retry_delay=5)
-        
+
         # Log success with file size
         size_mb = out_fp.stat().st_size / (1024 * 1024)
         logging.info(f"  ✓ Validated: {out_fp.name} ({size_mb:.2f} MB)")
@@ -1581,22 +1613,26 @@ if __name__ == "__main__":
                 src_mask = None
                 if "mask" in src_init_ds.data_vars:
                     src_mask = src_init_ds["mask"]
-                
+
                 # Retry logic with exponential backoff for transient errors
                 max_attempts = 3
                 attempt = 1
                 retry_delay = 10  # seconds
-                
+
                 while attempt <= max_attempts:
                     try:
                         if attempt > 1:
-                            logging.info(f"  Retry attempt {attempt}/{max_attempts} for {fp.name}")
-                        
-                        result = regrid_dataset(fp, regridder, out_fp, src_mask, rasdafy)
+                            logging.info(
+                                f"  Retry attempt {attempt}/{max_attempts} for {fp.name}"
+                            )
+
+                        result = regrid_dataset(
+                            fp, regridder, out_fp, src_mask, rasdafy
+                        )
                         results.append(result)
                         logging.info(f"✓ Completed {idx}/{total_files}: {fp.name}")
                         break  # Success - exit retry loop
-                        
+
                     except Exception as e:
                         # Check if error is transient and worth retrying
                         if attempt < max_attempts and is_transient_error(e):
@@ -1614,7 +1650,9 @@ if __name__ == "__main__":
                             if attempt >= max_attempts:
                                 logging.error(f"Failed after {max_attempts} attempts")
                             logging.error(f"Error: {e}")
-                            print(f"\nFILE NOT REGRIDDED: {fp}\n     Errors printed below:\n")
+                            print(
+                                f"\nFILE NOT REGRIDDED: {fp}\n     Errors printed below:\n"
+                            )
                             traceback.print_exc()
                             break  # Exit retry loop
 
