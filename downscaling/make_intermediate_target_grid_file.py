@@ -89,7 +89,7 @@ def create_intermediate_target_grid(src_file, out_file, step, resolution):
         min_lat, max_lat = 54, 73
     elif resolution == 12:
         min_lon, max_lon = 182, 254
-        min_lat, max_lat = 48, 71
+        min_lat, max_lat = 48, 77  # Extended to 77 to cover 12km target (up to 75.35° + padding)
     else:
         raise ValueError(f"Unsupported resolution: {resolution}")
 
