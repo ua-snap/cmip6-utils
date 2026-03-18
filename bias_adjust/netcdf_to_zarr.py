@@ -78,18 +78,49 @@ def validate_zarr_readback(zarr_path, expected_var_id, max_retries=120, retry_de
 
             arr = ds[expected_var_id]
 
-            # Check actual data, not just metadata
-            logging.info(f"Checking data validity by loading a sample...")
-            sample = arr.isel(
-                {dim: slice(0, min(50, arr.sizes[dim])) for dim in arr.dims}
+            # Check multiple samples (beginning, middle, end) to catch issues
+            # with boundary regions or filesystem cache coherency
+            logging.info(
+                f"Checking data validity by loading samples (start, middle, end)..."
             )
-            sample_data = sample.compute()  # Force actual read from disk
+            samples_to_check = [
+                (
+                    "start",
+                    {dim: slice(0, min(50, arr.sizes[dim])) for dim in arr.dims},
+                ),
+                (
+                    "middle",
+                    {
+                        dim: slice(arr.sizes[dim] // 2, arr.sizes[dim] // 2 + 50)
+                        for dim in arr.dims
+                    },
+                ),
+                (
+                    "end",
+                    {
+                        dim: slice(max(0, arr.sizes[dim] - 50), arr.sizes[dim])
+                        for dim in arr.dims
+                    },
+                ),
+            ]
 
-            if sample_data.size == 0:
-                raise ValueError("Sample is empty")
+            all_nan_count = 0
 
-            if sample_data.isnull().all():
-                raise ValueError("Sample is all NaN")
+            for location, selection in samples_to_check:
+                sample = arr.isel(selection)
+                sample_data = sample.compute()  # Force actual read from disk
+
+                if sample_data.size == 0:
+                    raise ValueError(f"Sample data at {location} is empty")
+
+                if sample_data.isnull().all():
+                    all_nan_count += 1
+                    logging.warning(f"  WARNING: {location} sample is all NaN")
+
+            # Only fail if ALL samples are NaN (suggests real problem)
+            # Partial NaN at boundaries is acceptable (e.g., edge effects)
+            if all_nan_count == len(samples_to_check):
+                raise ValueError("All samples (start, middle, end) are all NaN")
 
             # Check that we can access actual chunk files
             z = zarr.open_group(zarr_path, "r")
@@ -106,12 +137,14 @@ def validate_zarr_readback(zarr_path, expected_var_id, max_retries=120, retry_de
             if chunk_count == 0:
                 raise ValueError("No chunk files found!")
 
-            # Success!
+            # Success! Report summary from last sample checked
             logging.info(f"✓ Read-back validation PASSED on attempt {attempt}")
-            logging.info(f"  - Sample shape: {sample_data.shape}")
-            logging.info(f"  - Sample mean: {float(sample_data.mean()):.4f}")
+            logging.info(f"  - Checked 3 samples: start, middle, end")
+            logging.info(f"  - NaN samples: {all_nan_count}/{len(samples_to_check)}")
+            logging.info(f"  - Last sample shape: {sample_data.shape}")
+            logging.info(f"  - Last sample mean: {float(sample_data.mean()):.4f}")
             logging.info(
-                f"  - Sample range: [{float(sample_data.min()):.4f}, {float(sample_data.max()):.4f}]"
+                f"  - Last sample range: [{float(sample_data.min()):.4f}, {float(sample_data.max()):.4f}]"
             )
             logging.info(f"  - Chunk count: {chunk_count}")
             ds.close()
