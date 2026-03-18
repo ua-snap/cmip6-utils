@@ -310,22 +310,47 @@ def get_input_filepaths(
     - if nothing but netcdf_dir is provided, return all files in netcdf_dir (i.e. set glob_str to "*")
     - if glob_str is provided, return all files in netcdf_dir that match glob_str
     - if year_str is provided, return all files in netcdf_dir that match year_str formatted for all years in range(start_year, end_year + 1)
+    - if year_str contains wildcards (* or ?), use glob to find matching files
 
     example year_str: "GFDL-ESM4/historical/day/tasmax/tasmax_day_GFDL-ESM4_historical_regrid_{year}0101-{year}1231.nc"
+    example year_str with wildcard: "t2max/t2max_{year}*_era5_4km_3338.nc" (matches with or without "_daily")
     example glob_str: "GFDL-ESM4/historical/day/tasmax/tasmax_day_GFDL-ESM4_historical_regrid_*.nc"
     """
     if year_str is not None:
-        fps = [
-            netcdf_dir.joinpath(year_str.format(year=year))
-            for year in range(start_year, end_year + 1)
-        ]
+        fps = []
+        missing_years = []
 
-        if not all([fp.exists() for fp in fps]):
-            bad_files = "\n".join([str(fp) for fp in fps if not fp.exists()])
+        for year in range(start_year, end_year + 1):
+            pattern = year_str.format(year=year)
+
+            # Check if pattern contains wildcards
+            if "*" in pattern or "?" in pattern:
+                # Use glob to find matching files
+                matches = list(netcdf_dir.glob(pattern))
+                if matches:
+                    # Take first match if multiple files match the pattern
+                    fps.append(matches[0])
+                    if len(matches) > 1:
+                        logging.warning(
+                            f"Multiple files match pattern for year {year}: {pattern}. "
+                            f"Using: {matches[0].name}"
+                        )
+                else:
+                    missing_years.append(year)
+            else:
+                # Exact filename - check if it exists
+                fp = netcdf_dir.joinpath(pattern)
+                if fp.exists():
+                    fps.append(fp)
+                else:
+                    missing_years.append(year)
+
+        if missing_years:
             raise FileNotFoundError(
                 (
-                    f"Files not found for all years in range {start_year} to {end_year} using year_str: {year_str}."
-                    f"Expected files:\n {bad_files}"
+                    f"Files not found for years {missing_years} in range {start_year} to {end_year} "
+                    f"using year_str: {year_str}. "
+                    f"Pattern example for first missing year: {year_str.format(year=missing_years[0])}"
                 )
             )
     else:
