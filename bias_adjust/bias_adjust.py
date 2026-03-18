@@ -71,6 +71,8 @@ def configure_dask_for_adjustment(
             # Array settings
             "array.slicing.split_large_chunks": True,
             "array.chunk-size": "128 MiB",
+            # Determinism - disable work stealing for reproducible results
+            "distributed.scheduler.work-stealing": False,
         }
     )
 
