@@ -217,17 +217,48 @@ def validate_zarr_readback(zarr_path, expected_var_id, max_retries=120, retry_de
             arr = ds[expected_var_id]
 
             # Check actual data, not just metadata
-            logging.info(f"Checking data validity by loading a sample...")
-            sample = arr.isel(
-                {dim: slice(0, min(50, arr.sizes[dim])) for dim in arr.dims}
-            )
-            sample_data = sample.compute()  # Force actual read from disk
+            # Check multiple samples to handle NaNs at domain edges
+            logging.info(f"Checking data validity by loading samples...")
 
-            if sample_data.size == 0:
-                raise ValueError("Sample is empty")
+            samples_to_check = [
+                ("start", {dim: slice(0, min(50, arr.sizes[dim])) for dim in arr.dims}),
+                (
+                    "middle",
+                    {
+                        dim: slice(arr.sizes[dim] // 2, arr.sizes[dim] // 2 + 50)
+                        for dim in arr.dims
+                    },
+                ),
+                (
+                    "end",
+                    {
+                        dim: slice(max(0, arr.sizes[dim] - 50), arr.sizes[dim])
+                        for dim in arr.dims
+                    },
+                ),
+            ]
 
-            if sample_data.isnull().all():
-                raise ValueError("Sample is all NaN")
+            valid_sample_found = False
+            sample_data = None
+
+            for location, selection in samples_to_check:
+                sample = arr.isel(selection)
+                sample_data = sample.compute()  # Force actual read from disk
+
+                if sample_data.size == 0:
+                    continue
+
+                if not sample_data.isnull().all():
+                    valid_sample_found = True
+                    logging.info(f"  ✓ Found valid data in {location} sample")
+                    break
+                else:
+                    logging.info(
+                        f"  ~ {location} sample is all NaN (may be edge of domain)"
+                    )
+
+            if not valid_sample_found:
+                raise ValueError("All samples (start, middle, end) are NaN or empty")
 
             # Check that we can access actual chunk files
             z = zarr.open_group(zarr_path, "r")

@@ -237,19 +237,50 @@ def validate_zarr_readback(zarr_path, expected_var_id, max_retries=120, retry_de
             arr = ds[var_name]
 
             # Check actual data, not just metadata
+            # Check multiple samples to handle NaNs at domain edges
             logging.info(
-                f"Checking data validity by loading a sample from '{var_name}'..."
+                f"Checking data validity by loading samples from '{var_name}'..."
             )
-            sample = arr.isel(
-                {dim: slice(0, min(50, arr.sizes[dim])) for dim in arr.dims}
-            )
-            sample_data = sample.compute()  # Force actual read from disk
 
-            if sample_data.size == 0:
-                raise ValueError("Sample is empty")
+            samples_to_check = [
+                ("start", {dim: slice(0, min(50, arr.sizes[dim])) for dim in arr.dims}),
+                (
+                    "middle",
+                    {
+                        dim: slice(arr.sizes[dim] // 2, arr.sizes[dim] // 2 + 50)
+                        for dim in arr.dims
+                    },
+                ),
+                (
+                    "end",
+                    {
+                        dim: slice(max(0, arr.sizes[dim] - 50), arr.sizes[dim])
+                        for dim in arr.dims
+                    },
+                ),
+            ]
 
-            if sample_data.isnull().all():
-                raise ValueError("Sample is all NaN")
+            valid_sample_found = False
+            sample_data = None
+
+            for location, selection in samples_to_check:
+                sample = arr.isel(selection)
+                sample_data = sample.compute()  # Force actual read from disk
+
+                if sample_data.size == 0:
+                    continue
+
+                if not sample_data.isnull().all():
+                    valid_sample_found = True
+                    logging.info(f"  ✓ Found valid data in {location} sample")
+                    break
+                else:
+                    logging.info(
+                        f"  ~ {location} sample is all NaN (may be edge of domain)"
+                    )
+
+            if not valid_sample_found:
+                raise ValueError("All samples (start, middle, end) are NaN or empty")
 
             # Check that we can access actual chunk files
             z = zarr.open_group(zarr_path, "r")
@@ -566,20 +597,46 @@ def validate_training_output(qm_train, var_id):
 
     # Check that at least one quantile variable is not all NaN
     # Common xclim QDM variables: hist_q, ref_q, af (adjustment factors)
+    # Check multiple spatial samples to handle NaNs at domain edges
     has_valid_data = False
     for var_name in qm_train.ds.data_vars:
         arr = qm_train.ds[var_name]
         if arr.size > 0:
-            sample = arr.isel(
-                {dim: slice(0, min(10, arr.sizes[dim])) for dim in arr.dims}
-            )
-            if not sample.isnull().all().compute():
-                has_valid_data = True
-                logging.info(f"  ✓ Variable '{var_name}' contains valid data")
+            # Check start, middle, and end samples (like check_data_validity)
+            samples_to_check = [
+                ("start", {dim: slice(0, min(10, arr.sizes[dim])) for dim in arr.dims}),
+                (
+                    "middle",
+                    {
+                        dim: slice(arr.sizes[dim] // 2, arr.sizes[dim] // 2 + 10)
+                        for dim in arr.dims
+                    },
+                ),
+                (
+                    "end",
+                    {
+                        dim: slice(max(0, arr.sizes[dim] - 10), arr.sizes[dim])
+                        for dim in arr.dims
+                    },
+                ),
+            ]
+
+            for location, selection in samples_to_check:
+                sample = arr.isel(selection)
+                if not sample.isnull().all().compute():
+                    has_valid_data = True
+                    logging.info(
+                        f"  ✓ Variable '{var_name}' contains valid data ({location} sample)"
+                    )
+                    break
+
+            if has_valid_data:
                 break
 
     if not has_valid_data:
-        raise ValueError("All variables in trained QM dataset are NaN or empty")
+        raise ValueError(
+            "All variables in trained QM dataset are NaN or empty (checked start, middle, and end samples)"
+        )
 
     logging.info(f"Training output validation passed for {var_id}")
     return True
