@@ -3,7 +3,7 @@
 # 4km ERA5 extent is slightly smaller than this: (-177, 54, -128, 73)
     # in 0-360 longitude format, this is (183, 54, 232, 73)
 # 12km ERA5 extent is slightly smaller than this: (-178, 48, -106, 71)
-    # in 0-360 longitude format, this is (182, 48, 254, 71)
+    # in 0-360 longitude format, this is (182, 48, 254, 77)
 # so we will create a grid with user-defined degree resolution on 0-360 degree longitude
 
 Example usage:
@@ -89,7 +89,7 @@ def create_intermediate_target_grid(src_file, out_file, step, resolution):
         min_lat, max_lat = 54, 73
     elif resolution == 12:
         min_lon, max_lon = 182, 254
-        min_lat, max_lat = 48, 77  # Extended to 77 to cover 12km target (up to 75.35° + padding)
+        min_lat, max_lat = 48, 77
     else:
         raise ValueError(f"Unsupported resolution: {resolution}")
 
