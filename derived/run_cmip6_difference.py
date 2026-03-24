@@ -169,9 +169,13 @@ def write_config_file(
     config_path,
     models,
     scenarios,
+    input_dir,
+    minuend_tmp_fn,
+    subtrahend_tmp_fn,
 ):
     """Write a config file for the DTR processing slurm job script.
     This is used to split the job into a job array, one task per model/scenario combination.
+    Only includes combinations where both input zarr stores actually exist.
 
     Parameters
     ----------
@@ -181,6 +185,12 @@ def write_config_file(
         list of models to process
     scenarios : list of str
         list of scenarios to process
+    input_dir : pathlib.Path
+        path to directory containing input zarr stores
+    minuend_tmp_fn : str
+        template filename for the minuend zarr store (uses ${model} and ${scenario})
+    subtrahend_tmp_fn : str
+        template filename for the subtrahend zarr store (uses ${model} and ${scenario})
 
     Returns
     -------
@@ -190,11 +200,25 @@ def write_config_file(
     array_list = []
     with open(config_path, "w") as f:
         f.write("array_id\tmodel\tscenario\n")
-        for array_id, (model, scenario) in enumerate(
-            product(models, scenarios), start=1
-        ):
+        array_id = 0
+        for model, scenario in product(models, scenarios):
+            minuend_path = input_dir / minuend_tmp_fn.replace("${model}", model).replace("${scenario}", scenario)
+            subtrahend_path = input_dir / subtrahend_tmp_fn.replace("${model}", model).replace("${scenario}", scenario)
+            if not minuend_path.exists() or not subtrahend_path.exists():
+                logging.warning(
+                    f"Skipping {model}/{scenario}: missing input zarr store(s) "
+                    f"(minuend={minuend_path.exists()}, subtrahend={subtrahend_path.exists()})"
+                )
+                continue
+            array_id += 1
             f.write(f"{array_id}\t{model}\t{scenario}\n")
             array_list.append(array_id)
+
+    if not array_list:
+        raise ValueError(
+            f"No valid model/scenario combinations found in {input_dir}. "
+            "Check that bias adjustment completed successfully."
+        )
 
     array_range = f"{min(array_list)}-{max(array_list)}"
 
@@ -352,6 +376,9 @@ if __name__ == "__main__":
         config_path=config_path,
         models=models,
         scenarios=scenarios,
+        input_dir=input_dir,
+        minuend_tmp_fn=minuend_tmp_fn,
+        subtrahend_tmp_fn=subtrahend_tmp_fn,
     )
 
     sbatch_head_kwargs = {

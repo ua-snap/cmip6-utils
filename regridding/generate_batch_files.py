@@ -38,10 +38,26 @@ def fp_to_attrs(fp):
     attr_di : dict
         Dictionary containing the data identifiers/attributes
     """
-    attr_di = parse_cmip6_fp(fp)
-    # drop these which are not needed
-    del attr_di["grid_type"]
-    del attr_di["variant"]
+    # DTR files have a shallower structure than standard CMIP6:
+    #   standard: .../institution/model/scenario/variant/freq/var_id/grid/version/file.nc
+    #   DTR:      .../cmip6_dtr/model/scenario/freq/var_id/file.nc
+    # parse_cmip6_fp uses fp.parts[-8:-2], which misidentifies the project directory
+    # as "model" for DTR files. Detect DTR files by var_id directory name.
+    if fp.parts[-2] == "dtr":
+        model, scenario, frequency, variable_id = fp.parts[-5:-1]
+        timeframe = fp.name.split("_")[-1].split(".nc")[0]
+        attr_di = {
+            "model": model,
+            "scenario": scenario,
+            "frequency": frequency,
+            "variable_id": variable_id,
+            "timeframe": timeframe,
+        }
+    else:
+        attr_di = parse_cmip6_fp(fp)
+        # drop these which are not needed
+        del attr_di["grid_type"]
+        del attr_di["variant"]
 
     return attr_di
 
@@ -471,14 +487,7 @@ if __name__ == "__main__":
     for name, group_df in results_df.groupby(
         ["model", "scenario", "variable_id", "frequency"]
     ):
-        if vars == "dtr":
-            # make sure that there are not multiple grids within one model/scenario at this point
-            model = name[0]
-            scenario = name[2]
-            var_id = "dtr"
-            frequency = "day"
-        else:
-            model, scenario, var_id, frequency = name
+        model, scenario, var_id, frequency = name
 
         print("model: ", model)
         print("scenario: ", scenario)
