@@ -1,0 +1,5 @@
+Please go to this URL and login:
+
+https://auth.globus.org/v2/oauth2/authorize?client_id=a316babe-5447-43b0-a82e-4fc86c91b71a&redirect_uri=https%3A%2F%2Fauth.globus.org%2Fv2%2Fweb%2Fauth-code&scope=urn%3Aglobus%3Aauth%3Ascope%3Atransfer.api.globus.org%3Aall&state=_default&response_type=code&code_challenge=S4fStrc_lAMJvEnMFqDcA355lzzUubFJxnWAsnztZ1c&code_challenge_method=S256&access_type=online
+
+Please enter the code here: 
