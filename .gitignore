@@ -14,3 +14,5 @@ _build/
 
 *.out
 *.err
+
+.claude/
