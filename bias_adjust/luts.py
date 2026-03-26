@@ -1,4 +1,4 @@
-# this should be referenced in downscaling module
+# lookup to crosswalk CMIP6 variable names to ERA5 variable names
 sim_ref_var_lu = {"tasmax": "t2max", "tasmin": "t2min", "dtr": "dtr", "pr": "pr"}
 
 # lookup for "kind" arg of DQM training function
