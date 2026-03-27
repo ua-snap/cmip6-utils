@@ -17,10 +17,6 @@ papermill downscaled_dtr.ipynb downscaled_dtr_GFDL-ESM4.ipynb -p models 'GFDL-ES
 
 #CESM2	historical, ssp126, ssp585	pr
 papermill downscaled_pr.ipynb downscaled_pr_CESM2.ipynb -p models 'CESM2' -p scenarios 'historical ssp126 ssp585' -p threshold 400
-papermill downscaled_tasmax.ipynb downscaled_tasmax_CESM2.ipynb -p models 'CESM2' -p scenarios 'historical ssp126 ssp585' -p threshold 35
-papermill downscaled_tasmin.ipynb downscaled_tasmin_CESM2.ipynb -p models 'CESM2' -p scenarios 'historical ssp126 ssp585' -p threshold -55
-papermill downscaled_dtr.ipynb downscaled_dtr_CESM2.ipynb -p models 'CESM2' -p scenarios 'historical ssp126 ssp585' -p threshold 40
-
 
 #CNRM-CM6-1-HR	historical, ssp126, ssp585	pr, tasmax, tasmin
 papermill downscaled_pr.ipynb downscaled_pr_CNRM-CM6-1-HR.ipynb -p models 'CNRM-CM6-1-HR' -p scenarios 'historical ssp126 ssp585' -p threshold 400
