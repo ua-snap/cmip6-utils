@@ -1565,8 +1565,11 @@ if __name__ == "__main__":
             assert (
                 dst_sftlf_fp
             ), "If source sftlf file is provided, destination sftlf file must also be provided"
-        # assume dst_sftlf_fp will ALWAYS be provided if we are dealing with masked variables
-        if dst_sftlf_fp:
+        # Only apply land/sea masking if dst_sftlf_fp is provided AND the variable
+        # is a recognised land/sea variable. This allows dst_sftlf_fp to be passed
+        # to batch jobs that may contain a mix of land and non-land variable files
+        # (e.g. from run_regrid_again.py) without crashing on non-land variables.
+        if dst_sftlf_fp and check_src_landsea(src_init_ds):
             logging.info("Preparing land-sea masking...")
             src_init_ds, dst_ds = prep_for_landsea(
                 src_init_ds,

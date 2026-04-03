@@ -205,15 +205,20 @@ def write_sbatch_regrid_again(
     )
 
     pycommands = "\n"
-    pycommands += (
-        # Extract the model and scenario to process for the current $SLURM_ARRAY_TASK_ID
-        f"config={config_file}\n"
-        "batch_file=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $2}' $config)\n"
+    regrid_cmd = (
         f"python {regrid_script} "
         f"-b $batch_file "
         f"-d {target_grid_file} "
         f"-o {output_dir} "
-        f"--interp_method {interp_method}\n\n"
+        f"--interp_method {interp_method}"
+    )
+    regrid_cmd += "\n\n"
+
+    pycommands += (
+        # Extract the model and scenario to process for the current $SLURM_ARRAY_TASK_ID
+        f"config={config_file}\n"
+        "batch_file=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $2}' $config)\n"
+        + regrid_cmd
     )
 
     pycommands += f"echo End re-regridding && date\n\n"
