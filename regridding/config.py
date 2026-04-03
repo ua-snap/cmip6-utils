@@ -51,6 +51,8 @@ variables = {
     },
     "pr": {"name": "precipitation", "table_ids": ["Amon", "day"]},
     "psl": {"name": "sea_level_pressure", "table_ids": ["Amon", "day"]},
+    "hurs": {"name": "near_surface_relative_humidity", "table_ids": ["Amon", "day"]},
+    "hursmin": {"name": "daily_minimum_near_surface_relative_humidity", "table_ids": ["day"]},
     "huss": {"name": "near_surface_specific humidity", "table_ids": ["Amon", "day"]},
     "uas": {"name": "near_surface_eastward_wind", "table_ids": ["Amon", "day"]},
     "vas": {"name": "near_surface_northward_wind", "table_ids": ["Amon", "day"]},

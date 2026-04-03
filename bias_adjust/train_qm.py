@@ -28,7 +28,7 @@ import xarray as xr
 from zarr.sync import ThreadSynchronizer
 import numcodecs
 from xclim import sdba
-from luts import sim_ref_var_lu, varid_adj_kind_lu, jitter_under_lu
+from luts import sim_ref_var_lu, varid_adj_kind_lu, jitter_under_lu, adapt_freq_thresh_lu
 
 logging.basicConfig(
     level=logging.INFO,
@@ -825,10 +825,10 @@ if __name__ == "__main__":
             window=31,
             kind=varid_adj_kind_lu[var_id],
         )
-        if var_id == "pr":
-            # do the adapt frequency thingy for precipitation data
-            logging.info("Using adapt_freq_thresh for precipitation")
-            train_kwargs.update(adapt_freq_thresh="0.254 mm d-1")
+        if var_id in adapt_freq_thresh_lu:
+            thresh = adapt_freq_thresh_lu[var_id]
+            logging.info(f"Using adapt_freq_thresh={thresh} for {var_id}")
+            train_kwargs.update(adapt_freq_thresh=thresh)
 
         qm_train = sdba.QuantileDeltaMapping.train(**train_kwargs)
         logging.info(f"QDM training completed for {var_id}")
