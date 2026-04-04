@@ -487,10 +487,20 @@ def apply_jitter(da):
 
 
 def get_var_id(ds):
-    """Get the variable ID from the dataset."""
-    if len(ds.data_vars) > 1:
-        raise ValueError("More than one variable found in dataset.")
-    var_id = [v for v in ds.data_vars][0]
+    """Get the variable ID from the dataset.
+
+    Filters out metadata variables (mask, spatial_ref, etc.) by selecting
+    only variables with 3 dimensions (time, x, y).
+    """
+    # Filter to only 3D variables (time, x, y) - excludes mask (2D), spatial_ref (0D), etc.
+    climate_vars = [v for v in ds.data_vars if len(ds[v].dims) == 3]
+
+    if len(climate_vars) == 0:
+        raise ValueError(f"No 3D climate variable found in dataset. Available variables: {list(ds.data_vars)}")
+    if len(climate_vars) > 1:
+        raise ValueError(f"Multiple 3D variables found in dataset: {climate_vars}")
+
+    var_id = climate_vars[0]
     return var_id
 
 
