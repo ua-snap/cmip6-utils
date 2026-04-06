@@ -24,7 +24,7 @@ varid_adj_kind_lu = {
 
 jitter_under_lu = {"pr": "0.01 mm d-1", "dtr": "1e-4 K", "snw": "0.01 kg m-2"}
 
-adapt_freq_thresh_lu = {"pr": "0.254 mm d-1", "snw": "1 kg m-2"}
+adapt_freq_thresh_lu = {"pr": "0.254 mm d-1", "snw": "0.254 kg m-2"}
 
 future_start_year = 2015
 future_end_year = 2100
