@@ -21,11 +21,12 @@ To run the notebooks, it is advised that you start a jupyter server from a compu
 The CMIP6 data we are working with (to be / have been adjusted) are daily fields of maximum temperature, daily temperature range, and that have been regridded to a 4km nominal grid in EPSG:3338. The models herein are part of the SNAP CMIP6 ensemble, a set of 13 models that was selected based on skill in Alaska and the arctic using the [GCMEval tool](https://gcmeval.met.no/) ([paper](https://doi.org/10.1016/j.cliser.2020.100167)).
 
 
-## Other stuff here
+## Other utilities:
 
-Other stuff in the `downscaling/` folder, we have:
-* `make_intermediate_target_grid_file.py` - this script is used for making an intermediate target grid for "cascade" regridding in the downscaling pipeline. 
-* `round_negative_precip.py` - This is a post-processing script for the downscaled precipitatation data. This script is used to round negative precip values to the nearest whole number, assuming all negative precip values are small (< -0.5 mm). Will raise a warning if negative values remain after rounding - this would signal a possible issue with the downscaled data. It is not currently automated in the pipeline. 
-* `tests/` - here you can run somes tests on the downscaled data corpus. The tests currently work on all downscaled data for the given variable being tested, and are limited to sanity checks only. You can run them separately or all together, see docstrings. Individual tests should take ~10 minutes on a chinook compute node. 
 * `prep_era5_variables.py` - This script is used to prepare ERA5 outputs (from the WRF ERA5 curation pipeline, at any resolution) by changing the file variable names, file names, and directory names to match those expected by the downscaling flow. It also supports converting temperature variables from Celsius to Kelvin (use `--celsius-to-kelvin`).
+* `make_intermediate_target_grid_file.py` - this script is used for making an intermediate target grid for "cascade" regridding in the downscaling pipeline. 
 * `make_final_target_grid_file.py` - This script extracts a single time slice from an ERA5 NetCDF file (at any resolution) to use as the final target grid file in the cascade regridding chain.
+* `round_negative_precip.py` - This is a post-processing script for the downscaled precipitatation data. This script is used to round negative precip values to the nearest whole number, assuming all negative precip values are small (< -0.5 mm). Will raise a warning if negative values remain after rounding - this would signal a possible issue with the downscaled data. It is not currently automated in the pipeline. 
+* `tests/` - here you can run somes tests on the downscaled data corpus. The tests currently work on all downscaled data for the given variable being tested, and are limited to sanity checks only. You can run them separately or all together, see docstrings. Individual tests should take ~10 minutes on a Chinook compute node. 
+
+
