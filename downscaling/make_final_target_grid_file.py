@@ -6,10 +6,12 @@ This script takes a NetCDF file with a time dimension and extracts only the firs
 preserving all variables, coordinates, and encoding settings. Also adds lon/lat coordinates
 if they don't exist (for projected coordinate systems).
 
+Works with ERA5 outputs from the WRF ERA5 curation pipeline at any resolution (4km, 12km, etc.).
+
 Example usage:
-    python create_12km_target_grid_file.py \
-        /beegfs/CMIP6/jdpaul3/wrf_era5_12km_daily/for_downscaling/t2max/t2max_2014_daily_era5_12km_3338.nc \
-        /beegfs/CMIP6/jdpaul3/wrf_era5_12km_daily/for_downscaling/era5_12km_target_slice.nc
+    python make_final_target_grid_file.py \
+        /beegfs/CMIP6/jdpaul3/wrf_era5_daily/for_downscaling/t2max/t2max_2014_daily_era5_4km_3338.nc \
+        /beegfs/CMIP6/jdpaul3/wrf_era5_daily/for_downscaling/era5_target_slice.nc
 """
 
 import argparse
@@ -128,7 +130,7 @@ def add_lonlat_coordinates(ds):
         }
     )
 
-    print(f"  ✓ Added lon/lat coordinates (shape: {lon_grid.shape})")
+    print(f"  Added lon/lat coordinates (shape: {lon_grid.shape})")
     print(f"    Longitude range: [{lon_grid.min():.2f}, {lon_grid.max():.2f}]")
     print(f"    Latitude range: [{lat_grid.min():.2f}, {lat_grid.max():.2f}]")
 

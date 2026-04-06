@@ -10,10 +10,13 @@ This script:
 - Converts temperature variables (t2_min, t2_max) from Celsius to Kelvin
 - Copies files to a new output directory (does not modify in place)
 
+Works with ERA5 outputs from the WRF ERA5 curation pipeline at any resolution
+(4km, 12km, etc.).
+
 Example usage:
-    python prep_12km_variables.py \
-        /import/beegfs/CMIP6/jdpaul3/wrf_era5_12km_daily \
-        /import/beegfs/CMIP6/jdpaul3/wrf_era5_12km_daily/for_downscaling \
+    python prep_era5_variables.py \
+        /import/beegfs/CMIP6/jdpaul3/wrf_era5_daily \
+        /import/beegfs/CMIP6/jdpaul3/wrf_era5_daily/for_downscaling \
         --old t2_min t2_max rainnc_sum \
         --new t2min t2max pr \
         --celsius-to-kelvin t2_min t2_max
@@ -219,7 +222,7 @@ def main():
     kelvin_vars: Set[str] = set(args.celsius_to_kelvin)
 
     print("=" * 80)
-    print("ERA5 12km Variable Preparation Script")
+    print("ERA5 Variable Preparation Script")
     print("=" * 80)
     print(f"Input directory:  {input_dir}")
     print(f"Output directory: {output_dir}")
