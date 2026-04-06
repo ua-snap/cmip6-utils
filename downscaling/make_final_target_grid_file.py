@@ -10,8 +10,8 @@ Works with ERA5 outputs from the WRF ERA5 curation pipeline at any resolution (4
 
 Example usage:
     python make_final_target_grid_file.py \
-        /beegfs/CMIP6/jdpaul3/wrf_era5_daily/for_downscaling/t2max/t2max_2014_daily_era5_4km_3338.nc \
-        /beegfs/CMIP6/jdpaul3/wrf_era5_daily/for_downscaling/era5_target_slice.nc
+        /beegfs/CMIP6/arctic-cmip6/era5/daily_era5_4km_3338/t2/t2_1965_era5_4km_3338.nc \
+        /beegfs/CMIP6/arctic-cmip6/era5/era5_target_slice.nc
 """
 
 import argparse
