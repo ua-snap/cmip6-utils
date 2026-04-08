@@ -1065,7 +1065,7 @@ def regrid_sftlf_landmask(sftlf_fp, target_ds, threshold):
     sftlf_fp : str
         Path to sftlf file to derive landmask from
     target_ds : xarray.Dataset
-        Dataset to regrid the landmask to
+        Dataset with target grid coordinates (can be just a grid template, doesn't need variables)
     threshold : float
         Threshold for land/sea mask (0-100)
 
@@ -1076,11 +1076,11 @@ def regrid_sftlf_landmask(sftlf_fp, target_ds, threshold):
     """
     sftlf_ds = xr.open_dataset(sftlf_fp)
     landmask = sftlf_ds["sftlf"] > threshold
-    var_id = get_var_id(target_ds)
 
+    # xESMF Regridder only needs grid info (lat/lon coords), not actual variables
     target_regridder = xe.Regridder(
         landmask,
-        target_ds[var_id],
+        target_ds,
         method="nearest_s2d",
         unmapped_to_nan=True,
     )
