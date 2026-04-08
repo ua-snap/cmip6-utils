@@ -19,7 +19,7 @@ import numpy as np
 import pandas as pd
 import xesmf as xe
 import xarray as xr
-from pyproj import CRS
+from pyproj import CRS, Transformer
 from xclim.core import units
 import dask
 from dask.distributed import Client, LocalCluster
@@ -441,6 +441,34 @@ def init_regridder(src_ds, dst_ds, interp_method):
     if len(dst_ds.lon.dims) == 1:
         dst_ds = dst_ds.sortby(dst_ds.lon, ascending=True)
     # initialize the regridder which now contains standard -180 to 180 longitude values
+
+    # conservative regridding requires cell bounds; compute them from the projected
+    # x/y coordinates if they are not already present in dst_ds
+    if interp_method == "conservative" and "lon_b" not in dst_ds and "lat_b" not in dst_ds:
+        if "x" in dst_ds.dims and "y" in dst_ds.dims and "spatial_ref" in dst_ds:
+            logging.info(
+                "Conservative method selected but dst_ds has no bounds. "
+                "Computing lon_b/lat_b from projected x/y coordinates."
+            )
+            crs_wkt = dst_ds["spatial_ref"].attrs.get("crs_wkt")
+            transformer = Transformer.from_crs(crs_wkt, "EPSG:4326", always_xy=True)
+            x = dst_ds["x"].values
+            y = dst_ds["y"].values
+            # compute edge coordinates (n+1 points) by extending midpoints to the boundaries
+            x_edges = np.concatenate([
+                [x[0] - (x[1] - x[0]) / 2],
+                (x[:-1] + x[1:]) / 2,
+                [x[-1] + (x[-1] - x[-2]) / 2],
+            ])
+            y_edges = np.concatenate([
+                [y[0] - (y[1] - y[0]) / 2],
+                (y[:-1] + y[1:]) / 2,
+                [y[-1] + (y[-1] - y[-2]) / 2],
+            ])
+            xx_edges, yy_edges = np.meshgrid(x_edges, y_edges)
+            lon_b, lat_b = transformer.transform(xx_edges, yy_edges)
+            dst_ds["lon_b"] = xr.DataArray(lon_b, dims=["y_b", "x_b"])
+            dst_ds["lat_b"] = xr.DataArray(lat_b, dims=["y_b", "x_b"])
 
     # determine whether dataset is periodic in longitude
     periodic = is_periodic_longitude(dst_ds, lon_dim="lon")
