@@ -31,17 +31,181 @@ Example usage:
 import argparse
 import logging
 from pathlib import Path
+import subprocess
+import sys
+import time
 import numpy as np
 import xarray as xr
 import string
 from datetime import datetime
 import os
+import dask
+from dask.distributed import Client, LocalCluster
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[logging.StreamHandler()],
 )
+
+
+def configure_dask_for_dtr(n_workers=4, threads_per_worker=4, memory_limit="28GB"):
+    """Configure Dask LocalCluster optimized for DTR calculation on 128GB nodes.
+
+    DTR calculation is I/O intensive (reading many files) and compute simple (subtraction).
+
+    Args:
+        n_workers: Number of worker processes (default: 4)
+        threads_per_worker: Threads per worker (default: 4)
+        memory_limit: Memory limit per worker (default: 28GB)
+
+    Returns:
+        client: Dask distributed client
+    """
+    # Close any existing clients
+    try:
+        client = Client.current()
+        client.close()
+    except ValueError:
+        pass
+
+    # Configure global dask settings
+    dask.config.set(
+        {
+            # Memory management
+            "distributed.worker.memory.target": 0.75,
+            "distributed.worker.memory.spill": 0.85,
+            "distributed.worker.memory.pause": 0.90,
+            "distributed.worker.memory.terminate": 0.95,
+            # I/O optimization for reading many files
+            "distributed.comm.timeouts.tcp": "120s",
+            "distributed.scheduler.bandwidth": 1e9,
+            # Array settings
+            "array.slicing.split_large_chunks": True,
+            "array.chunk-size": "128 MiB",
+        }
+    )
+
+    cluster = LocalCluster(
+        n_workers=n_workers,
+        threads_per_worker=threads_per_worker,
+        memory_limit=memory_limit,
+        processes=True,
+        dashboard_address=None,
+    )
+
+    client = Client(cluster)
+
+    logging.info(f"Dask cluster configured for DTR calculation:")
+    logging.info(f"  Workers: {n_workers}, Threads/worker: {threads_per_worker}")
+    logging.info(f"  Memory per worker: {memory_limit}")
+    logging.info(f"  Dashboard: {client.dashboard_link}")
+
+    return client
+
+
+def force_filesystem_sync(file_path):
+    """Force filesystem to sync/flush data to disk.
+    
+    Critical for BeeGFS and other distributed filesystems where writes
+    may not be immediately visible across nodes.
+    
+    Args:
+        file_path: Path to file or directory to sync
+    """
+    try:
+        os.sync()
+    except Exception as e:
+        logging.warning(f"os.sync() failed: {e}")
+    
+    # Force metadata refresh by listing directory
+    try:
+        if file_path.is_file():
+            parent = file_path.parent
+        else:
+            parent = file_path
+        subprocess.run(
+            ["ls", "-la", str(parent)],
+            capture_output=True,
+            timeout=10,
+            check=False,
+        )
+    except Exception as e:
+        logging.warning(f"Directory listing for cache refresh failed: {e}")
+
+
+def validate_file_readback(file_path, var_id="dtr", max_retries=10, retry_delay=5):
+    """Validate that a written file can be read back with valid data.
+    
+    Retries multiple times to handle filesystem cache coherency delays.
+    This is critical for multi-node jobs on distributed filesystems.
+    
+    Args:
+        file_path: Path to file to validate
+        var_id: Variable ID to check (default: "dtr")
+        max_retries: Maximum number of read attempts
+        retry_delay: Seconds between retry attempts
+        
+    Returns:
+        True if validation succeeds
+        
+    Raises:
+        ValueError: If file cannot be validated after retries
+    """
+    for attempt in range(1, max_retries + 1):
+        try:
+            # Force sync before attempting read
+            force_filesystem_sync(file_path)
+            
+            # Use existing validation function
+            validate_output_file(file_path, var_id=var_id)
+            
+            # Success!
+            return True
+            
+        except Exception as e:
+            if attempt < max_retries:
+                logging.warning(
+                    f"  Read-back attempt {attempt}/{max_retries} failed for {file_path.name}: {e}"
+                )
+                logging.warning(f"  Retrying in {retry_delay}s...")
+                time.sleep(retry_delay)
+                # Increase delay for next attempt (exponential backoff)
+                retry_delay = min(retry_delay * 1.5, 30)
+            else:
+                raise ValueError(
+                    f"Failed to validate {file_path.name} after {max_retries} attempts. "
+                    f"Last error: {e}"
+                )
+    
+    return False
+
+
+def is_transient_error(error):
+    """Determine if an error is likely transient and worth retrying.
+    
+    Args:
+        error: Exception object
+        
+    Returns:
+        bool: True if error appears transient
+    """
+    error_str = str(error).lower()
+    transient_patterns = [
+        "keyerror",
+        "worker",
+        "compute failed",
+        "memory",
+        "timeout",
+        "connection",
+        "no such file",  # Filesystem visibility issues
+        "file not found",
+        "filesystem",
+        "i/o error",
+        "read-back",  # Our validation failures
+        "cache coherency",
+    ]
+    return any(pattern in error_str for pattern in transient_patterns)
 
 
 def parse_args():
@@ -133,8 +297,16 @@ def get_tmax_tmin_fps_cmip6(input_dir, model, scenario):
             with open(file_path, "r") as f:
                 cmip6_file_list.extend([line.strip() for line in f if line.strip()])
 
-    tmax_fps = [fp for fp in cmip6_file_list if "tasmax" in fp and model in fp and scenario in fp]
-    tmin_fps = [fp for fp in cmip6_file_list if "tasmin" in fp and model in fp and scenario in fp]
+    tmax_fps = [
+        fp
+        for fp in cmip6_file_list
+        if "tasmax" in fp and model in fp and scenario in fp
+    ]
+    tmin_fps = [
+        fp
+        for fp in cmip6_file_list
+        if "tasmin" in fp and model in fp and scenario in fp
+    ]
 
     tmax_fps.sort()
     tmin_fps.sort()
@@ -215,52 +387,244 @@ def make_output_filepath(output_dir, dtr_tmp_fn, start_date, end_date):
     return output_fp
 
 
-if __name__ == "__main__":
-    tmax_dir, tmin_dir, input_dir, output_dir, dtr_tmp_fn, model, scenario = parse_args()
+def validate_output_file(output_fp, var_id="dtr"):
+    """Validate that the output file exists and contains valid data.
 
-    # assumes all files in one dir have corresponding file in the other
-    if input_dir:
-        tmax_fps, tmin_fps = get_tmax_tmin_fps_cmip6(input_dir, model, scenario)
-    else:
-        tmax_fps, tmin_fps = get_tmax_tmin_fps_era5(tmax_dir, tmin_dir)
+    Checks multiple samples across the dataset to handle filesystem cache
+    coherency issues on distributed systems like beegfs.
 
-    with xr.open_mfdataset(
-        tmax_fps, engine="h5netcdf", parallel=True, use_cftime=True
-    ) as tmax_ds:
-        with xr.open_mfdataset(
-            tmin_fps, engine="h5netcdf", parallel=True, use_cftime=True
-        ) as tmin_ds:
-            tmax_var_id = get_var_id(tmax_ds)
-            tmin_var_id = get_var_id(tmin_ds)
-            dtr = tmax_ds[tmax_var_id] - tmin_ds[tmin_var_id]
-            dtr.persist()
+    Args:
+        output_fp: Path to output file
+        var_id: Variable identifier to check
 
-    units = tmax_ds[tmax_var_id].attrs["units"]
-    assert units == tmin_ds[tmin_var_id].attrs["units"]
+    Raises:
+        ValueError: If output is invalid or all samples are NaN
+    """
+    if not output_fp.exists():
+        raise ValueError(f"Output file not created: {output_fp}")
 
-    dtr.name = "dtr"
-    dtr.attrs = {
-        "long_name": "Daily temperature range",
-        "units": units,
-    }
-    # replace any negative values (tasmax - tasmin < 0) with 0.0000999
-    # using this number instead of zero gives us a way of estimating what spots were tweaked
-    # include the isnull() check so we don't replace nan's
-    dtr = dtr.where((dtr.isnull() | (dtr >= 0)), 0.0000999)
-
-    # the list here at the end is just making sure we have a matching dim order
-    dtr_ds = dtr.to_dataset().transpose(*list(tmax_ds[tmax_var_id].dims))
-    dtr_ds.attrs = {k: v for k, v in tmax_ds.attrs.items() & tmin_ds.attrs.items()}
-    # give this a variable_id attribute for consistency (helps with e.g. regridding with regrid.py)
-    dtr_ds.attrs["variable_id"] = "dtr"
-
-    # write
-    output_dir.mkdir(parents=True, exist_ok=True)
-    for year in np.unique(dtr_ds.time.dt.year):
-        year_ds = dtr_ds.sel(time=str(year))
-        start_date, end_date = get_start_end_dates(year_ds)
-        output_fp = make_output_filepath(output_dir, dtr_tmp_fn, start_date, end_date)
-        logging.info(
-            f"Writing {year_ds.dtr.name} for {start_date} to {end_date} to {output_fp}"
+    # Check file size
+    size_mb = output_fp.stat().st_size / (1024 * 1024)
+    if size_mb < 0.1:
+        raise ValueError(
+            f"Output file suspiciously small ({size_mb:.2f} MB): {output_fp}"
         )
-        year_ds.to_netcdf(output_fp)
+
+    # Try to open and check variable
+    try:
+        with xr.open_dataset(output_fp) as ds:
+            if var_id not in ds.data_vars:
+                raise ValueError(
+                    f"Variable '{var_id}' not found in output: {output_fp}"
+                )
+
+            arr = ds[var_id]
+            if arr.size == 0:
+                raise ValueError(f"Variable '{var_id}' is empty in: {output_fp}")
+
+            # Check multiple samples to catch filesystem cache coherency issues
+            # where some chunks may not be visible yet on different nodes
+            samples_to_check = [
+                ("start", {dim: slice(0, min(10, arr.sizes[dim])) for dim in arr.dims}),
+                (
+                    "middle",
+                    {
+                        dim: slice(arr.sizes[dim] // 2, arr.sizes[dim] // 2 + 10)
+                        for dim in arr.dims
+                    },
+                ),
+                (
+                    "end",
+                    {
+                        dim: slice(max(0, arr.sizes[dim] - 10), arr.sizes[dim])
+                        for dim in arr.dims
+                    },
+                ),
+            ]
+
+            all_nan_count = 0
+
+            for location, selection in samples_to_check:
+                try:
+                    sample = arr.isel(selection)
+                    sample_data = sample.compute()
+
+                    if sample_data.isnull().all():
+                        all_nan_count += 1
+                        logging.warning(
+                            f"  WARNING: {location} sample is all NaN in {output_fp.name}"
+                        )
+                    else:
+                        logging.debug(
+                            f"  {location} sample valid: "
+                            f"min={float(sample_data.min()):.4f}, "
+                            f"max={float(sample_data.max()):.4f}, "
+                            f"mean={float(sample_data.mean()):.4f}"
+                        )
+                except Exception as e:
+                    logging.error(
+                        f"  ERROR reading {location} sample from {output_fp.name}: {e}"
+                    )
+                    raise
+
+            # Only fail if ALL samples are NaN (suggests real problem)
+            # Partial NaN samples may be filesystem cache issues that resolve
+            if all_nan_count == len(samples_to_check):
+                raise ValueError(
+                    f"Variable '{var_id}' appears to be all NaN in: {output_fp}. "
+                    f"Checked {len(samples_to_check)} locations, all returned NaN. "
+                    f"This may indicate a filesystem cache coherency issue or failed computation."
+                )
+
+            if all_nan_count > 0:
+                logging.warning(
+                    f"  {all_nan_count}/{len(samples_to_check)} samples were all NaN, "
+                    f"but validation passed (some data found)"
+                )
+
+    except Exception as e:
+        raise ValueError(f"Cannot validate output {output_fp}: {e}")
+
+    logging.info(f"✓ Output validated: {output_fp.name} ({size_mb:.2f} MB)")
+
+
+if __name__ == "__main__":
+    tmax_dir, tmin_dir, input_dir, output_dir, dtr_tmp_fn, model, scenario = (
+        parse_args()
+    )
+
+    success = False
+    client = None
+
+    try:
+        # Configure Dask
+        logging.info("Configuring Dask cluster...")
+        client = configure_dask_for_dtr(
+            n_workers=4, threads_per_worker=4, memory_limit="28GB"
+        )
+
+        # Get file paths
+        logging.info("Collecting input file paths...")
+        if input_dir:
+            tmax_fps, tmin_fps = get_tmax_tmin_fps_cmip6(input_dir, model, scenario)
+            logging.info(f"Processing CMIP6 data: {model} {scenario}")
+        else:
+            tmax_fps, tmin_fps = get_tmax_tmin_fps_era5(tmax_dir, tmin_dir)
+            logging.info(f"Processing ERA5 data")
+
+        logging.info(f"Found {len(tmax_fps)} tmax files and {len(tmin_fps)} tmin files")
+
+        # Optimized chunking for DTR calculation
+        # DTR is simple subtraction, so larger chunks are better for I/O efficiency
+        chunks = {"time": 365, "x": 200, "y": 200}  # One year at a time
+
+        logging.info(
+            f"Using chunk strategy: time={chunks['time']}, x={chunks['x']}, y={chunks['y']}"
+        )
+        logging.info("Opening tmax dataset...")
+
+        # Open with explicit chunking - don't use context managers since we need the data later
+        tmax_ds = xr.open_mfdataset(
+            tmax_fps, engine="h5netcdf", parallel=True, use_cftime=True, chunks=chunks
+        )
+
+        logging.info("Opening tmin dataset...")
+        tmin_ds = xr.open_mfdataset(
+            tmin_fps, engine="h5netcdf", parallel=True, use_cftime=True, chunks=chunks
+        )
+
+        # Get variable IDs
+        tmax_var_id = get_var_id(tmax_ds)
+        tmin_var_id = get_var_id(tmin_ds)
+        logging.info(f"Processing variables: {tmax_var_id}, {tmin_var_id}")
+
+        # Validate units match
+        units = tmax_ds[tmax_var_id].attrs["units"]
+        if units != tmin_ds[tmin_var_id].attrs["units"]:
+            raise ValueError(
+                f"Units mismatch: tmax has '{units}', tmin has '{tmin_ds[tmin_var_id].attrs['units']}'"
+            )
+
+        # Calculate DTR (lazy evaluation - no persist()!)
+        logging.info("Calculating DTR (lazy evaluation)...")
+        dtr = tmax_ds[tmax_var_id] - tmin_ds[tmin_var_id]
+
+        dtr.name = "dtr"
+        dtr.attrs = {
+            "long_name": "Daily temperature range",
+            "units": units,
+        }
+
+        # Replace negative values (tasmax - tasmin < 0) with 0.0000999
+        # Using this number instead of zero helps identify tweaked spots
+        logging.info("Applying negative value correction...")
+        dtr = dtr.where((dtr.isnull() | (dtr >= 0)), 0.0000999)
+
+        # Create dataset with matching dimension order
+        dtr_ds = dtr.to_dataset().transpose(*list(tmax_ds[tmax_var_id].dims))
+        dtr_ds.attrs = {k: v for k, v in tmax_ds.attrs.items() & tmin_ds.attrs.items()}
+        dtr_ds.attrs["variable_id"] = "dtr"
+
+        # Write output files
+        try:
+            output_dir.mkdir(parents=True, exist_ok=True)
+        except FileExistsError:
+            # Race condition in parallel jobs - safe to ignore
+            pass
+        years = np.unique(dtr_ds.time.dt.year)
+        total_years = len(years)
+        logging.info(f"Writing {total_years} years of DTR data...")
+
+        for idx, year in enumerate(years, 1):
+            logging.info(f"Processing year {year} ({idx}/{total_years})...")
+            year_ds = dtr_ds.sel(time=str(year))
+            start_date, end_date = get_start_end_dates(year_ds)
+            output_fp = make_output_filepath(
+                output_dir, dtr_tmp_fn, start_date, end_date
+            )
+
+            # Check if output already exists
+            if output_fp.exists():
+                logging.info(f"Output already exists, overwriting: {output_fp.name}")
+                output_fp.unlink()
+
+            logging.info(
+                f"Computing and writing {year_ds.dtr.name} for {start_date}-{end_date}..."
+            )
+            try:
+                year_ds.to_netcdf(output_fp, compute=True)
+                
+                # CRITICAL: Force filesystem sync after write
+                # This ensures data is visible across nodes in distributed filesystems like BeeGFS
+                force_filesystem_sync(output_fp)
+                
+            except Exception as e:
+                logging.error(f"Failed to write {output_fp}: {e}")
+                if output_fp.exists():
+                    output_fp.unlink()
+                raise
+
+            # Validate output with retry logic
+            validate_file_readback(output_fp, var_id="dtr", max_retries=10, retry_delay=5)
+            logging.info(f"✓ Completed year {year} ({idx}/{total_years})")
+
+        logging.info(f"Successfully processed all {total_years} years")
+        success = True
+
+    except Exception as e:
+        logging.error(f"FATAL ERROR during DTR processing: {e}")
+        logging.error(f"DTR calculation FAILED")
+        sys.exit(1)
+
+    finally:
+        # Cleanup Dask client
+        if client is not None:
+            logging.info("Closing Dask client...")
+            client.close()
+
+    if not success:
+        logging.error("DTR processing did not complete successfully")
+        sys.exit(1)
+
+    logging.info("DTR processing completed successfully")
+    sys.exit(0)

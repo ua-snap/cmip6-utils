@@ -98,6 +98,13 @@ def parse_args():
         help="Remove output files in the slurm output files in slurm directory before running the job",
         default=True,
     )
+    parser.add_argument(
+        "--resolution",
+        type=str,
+        help="Resolution of ERA5 data in km (e.g., '4' for 4km, '12' for 12km)",
+        required=False,
+        default="4",
+    )
     args = parser.parse_args()
     args = validate_args(args)
 
@@ -109,6 +116,7 @@ def parse_args():
         args.slurm_dir,
         args.partition,
         args.clear_out_files,
+        args.resolution,
     )
 
 
@@ -150,6 +158,7 @@ def write_sbatch_dtr(
     era5_dir,
     output_dir,
     sbatch_head,
+    resolution,
 ):
     """Write an sbatch array script for executing the dtr processing for a suite of models and scenarios.
 
@@ -160,10 +169,14 @@ def write_sbatch_dtr(
         era5_dir (path-like): path to directory of tasmax and tasmin files
         output_dir (path-like): directory to write the dtr data
         sbatch_head (dict): string for sbatch head script
+        resolution (str): Resolution of ERA5 data in km
 
     Returns:
         None, writes the commands to sbatch_fp
     """
+    # Format the DTR template filename with resolution
+    dtr_filename = era5_dtr_tmp_fn.format(year="{year}", resolution=resolution)
+
     pycommands = "\n"
     pycommands += (
         # Extract the model and scenario to process for the current $SLURM_ARRAY_TASK_ID
@@ -171,7 +184,7 @@ def write_sbatch_dtr(
         f"--tmax_dir {era5_dir.joinpath(era5_tmax_var_id)} "
         f"--tmin_dir {era5_dir.joinpath(era5_tmin_var_id)} "
         f"--output_dir {output_dir} "
-        f"--dtr_tmp_fn {era5_dtr_tmp_fn}\n\n"
+        f"--dtr_tmp_fn {dtr_filename}\n\n"
     )
 
     pycommands += f"echo End dtr processing && date\n\n"
@@ -209,20 +222,29 @@ if __name__ == "__main__":
         slurm_dir,
         partition,
         clear_out_files,
+        resolution,
     ) = parse_args()
 
     output_dir.mkdir(exist_ok=True)
     # make the output directories
 
     slurm_dir.mkdir(exist_ok=True)
+    # Create subdirectory for ERA5 DTR processing slurm outputs
+    era5_dtr_slurm_dir = slurm_dir.joinpath("process_era5_dtr")
+    era5_dtr_slurm_dir.mkdir(exist_ok=True)
+
     if clear_out_files:
-        for file in slurm_dir.glob(era5_dtr_sbatch_fn.replace(".slurm", "*.out")):
+        for file in era5_dtr_slurm_dir.glob(
+            era5_dtr_sbatch_fn.replace(".slurm", "*.out")
+        ):
             file.unlink()
 
     # filepath for slurm script
-    sbatch_fp = slurm_dir.joinpath(era5_dtr_sbatch_fn)
+    sbatch_fp = era5_dtr_slurm_dir.joinpath(era5_dtr_sbatch_fn)
     # filepath for slurm stdout
-    sbatch_out_fp = slurm_dir.joinpath(sbatch_fp.name.replace(".slurm", "_%j.out"))
+    sbatch_out_fp = era5_dtr_slurm_dir.joinpath(
+        sbatch_fp.name.replace(".slurm", "_%j.out")
+    )
 
     sbatch_head_kwargs = {
         "partition": partition,
@@ -238,6 +260,7 @@ if __name__ == "__main__":
         "era5_dir": era5_dir,
         "output_dir": output_dir,
         "sbatch_head": sbatch_head,
+        "resolution": resolution,
     }
     write_sbatch_dtr(**sbatch_dtr_kwargs)
     job_id = submit_sbatch(sbatch_fp)

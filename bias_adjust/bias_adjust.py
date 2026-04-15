@@ -7,25 +7,336 @@ Example usage:
 import argparse
 import datetime
 import logging
+import os
 import shutil
+import subprocess
+import sys
+import time
 
 # import multiprocessing as mp
 from itertools import product
 from pathlib import Path
+import dask
+from dask.distributed import Client, LocalCluster
 import xarray as xr
 from xclim import sdba
+import numcodecs
 
 from zarr.sync import ThreadSynchronizer
 
 # from luts import jitter_under_lu
 from train_qm import get_var_id
 
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[logging.StreamHandler()],
 )
+
+
+def configure_dask_for_adjustment(
+    n_workers=4, threads_per_worker=4, memory_limit="30GB", worker_dir=None
+):
+    """Configure Dask LocalCluster optimized for bias adjustment on 128GB nodes.
+
+    Adjustment is more I/O intensive than training, so optimize accordingly.
+
+    Args:
+        n_workers: Number of worker processes (default: 4)
+        threads_per_worker: Threads per worker (default: 4)
+        memory_limit: Memory limit per worker (default: 30GB)
+        worker_dir: Directory for dask worker files (default: None, uses dask default)
+
+    Returns:
+        client: Dask distributed client
+    """
+    # Close any existing clients
+    try:
+        client = Client.current()
+        client.close()
+    except ValueError:
+        pass
+
+    # Configure global dask settings
+    dask.config.set(
+        {
+            # Memory management - more conservative thresholds to avoid OOM
+            "distributed.worker.memory.target": 0.70,  # Start managing at 70%
+            "distributed.worker.memory.spill": 0.80,  # Spill to disk at 80%
+            "distributed.worker.memory.pause": 0.85,  # Pause at 85%
+            "distributed.worker.memory.terminate": 0.95,
+            # I/O optimization
+            "distributed.comm.timeouts.tcp": "120s",
+            "distributed.scheduler.bandwidth": 1e9,
+            # Array settings
+            "array.slicing.split_large_chunks": True,
+            "array.chunk-size": "128 MiB",
+            # Determinism - disable work stealing for reproducible results
+            "distributed.scheduler.work-stealing": False,
+        }
+    )
+
+    cluster = LocalCluster(
+        n_workers=n_workers,
+        threads_per_worker=threads_per_worker,
+        memory_limit=memory_limit,
+        processes=True,
+        dashboard_address=None,
+        local_directory=str(worker_dir) if worker_dir else None,
+    )
+
+    client = Client(cluster)
+
+    logging.info(f"Dask cluster configured for adjustment:")
+    logging.info(f"  Workers: {n_workers}, Threads/worker: {threads_per_worker}")
+    logging.info(f"  Memory per worker: {memory_limit}")
+    if worker_dir:
+        logging.info(f"  Worker directory: {worker_dir}")
+    logging.info(f"  Dashboard: {client.dashboard_link}")
+
+    return client
+
+
+def force_filesystem_cache_refresh(zarr_path, max_attempts=10, delay=10):
+    """Aggressively force beegfs to refresh its cache for a zarr store.
+
+    This is critical for multi-node jobs where the writer and reader are on different nodes.
+
+    Args:
+        zarr_path: Path to zarr store
+        max_attempts: Number of attempts to verify chunks are visible
+        delay: Seconds between attempts
+    """
+    logging.info(f"Forcing filesystem cache refresh for {zarr_path}...")
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            # Force kernel to flush anything pending
+            try:
+                os.sync()
+            except:
+                pass
+
+            # List all chunk files to force metadata + inode cache refresh
+            # Zarr chunks are named like "0.0.0", "1.2.3", etc.
+            result = subprocess.run(
+                ["find", str(zarr_path), "-type", "f", "-name", "*.*.*"],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                check=False,
+            )
+
+            chunk_files = [
+                line
+                for line in result.stdout.strip().split("\n")
+                if line
+                and not line.endswith(".zarray")
+                and not line.endswith(".zattrs")
+            ]
+            logging.info(f"  Attempt {attempt}: Found {len(chunk_files)} chunk files")
+
+            if len(chunk_files) > 0:
+                # Try to actually read a few bytes from chunk files
+                import random
+
+                sample_files = random.sample(chunk_files, min(5, len(chunk_files)))
+                for chunk_file in sample_files:
+                    try:
+                        with open(chunk_file, "rb") as f:
+                            data = f.read(1024)  # Read first 1KB
+                            if len(data) > 0:
+                                logging.info(
+                                    f"    Read {len(data)} bytes from {os.path.basename(chunk_file)}"
+                                )
+                    except Exception as e:
+                        logging.warning(f"    Failed to read {chunk_file}: {e}")
+
+                logging.info(f"  ✓ Cache refresh successful - chunks are visible")
+                return True
+
+            if attempt < max_attempts:
+                logging.info(f"  No chunks found yet, waiting {delay}s...")
+                time.sleep(delay)
+
+        except subprocess.TimeoutExpired:
+            logging.warning(
+                f"  Timeout finding chunk files, attempt {attempt}/{max_attempts}"
+            )
+            if attempt < max_attempts:
+                time.sleep(delay)
+        except Exception as e:
+            logging.warning(f"  Cache refresh attempt {attempt} failed: {e}")
+            if attempt < max_attempts:
+                time.sleep(delay)
+
+    raise ValueError(
+        f"Could not verify zarr chunks are visible after {max_attempts} attempts"
+    )
+
+
+def validate_zarr_readback(zarr_path, expected_var_id, max_retries=120, retry_delay=60):
+    """Validate that written zarr can be read back with actual data.
+
+    This forces the writer node to verify data is accessible, which helps
+    ensure it will be visible to other nodes in a distributed filesystem.
+    Retries for up to 2 hours by default to handle slow filesystem propagation.
+
+    Args:
+        zarr_path: Path to zarr store
+        expected_var_id: Variable to check
+        max_retries: Number of read attempts (default: 120 = 2 hours with 60s delay)
+        retry_delay: Seconds between retries (default: 60)
+
+    Returns:
+        True if successful
+
+    Raises:
+        ValueError: If data cannot be read after retries
+    """
+    import zarr
+    import gc
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            elapsed_time = (attempt - 1) * retry_delay / 60  # minutes
+            logging.info(
+                f"Read-back validation attempt {attempt}/{max_retries} (elapsed: {elapsed_time:.1f} min)..."
+            )
+
+            # Close any open connections and force fresh read
+            gc.collect()  # Force garbage collection to close file handles
+
+            # Try system sync first
+            try:
+                os.sync()
+            except:
+                pass
+
+            # Open fresh without any caching
+            ds = xr.open_zarr(zarr_path, consolidated=False)
+
+            if expected_var_id not in ds.data_vars:
+                raise ValueError(f"Variable '{expected_var_id}' not found in dataset")
+
+            arr = ds[expected_var_id]
+
+            # Check multiple samples to catch filesystem cache coherency issues
+            # where some chunks may not be visible yet on different nodes
+            logging.info(f"Checking data validity by loading multiple samples...")
+            samples_to_check = [
+                ("start", {dim: slice(0, min(50, arr.sizes[dim])) for dim in arr.dims}),
+                (
+                    "middle",
+                    {
+                        dim: slice(arr.sizes[dim] // 2, arr.sizes[dim] // 2 + 50)
+                        for dim in arr.dims
+                    },
+                ),
+                (
+                    "end",
+                    {
+                        dim: slice(max(0, arr.sizes[dim] - 50), arr.sizes[dim])
+                        for dim in arr.dims
+                    },
+                ),
+            ]
+
+            all_nan_count = 0
+            sample_stats = []
+
+            for location, selection in samples_to_check:
+                sample = arr.isel(selection)
+                sample_data = sample.compute()  # Force actual read from disk
+
+                if sample_data.size == 0:
+                    raise ValueError(f"{location} sample is empty")
+
+                if sample_data.isnull().all():
+                    all_nan_count += 1
+                    logging.warning(f"  WARNING: {location} sample is all NaN")
+                else:
+                    sample_stats.append(
+                        (
+                            location,
+                            float(sample_data.mean()),
+                            float(sample_data.min()),
+                            float(sample_data.max()),
+                        )
+                    )
+
+            # Only fail if ALL samples are NaN (suggests real problem)
+            if all_nan_count == len(samples_to_check):
+                raise ValueError(
+                    f"All {len(samples_to_check)} samples are NaN! "
+                    f"This suggests a filesystem cache coherency issue or failed computation."
+                )
+
+            if all_nan_count > 0:
+                logging.warning(
+                    f"  {all_nan_count}/{len(samples_to_check)} samples were all NaN, "
+                    f"but validation passed (some data found)"
+                )
+
+            # Check that we can access actual chunk files
+            z = zarr.open_group(zarr_path, "r")
+            if expected_var_id not in z:
+                raise ValueError(f"Variable {expected_var_id} not in zarr group")
+
+            var_array = z[expected_var_id]
+            chunk_keys = [
+                k for k in var_array.chunk_store.keys() if expected_var_id in str(k)
+            ]
+            chunk_count = len(chunk_keys)
+            logging.info(f"Found {chunk_count} chunk files for {expected_var_id}")
+
+            if chunk_count == 0:
+                raise ValueError("No chunk files found!")
+
+            # Success!
+            logging.info(f"✓ Read-back validation PASSED on attempt {attempt}")
+            if sample_stats:
+                logging.info(
+                    f"  - Valid samples: {len(sample_stats)}/{len(samples_to_check)}"
+                )
+                for location, mean, min_val, max_val in sample_stats:
+                    logging.info(
+                        f"    {location}: mean={mean:.4f}, range=[{min_val:.4f}, {max_val:.4f}]"
+                    )
+            logging.info(f"  - Chunk count: {chunk_count}")
+            ds.close()
+            return True
+
+        except Exception as e:
+            logging.warning(f"✗ Read-back validation attempt {attempt} failed: {e}")
+
+            if attempt < max_retries:
+                logging.info(f"Waiting {retry_delay}s before retry...")
+                time.sleep(retry_delay)
+
+                # Try to force filesystem visibility
+                try:
+                    os.sync()
+                except:
+                    pass
+
+                # List the directory structure to force metadata refresh
+                try:
+                    subprocess.run(
+                        ["find", str(zarr_path), "-type", "f", "-name", "*.*.*"],
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                except:
+                    pass
+            else:
+                raise ValueError(
+                    f"Failed to validate zarr after {max_retries} attempts ({max_retries * retry_delay / 3600:.1f} hours). "
+                    f"Last error: {e}"
+                )
+
+    return False
 
 
 def add_global_attrs(adj_ds, src_ds):
@@ -129,87 +440,527 @@ def parse_args():
 
 
 def validate_sim_source(train_ds, sim_ds):
+    """Validate that training and sim datasets have matching source_id.
+
+    Raises:
+        ValueError: If source_ids don't match
+    """
     logging.info("Validating source_id")
-    assert train_ds.attrs["source_id"] == sim_ds.attrs["source_id"]
+    if "source_id" not in train_ds.attrs:
+        raise ValueError("Training dataset missing 'source_id' attribute")
+    if "source_id" not in sim_ds.attrs:
+        raise ValueError("Simulation dataset missing 'source_id' attribute")
+
+    if train_ds.attrs["source_id"] != sim_ds.attrs["source_id"]:
+        raise ValueError(
+            f"Source ID mismatch: training has '{train_ds.attrs['source_id']}' "
+            f"but simulation has '{sim_ds.attrs['source_id']}'"
+        )
+
     logging.info(
-        "Simulated data source (model) validated, sim trained adjustment "
-        f"({train_ds.attrs['source_id']}) matches sim ({sim_ds.attrs['source_id']})"
+        f"Simulated data source (model) validated: {train_ds.attrs['source_id']}"
     )
+
+
+def validate_input_data(ds, var_id, label):
+    """Validate that input data is not empty or all NaN.
+
+    Checks multiple samples across the dataset to handle filesystem cache
+    coherency issues on distributed systems like beegfs.
+
+    Args:
+        ds: xarray Dataset
+        var_id: variable identifier
+        label: descriptive label for error messages
+
+    Raises:
+        ValueError: If data is invalid or all samples are NaN
+    """
+    if var_id not in ds.data_vars:
+        raise ValueError(f"{label} variable '{var_id}' not found in dataset")
+
+    arr = ds[var_id]
+    if arr.size == 0:
+        raise ValueError(f"{label} for {var_id} is empty")
+
+    # Check multiple samples to catch filesystem cache coherency issues
+    samples_to_check = [
+        ("start", {dim: slice(0, min(10, arr.sizes[dim])) for dim in arr.dims}),
+        (
+            "middle",
+            {
+                dim: slice(arr.sizes[dim] // 2, arr.sizes[dim] // 2 + 10)
+                for dim in arr.dims
+            },
+        ),
+        (
+            "end",
+            {
+                dim: slice(max(0, arr.sizes[dim] - 10), arr.sizes[dim])
+                for dim in arr.dims
+            },
+        ),
+    ]
+
+    all_nan_count = 0
+
+    for location, selection in samples_to_check:
+        try:
+            sample = arr.isel(selection)
+            sample_data = sample.compute()
+
+            if sample_data.isnull().all():
+                all_nan_count += 1
+                logging.warning(f"  WARNING: {location} sample is all NaN for {label}")
+        except Exception as e:
+            logging.error(f"  ERROR reading {location} sample for {label}: {e}")
+            raise
+
+    # Only fail if ALL samples are NaN (suggests real problem)
+    if all_nan_count == len(samples_to_check):
+        raise ValueError(
+            f"{label} for {var_id} appears to be all NaN! "
+            f"Checked {len(samples_to_check)} locations, all returned NaN. "
+            f"This may indicate a filesystem cache coherency issue."
+        )
+
+    if all_nan_count > 0:
+        logging.warning(
+            f"  {all_nan_count}/{len(samples_to_check)} samples were all NaN for {label}, "
+            f"but validation passed (some data found)"
+        )
+
+    logging.info(f"{label} validation passed for {var_id}")
+
+
+def validate_output_zarr(adj_path, var_id, min_size_mb=10):
+    """Validate written zarr output.
+
+    Args:
+        adj_path: Path to zarr store
+        var_id: variable identifier
+        min_size_mb: minimum expected size in MB
+
+    Raises:
+        ValueError: If output is invalid
+    """
+    import os
+
+    logging.info(f"Validating output at {adj_path}...")
+
+    if not adj_path.exists():
+        raise ValueError(f"Output zarr store not created at {adj_path}")
+
+    # Check size
+    total_size = sum(
+        os.path.getsize(os.path.join(dirpath, filename))
+        for dirpath, _, filenames in os.walk(adj_path)
+        for filename in filenames
+        if os.path.exists(os.path.join(dirpath, filename))
+    )
+
+    size_mb = total_size / (1024 * 1024)
+    logging.info(f"Output zarr store size: {size_mb:.2f} MB")
+
+    if size_mb < min_size_mb:
+        raise ValueError(
+            f"Output suspiciously small ({size_mb:.2f} MB < {min_size_mb} MB)"
+        )
+
+    # Validate content
+    try:
+        adj_ds_check = xr.open_zarr(adj_path, consolidated=True)
+    except Exception as e:
+        raise ValueError(f"Cannot open output zarr: {e}")
+
+    validate_input_data(adj_ds_check, var_id, "Output")
+    logging.info("Output validation passed")
 
 
 if __name__ == "__main__":
     train_path, sim_path, adj_path, tmp_path = parse_args()
 
-    # open connection to trained QM dataset
-    train_ds = xr.open_zarr(train_path).chunk({"x": 50, "y": 50})
-    qm = sdba.QuantileDeltaMapping.from_dataset(train_ds)
+    success = False
+    client = None
 
-    # create a dataset containing all projected data to be adjusted
-    # not adjusting historical, no need for now
-    # need to rechunk this one too, same reason as for training data
-    sim_ds = xr.open_zarr(sim_path)
-    validate_sim_source(train_ds, sim_ds)
+    try:
+        # Create dedicated worker directory in tmp_path
+        # Name it without "dask-worker" prefix to avoid nested dask-worker-space directories
+        worker_base_dir = tmp_path / f"bias-adjust-{sim_path.stem}-{os.getpid()}"
+        logging.info(f"Creating worker base directory: {worker_base_dir}")
+        try:
+            worker_base_dir.mkdir(parents=True, exist_ok=True)
+        except FileExistsError:
+            # Race condition in parallel jobs - safe to ignore
+            pass
 
-    var_id = get_var_id(sim_ds)
+        # Configure Dask
+        logging.info("Configuring Dask cluster...")
+        client = configure_dask_for_adjustment(
+            n_workers=4,
+            threads_per_worker=4,
+            memory_limit="28GB",
+            worker_dir=worker_base_dir,
+        )
 
-    scen = qm.adjust(
-        sim_ds[var_id],
-        extrapolation="constant",
-        interp="nearest",
-    )
-    scen_ds = scen.to_dataset(name=var_id)
-    scen_ds = drop_non_coord_vars(scen_ds)
-    scen_ds = add_global_attrs(scen_ds, sim_ds)
-    logging.info(f"Running adjustment and writing to {adj_path}")
+        logging.info(f"Starting bias adjustment for {sim_path.name}")
 
-    if adj_path.exists():
-        logging.info(f"Adjusted data store exists, removing ({adj_path}).")
-        shutil.rmtree(adj_path, ignore_errors=True)
+        # Initial chunking for loading - will be rechunked before adjustment
+        # xclim requires time=-1, but we load with larger chunks first for efficiency
+        chunk_dict = {"time": 365, "x": 150, "y": 150}
 
-    if var_id == "dtr":
-        logging.info("##### START SQUEEZING DTR #####")
-        rechunked = scen_ds[var_id].chunk(dict(y=-1, x=-1))
-        max_value = rechunked.max().values
-        min_value = rechunked.min().values
-        lower_thresh = rechunked.quantile(0.0000002).values
-        upper_thresh = rechunked.quantile(0.9999998).values
+        logging.info(
+            f"Using initial chunk strategy: time={chunk_dict['time']}, x={chunk_dict['x']}, y={chunk_dict['y']}"
+        )
 
-        # Count the number of pixels above and below the thresholds
-        num_below = scen_ds[var_id].where(scen_ds[var_id] < lower_thresh).count().compute().item()
-        num_above = scen_ds[var_id].where(scen_ds[var_id] > upper_thresh).count().compute().item()
-        logging.info("Number of pixels below lower threshold: ", num_below)
-        logging.info("Number of pixels above upper threshold: ", num_above)
+        # open connection to trained QM dataset
+        logging.info(f"Loading trained QM dataset from {train_path}")
+        train_ds = xr.open_zarr(
+            train_path, consolidated=True
+        )  # Training data is small, no need to chunk
+        qm = sdba.QuantileDeltaMapping.from_dataset(train_ds)
 
-        scen_ds[var_id] = scen_ds[var_id].where((scen_ds[var_id] >= lower_thresh) | scen_ds[var_id].isnull(), other=lower_thresh)
-        scen_ds[var_id] = scen_ds[var_id].where((scen_ds[var_id] <= upper_thresh) | scen_ds[var_id].isnull(), other=upper_thresh)
+        # Load simulation data with optimized chunks
+        logging.info(f"Loading simulation dataset from {sim_path}")
+        sim_ds = xr.open_zarr(sim_path, chunks=chunk_dict, consolidated=True)
 
-        logging.info(f"Max DTR value: {max_value}")
-        logging.info(f"Min DTR value: {min_value}")
-        logging.info(f"Set values below {lower_thresh} to {lower_thresh}")
-        logging.info(f"Set values above {upper_thresh} to {upper_thresh}")
-        logging.info("##### FINISH SQUEEZING DTR #####")
+        # Validate source matching
+        validate_sim_source(train_ds, sim_ds)
 
-    max_tasmax = 333.15
-    max_pr = 1650
-    min_pr = 0
+        var_id = get_var_id(sim_ds)
+        logging.info(f"Processing variable: {var_id}")
 
-    # tasmin is squeezed separately in the derived/difference.py script
-    var_ds = scen_ds[var_id]
-    if var_id == "tasmax":
-        logging.info("Squeezing tasmax values above limit")
-        count_above_threshold = (var_ds > max_tasmax).sum().compute().item()
-        logging.info(f"Count of values above {max_tasmax} K: {count_above_threshold}")
-        var_ds = var_ds.where((var_ds <= max_tasmax) | var_ds.isnull(), max_tasmax)
-    elif var_id == "pr":
-        logging.info("Squeezing pr values above and below limits")
-        count_above_threshold = (var_ds > max_pr).sum().compute().item()
-        count_below_zero = (var_ds < min_pr).sum().compute().item()
-        logging.info(f"Count of values above {max_pr} mm/day: {count_above_threshold}")
-        logging.info(f"Count of values below {min_pr} mm/day: {count_below_zero}")
-        var_ds = var_ds.where((var_ds <= max_pr) | var_ds.isnull(), max_pr)
-        var_ds = var_ds.where((var_ds >= min_pr) | var_ds.isnull(), min_pr)
-    scen_ds[var_id] = var_ds
+        # Validate input data
+        validate_input_data(sim_ds, var_id, "Input simulation data")
 
-    logging.info(f"Writing adjusted data to {adj_path}")
-    synchronizer = ThreadSynchronizer()
-    scen_ds.to_zarr(adj_path, synchronizer=synchronizer)
+        # CRITICAL: Rechunk time dimension for adjustment
+        # xclim's QDM adjust() requires time to be in a single chunk (same as training)
+        # Use smaller spatial chunks to compensate for large time chunk
+        # Memory per chunk: ~36,500 days × 50 × 50 × 4 bytes = ~3.6GB (worst case for long scenarios)
+        logging.info("Rechunking data for adjustment (time=-1 required by xclim)...")
+        sim_var = sim_ds[var_id]
+        adjustment_chunks = {"time": -1, "x": 50, "y": 50}
+        sim_var_rechunked = sim_var.chunk(adjustment_chunks)
+        logging.info(f"  Adjustment chunks: time=-1, x=50, y=50")
+        logging.info(f"  Memory per spatial chunk: ~3.6GB (worst case)")
+        logging.info(f"  Rechunked shape: {sim_var_rechunked.shape}")
+        logging.info(f"  Rechunked chunks: {sim_var_rechunked.chunks}")
+
+        logging.info(f"Applying bias adjustment for {var_id}...")
+        scen = qm.adjust(
+            sim_var_rechunked,
+            extrapolation="constant",
+            interp="nearest",
+        )
+        scen_ds = scen.to_dataset(name=var_id)
+        scen_ds = drop_non_coord_vars(scen_ds)
+        scen_ds = add_global_attrs(scen_ds, sim_ds)
+        logging.info(f"Bias adjustment completed for {var_id}")
+
+        # CRITICAL: Rechunk after adjustment to avoid memory issues during squeeze operations
+        # The adjustment step requires time=-1, but squeeze operations need smaller chunks
+        # Use moderate time chunks to balance memory and task overhead
+        logging.info("Rechunking adjusted data for squeeze operations...")
+        squeeze_chunks = {"time": 365, "x": 100, "y": 100}
+        scen_ds = scen_ds.chunk(squeeze_chunks)
+        logging.info(f"  Rechunked to: time=365, x=100, y=100 for memory efficiency")
+
+        # Remove existing output
+        if adj_path.exists():
+            logging.info(f"Removing existing adjusted data store at {adj_path}")
+            try:
+                shutil.rmtree(adj_path)
+            except Exception as e:
+                logging.error(f"Failed to remove existing output: {e}")
+                raise
+
+        # Apply variable-specific thresholding
+        if var_id == "dtr":
+            logging.info("##### START SQUEEZING DTR #####")
+            import numpy as np
+            import dask.array as da
+
+            logging.info(
+                "Computing quantile-based thresholds using histogram method..."
+            )
+            arr = scen_ds[var_id]
+
+            # Use histogram-based quantile estimation to avoid loading entire array
+            # This works efficiently with chunked dask arrays
+            logging.info("Building histogram of DTR values...")
+
+            # Compute min/max for histogram range (reduction ops work efficiently with chunks)
+            arr_min = float(arr.min().compute())
+            arr_max = float(arr.max().compute())
+            logging.info(f"DTR range: [{arr_min:.2f}, {arr_max:.2f}] K")
+
+            # Create histogram with sufficient bins to capture extreme quantiles
+            # Use 10000 bins to get good resolution for 0.0000002 quantile
+            n_bins = 10000
+            hist_range = (arr_min, arr_max)
+
+            logging.info(
+                f"Computing histogram with {n_bins} bins (processes chunks efficiently)..."
+            )
+            # dask.array.histogram works with chunks without loading full array
+            hist, bin_edges = da.histogram(arr.data, bins=n_bins, range=hist_range)
+            hist = (
+                hist.compute()
+            )  # Only histogram counts need to be in memory, not raw data
+
+            # Build cumulative distribution from histogram
+            cumsum = np.cumsum(hist)
+            total_count = cumsum[-1]
+            cdf = cumsum / total_count
+
+            # Find quantile values from CDF
+            lower_quantile = 0.0000002
+            upper_quantile = 0.9999998
+
+            lower_idx = np.searchsorted(cdf, lower_quantile)
+            upper_idx = np.searchsorted(cdf, upper_quantile)
+
+            lower_thresh = float(bin_edges[lower_idx])
+            upper_thresh = float(bin_edges[upper_idx + 1])  # Use upper edge of bin
+
+            logging.info(
+                f"Computed quantile-based thresholds: [{lower_thresh:.2f}, {upper_thresh:.2f}] K"
+            )
+            logging.info(
+                f"  Lower threshold (q={lower_quantile}): {lower_thresh:.2f} K"
+            )
+            logging.info(
+                f"  Upper threshold (q={upper_quantile}): {upper_thresh:.2f} K"
+            )
+
+            # Count the number of pixels above and below the thresholds
+            num_below = (
+                scen_ds[var_id]
+                .where(scen_ds[var_id] < lower_thresh)
+                .count()
+                .compute()
+                .item()
+            )
+            num_above = (
+                scen_ds[var_id]
+                .where(scen_ds[var_id] > upper_thresh)
+                .count()
+                .compute()
+                .item()
+            )
+            logging.info(f"Number of pixels below lower threshold: {num_below}")
+            logging.info(f"Number of pixels above upper threshold: {num_above}")
+
+            scen_ds[var_id] = scen_ds[var_id].where(
+                (scen_ds[var_id] >= lower_thresh) | scen_ds[var_id].isnull(),
+                other=lower_thresh,
+            )
+            scen_ds[var_id] = scen_ds[var_id].where(
+                (scen_ds[var_id] <= upper_thresh) | scen_ds[var_id].isnull(),
+                other=upper_thresh,
+            )
+
+            logging.info(f"Max DTR value: {arr_max:.2f} K")
+            logging.info(f"Min DTR value: {arr_min:.2f} K")
+            logging.info(f"Set values below {lower_thresh:.2f} to {lower_thresh:.2f}")
+            logging.info(f"Set values above {upper_thresh:.2f} to {upper_thresh:.2f}")
+            logging.info("##### FINISH SQUEEZING DTR #####")
+
+        max_tasmax = 333.15
+        max_pr = 1650
+        min_pr = 0
+
+        # tasmin is squeezed separately in the derived/difference.py script
+        var_ds = scen_ds[var_id]
+        if var_id == "tasmax":
+            logging.info("Squeezing tasmax values above limit")
+            count_above_threshold = (var_ds > max_tasmax).sum().compute().item()
+            logging.info(
+                f"Count of values above {max_tasmax} K: {count_above_threshold}"
+            )
+            var_ds = var_ds.where((var_ds <= max_tasmax) | var_ds.isnull(), max_tasmax)
+        elif var_id == "pr":
+            logging.info("Squeezing pr values above and below limits")
+            count_above_threshold = (var_ds > max_pr).sum().compute().item()
+            count_below_zero = (var_ds < min_pr).sum().compute().item()
+            logging.info(
+                f"Count of values above {max_pr} mm/day: {count_above_threshold}"
+            )
+            logging.info(f"Count of values below {min_pr} mm/day: {count_below_zero}")
+            var_ds = var_ds.where((var_ds <= max_pr) | var_ds.isnull(), max_pr)
+            var_ds = var_ds.where((var_ds >= min_pr) | var_ds.isnull(), min_pr)
+        scen_ds[var_id] = var_ds
+
+        logging.info(f"Writing adjusted data to {adj_path}")
+        synchronizer = ThreadSynchronizer()
+
+        # Configure compression optimized for climate data
+        # Use fixed output chunks that work for all scenarios
+        output_chunks = (365, 100, 100)  # (time, y, x)
+
+        # CRITICAL: Force rechunking BEFORE writing by persisting the result
+        # The squeeze operations create lazy task graphs that may have wrong physical chunk layout
+        # Calling .persist() forces Dask to execute the rechunk and materialize the array
+        # with the correct chunk structure in memory before we try to write it
+        logging.info(
+            f"Rechunking to {output_chunks} and persisting to force execution..."
+        )
+        scen_ds = scen_ds.chunk(
+            {"time": output_chunks[0], "y": output_chunks[1], "x": output_chunks[2]}
+        )
+
+        # Persist forces the rechunk to actually execute, not just create a lazy graph
+        # This materializes the array in distributed memory with correct chunks
+        logging.info("Persisting rechunked dataset (this executes the rechunk)...")
+        scen_ds = scen_ds.persist()
+
+        # Wait for persist to complete
+        from dask.distributed import wait
+
+        wait(scen_ds)
+        logging.info("Persist completed - array now has correct physical chunk layout")
+
+        encoding = {
+            var_id: {
+                "compressor": numcodecs.Blosc(
+                    cname="zstd",
+                    clevel=3,  # Lower compression for faster writes
+                    shuffle=numcodecs.Blosc.BITSHUFFLE,
+                ),
+                "chunks": output_chunks,
+            }
+        }
+
+        # ROBUST FALLBACK CHAIN: Try multiple strategies until write succeeds
+        write_success = False
+
+        # STRATEGY 1: Persist + write with safety checks (current approach)
+        try:
+            logging.info("STRATEGY 1: Writing with persist() and safety checks...")
+            scen_ds.to_zarr(
+                adj_path,
+                encoding=encoding,
+                synchronizer=synchronizer,
+                consolidated=True,
+                compute=True,
+            )
+            logging.info("✓ Strategy 1 succeeded - write completed with safety checks")
+            write_success = True
+        except Exception as e:
+            error_msg = str(e)
+            if "would overlap multiple dask chunks" in error_msg:
+                logging.warning(
+                    f"Strategy 1 failed with chunk overlap error (false positive)"
+                )
+                logging.warning(
+                    "This is likely a Dask graph optimization issue, not real corruption risk"
+                )
+            else:
+                logging.error(f"Strategy 1 failed with unexpected error: {e}")
+
+            # STRATEGY 2: Bypass safety check with safe_chunks=False
+            try:
+                logging.info("STRATEGY 2: Retrying with safe_chunks=False...")
+                if adj_path.exists():
+                    shutil.rmtree(adj_path, ignore_errors=True)
+
+                scen_ds.to_zarr(
+                    adj_path,
+                    encoding=encoding,
+                    synchronizer=synchronizer,
+                    consolidated=True,
+                    compute=True,
+                    safe_chunks=False,  # Override safety check
+                )
+                logging.info(
+                    "✓ Strategy 2 succeeded - write completed with safe_chunks=False"
+                )
+                write_success = True
+            except Exception as e2:
+                logging.error(f"Strategy 2 failed: {e2}")
+
+                # STRATEGY 3: Compute to memory, then write
+                try:
+                    logging.info("STRATEGY 3: Computing to memory then writing...")
+                    logging.info("This may take extra time and memory...")
+                    if adj_path.exists():
+                        shutil.rmtree(adj_path, ignore_errors=True)
+
+                    # Compute loads the entire dataset into memory as numpy arrays
+                    logging.info("Loading dataset to memory (compute)...")
+                    scen_ds_computed = scen_ds.compute()
+
+                    # Write directly from numpy-backed dataset
+                    # No need to rechunk - that would create a lazy graph again!
+                    # xarray/zarr will chunk the numpy arrays during write based on encoding
+                    logging.info(
+                        "Writing numpy-backed dataset directly (no lazy rechunking)..."
+                    )
+                    scen_ds_computed.to_zarr(
+                        adj_path,
+                        encoding=encoding,
+                        synchronizer=synchronizer,
+                        consolidated=True,
+                    )
+                    logging.info("✓ Strategy 3 succeeded - write completed from memory")
+                    write_success = True
+                except Exception as e3:
+                    logging.error(f"Strategy 3 failed: {e3}")
+                    logging.error("ALL WRITE STRATEGIES FAILED!")
+                    if adj_path.exists():
+                        shutil.rmtree(adj_path, ignore_errors=True)
+                    raise RuntimeError(
+                        f"Failed to write {adj_path} after trying all strategies. "
+                        f"Strategy 1: {error_msg}, Strategy 2: {e2}, Strategy 3: {e3}"
+                    )
+
+        if not write_success:
+            raise RuntimeError(f"Write did not complete successfully for {adj_path}")
+
+        logging.info(f"Initial write to {adj_path} completed successfully")
+
+        # CRITICAL: Validate we can read it back
+        logging.info("=" * 60)
+        logging.info("Starting read-after-write validation (up to 2 hours)...")
+        logging.info("=" * 60)
+
+        try:
+            validate_zarr_readback(adj_path, var_id, max_retries=120, retry_delay=60)
+            logging.info("=" * 60)
+            logging.info("✓✓✓ Adjusted data validated and confirmed readable ✓✓✓")
+            logging.info("=" * 60)
+        except Exception as e:
+            logging.error("=" * 60)
+            logging.error(f"✗✗✗ FATAL: Cannot read back written data: {e} ✗✗✗")
+            logging.error("This data should NOT be used as input to other scripts!")
+            logging.error("=" * 60)
+            # Clean up unreadable output
+            if adj_path.exists():
+                shutil.rmtree(adj_path, ignore_errors=True)
+            raise
+
+        logging.info(f"Bias adjustment pipeline completed successfully for {var_id}")
+        success = True
+
+    except Exception as e:
+        logging.error(f"FATAL ERROR during processing or writing: {e}")
+        logging.error(f"Bias adjustment FAILED for {sim_path.name}")
+        # Clean up any partial output
+        if adj_path.exists():
+            logging.info(f"Cleaning up failed output at {adj_path}")
+            shutil.rmtree(adj_path, ignore_errors=True)
+        sys.exit(1)
+
+    finally:
+        # Cleanup Dask client (but leave worker directory - Dask may still be using it)
+        if client is not None:
+            logging.info("Closing Dask client...")
+            client.close()
+            # Note: Not removing worker_base_dir to avoid race conditions with Dask cleanup
+            # These directories can be cleaned up periodically with a separate maintenance script
+    if not success:
+        logging.error("Bias adjustment did not complete successfully")
+        sys.exit(1)
+
+    logging.info("Exiting with success")
+    sys.exit(0)

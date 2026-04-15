@@ -1,4 +1,4 @@
-"""Generate text files ("batch" files) containing all of the files we want to regrid broken up by frequency, model, scenario, and variable. 
+"""Generate text files ("batch" files) containing all of the files we want to regrid broken up by frequency, model, scenario, and variable.
 It utilizes code from the explore_grids.ipynb notebook to select the files which need to be regridded.
 """
 
@@ -38,10 +38,26 @@ def fp_to_attrs(fp):
     attr_di : dict
         Dictionary containing the data identifiers/attributes
     """
-    attr_di = parse_cmip6_fp(fp)
-    # drop these which are not needed
-    del attr_di["grid_type"]
-    del attr_di["variant"]
+    # DTR files have a shallower structure than standard CMIP6:
+    #   standard: .../institution/model/scenario/variant/freq/var_id/grid/version/file.nc
+    #   DTR:      .../cmip6_dtr/model/scenario/freq/var_id/file.nc
+    # parse_cmip6_fp uses fp.parts[-8:-2], which misidentifies the project directory
+    # as "model" for DTR files. Detect DTR files by var_id directory name.
+    if fp.parts[-2] == "dtr":
+        model, scenario, frequency, variable_id = fp.parts[-5:-1]
+        timeframe = fp.name.split("_")[-1].split(".nc")[0]
+        attr_di = {
+            "model": model,
+            "scenario": scenario,
+            "frequency": frequency,
+            "variable_id": variable_id,
+            "timeframe": timeframe,
+        }
+    else:
+        attr_di = parse_cmip6_fp(fp)
+        # drop these which are not needed
+        del attr_di["grid_type"]
+        del attr_di["variant"]
 
     return attr_di
 
@@ -250,11 +266,12 @@ def write_batch_files(group_df, model, scenario, var_id, frequency, regrid_batch
         for i, row in df.iterrows():
             if ((k + row["filesize"]) > max_size) or (len(chunk) >= max_count):
                 fp_chunks.append(chunk)
-                k = 0
-                # re-initialize with current filepath
+                # re-initialize with current filepath and its size
+                k = row["filesize"]
                 chunk = [row["fp"]]
             else:
                 chunk.append(row["fp"])
+                k += row["filesize"]
 
         if len(chunk) > 0:
             fp_chunks.append(chunk)
@@ -280,9 +297,24 @@ def write_batch_files(group_df, model, scenario, var_id, frequency, regrid_batch
                     count=i,
                 )
             )
+            # Warn if file already exists to detect concurrent writes or re-runs
+            if batch_file.exists():
+                print(f"WARNING: Overwriting existing batch file: {batch_file}")
+
+            # Calculate total size of this batch for diagnostics
+            total_size_gb = sum(
+                [group_df[group_df.fp == fp]["filesize"].values[0] for fp in chunk]
+            )
+
             with open(batch_file, "w") as f:
                 for fp in chunk:
                     f.write(f"{fp}\n")
+
+            print(
+                f"Created {batch_file.name}: {len(chunk)} files, {total_size_gb:.2f} GB"
+            )
+            if total_size_gb > 50:
+                print(f"  WARNING: Batch exceeds 50GB size target!")
 
     return
 
@@ -401,24 +433,43 @@ if __name__ == "__main__":
 
     # read the grid info from all files
     fps = []
+    # Handle DTR files separately (not organized by exp_id)
+    for var in vars.split():
+        if var == "dtr":
+            for freq in freqs.split():
+                for model in models.split():
+                    for scenario in scenarios.split():
+                        cmip6_dir_glob = cmip6_dir.joinpath(
+                            model, scenario, freq, var
+                        ).glob("*.nc")
+                        fps.extend(list(cmip6_dir_glob))
+
+    # Handle standard CMIP6 variables
     for exp_id in ["ScenarioMIP", "CMIP"]:
-        # add only daily and monthly files
         for var in vars.split():
+            if var == "dtr":  # Skip DTR, already handled above
+                continue
             for freq in freqs.split():
                 for model in models.split():
                     for scenario in scenarios.split():
                         inst = get_institution_id(model, scenario)
-                        if var == "dtr":
-                            cmip6_dir_glob = cmip6_dir.joinpath(model, scenario, freq, var).glob("*.nc")
-                        else:
-                            cmip6_dir_glob = cmip6_dir.joinpath(exp_id, inst, model, scenario).glob(
-                                f"*/*{freq}/{var}/**/*.nc"
-                            )
+                        cmip6_dir_glob = cmip6_dir.joinpath(
+                            exp_id, inst, model, scenario
+                        ).glob(f"*/*{freq}/{var}/**/*.nc")
                         fps.extend(list(cmip6_dir_glob))
 
     assert (
         len(fps) > 0
     ), f"No files found with given parameters ({vars}; {freqs}; {models}; {scenarios})"
+
+    # Check for duplicates and warn
+    initial_count = len(fps)
+    fps_unique = list(set(fps))
+    if initial_count != len(fps_unique):
+        dup_count = initial_count - len(fps_unique)
+        print(f"WARNING: Found {dup_count} duplicate file paths! Removing duplicates.")
+        print(f"  Before: {initial_count} files, After: {len(fps_unique)} files")
+        fps = fps_unique
 
     grids = []
     # pool seems to be more likely to hang on larger batches of inputs, so we will break up into smaller batches
@@ -431,19 +482,12 @@ if __name__ == "__main__":
     results_df = pd.DataFrame(grids)
 
     # Print results_df with all columns and values
-    pd.set_option('display.max_columns', None)
+    pd.set_option("display.max_columns", None)
 
     for name, group_df in results_df.groupby(
         ["model", "scenario", "variable_id", "frequency"]
     ):
-        if vars == "dtr":
-            # make sure that there are not multiple grids within one model/scenario at this point
-            model = name[0]
-            scenario = name[2]
-            var_id = "dtr"
-            frequency = "day"
-        else:
-            model, scenario, var_id, frequency = name
+        model, scenario, var_id, frequency = name
 
         print("model: ", model)
         print("scenario: ", scenario)

@@ -77,6 +77,13 @@ def parse_args():
         type=str,
         help="Path to directory where the regridded files will be stored",
     )
+    parser.add_argument(
+        "--stage",
+        type=str,
+        help="Regridding stage identifier (e.g., 'second' or 'final')",
+        required=True,
+        choices=["second", "final"],
+    )
     args = parser.parse_args()
     return (
         args.partition,
@@ -88,6 +95,7 @@ def parse_args():
         Path(args.regridded_dir),
         Path(args.regrid_again_batch_dir),
         Path(args.output_dir),
+        args.stage,
     )
 
 
@@ -99,7 +107,7 @@ def write_batch_files(src_fps, regrid_again_batch_dir):
     batch_size = 200
     batch_files = []
     for i, start in enumerate(range(0, len(src_fps), batch_size), start=1):
-        batch_file = regrid_again_batch_dir.joinpath(f"regrid_again_batch_{i}.txt")
+        batch_file = regrid_again_batch_dir.joinpath(f"batch_{i}.txt")
         with open(batch_file, "w") as f:
             for src_fp in islice(src_fps, start, start + batch_size):
                 f.write(f"{src_fp}\n")
@@ -179,17 +187,18 @@ def make_sbatch_head(array_range, partition, sbatch_out_file, conda_env_name):
 def write_sbatch_regrid_again(
     partition,
     conda_env_name,
-    slurm_dir,
+    slurm_subdir,
     regrid_script,
     config_file,
     target_grid_file,
     output_dir,
     interp_method,
     array_range,
+    stage,
 ):
     """Write the sbatch file for the regrid again job."""
-    sbatch_file = slurm_dir.joinpath("regrid_again.slurm")
-    sbatch_out_file = slurm_dir.joinpath("regrid_again_%j.out")
+    sbatch_file = slurm_subdir.joinpath(f"regrid_{stage}.slurm")
+    sbatch_out_file = slurm_subdir.joinpath(f"regrid_{stage}_%A_%a.out")
 
     sbatch_head = make_sbatch_head(
         array_range, partition, sbatch_out_file, conda_env_name
@@ -218,6 +227,51 @@ def write_sbatch_regrid_again(
     return sbatch_file
 
 
+def precreate_output_directories(src_fps, output_dir):
+    """Pre-create all output directories to avoid race conditions in parallel jobs.
+
+    When multiple array jobs run simultaneously, they may all try to create the same
+    directory structure, leading to FileExistsError even with exist_ok=True due to
+    timing issues with parents=True. Pre-creating avoids this race condition.
+
+    Parameters
+    ----------
+    src_fps : list of Path
+        List of source file paths to be regridded
+    output_dir : Path
+        Root output directory
+    """
+    logging.info("Pre-creating output directory structure to avoid race conditions...")
+
+    # Extract unique directory paths that will be needed
+    unique_dirs = set()
+    for fp in src_fps:
+        # Parse the path structure: .../model/scenario/frequency/variable/file.nc
+        parts = fp.parts
+        # Find indices of key directories by working backwards from filename
+        if len(parts) >= 5:
+            # Last 5 parts before filename: model/scenario/frequency/variable/filename
+            model = parts[-5]
+            scenario = parts[-4]
+            frequency = parts[-3]
+            variable = parts[-2]
+
+            out_dir = output_dir / model / scenario / frequency / variable
+            unique_dirs.add(out_dir)
+
+    # Create all directories
+    created_count = 0
+    for dir_path in sorted(unique_dirs):
+        try:
+            dir_path.mkdir(parents=True, exist_ok=True)
+            created_count += 1
+        except FileExistsError:
+            # Safe to ignore - directory already exists
+            pass
+
+    logging.info(f"Pre-created {created_count} output directories")
+
+
 if __name__ == "__main__":
     (
         partition,
@@ -229,30 +283,42 @@ if __name__ == "__main__":
         regridded_dir,
         regrid_again_batch_dir,
         output_dir,
+        stage,
     ) = parse_args()
 
+    # Create stage-specific subdirectory for organized slurm outputs
+    slurm_subdir = slurm_dir.joinpath(f"{stage}_regrid")
+    slurm_subdir.mkdir(exist_ok=True, parents=True)
+    logging.info(f"Using slurm subdirectory: {slurm_subdir}")
+
+    # Create stage-specific batch directory
+    batch_subdir = slurm_subdir.joinpath("batch")
+    batch_subdir.mkdir(exist_ok=True, parents=True)
+
     src_fps = list(regridded_dir.glob("**/*.nc"))
-    regrid_again_batch_dir.mkdir(exist_ok=True)
+
+    # Pre-create all output directories to avoid race conditions in parallel array jobs
+    precreate_output_directories(src_fps, output_dir)
 
     # write batch files for the regrid again job
-    batch_files = write_batch_files(src_fps, regrid_again_batch_dir)
+    batch_files = write_batch_files(src_fps, batch_subdir)
 
     # write the config file for the regrid again job
-    config_path = slurm_dir.joinpath("regrid_again_config.txt")
+    config_path = slurm_subdir.joinpath(f"regrid_{stage}_config.txt")
     array_range = write_config_file(config_path, batch_files)
 
     # write the sbatch file for the regrid again job
-    sbatch_file = slurm_dir.joinpath("regrid_again.sbatch")
     sbatch_kwargs = {
         "partition": partition,
         "conda_env_name": conda_env_name,
-        "slurm_dir": slurm_dir,
+        "slurm_subdir": slurm_subdir,
         "regrid_script": regrid_script,
         "config_file": config_path,
         "target_grid_file": target_grid_file,
         "output_dir": output_dir,
         "interp_method": interp_method,
         "array_range": array_range,
+        "stage": stage,
     }
     sbatch_file = write_sbatch_regrid_again(**sbatch_kwargs)
 

@@ -295,8 +295,12 @@ if __name__ == "__main__":
 
     output_dir.mkdir(exist_ok=True)
     slurm_dir.mkdir(exist_ok=True)
+    # Create subdirectory for bias adjustment slurm outputs
+    bias_adjust_slurm_dir = slurm_dir.joinpath("bias_adjust")
+    bias_adjust_slurm_dir.mkdir(exist_ok=True)
+
     if clear_out_files:
-        for file in slurm_dir.glob(
+        for file in bias_adjust_slurm_dir.glob(
             bias_adjust_sbatch_tmp_fn.format(
                 model="*", var_id="*", scenario="*"
             ).replace(".slurm", ".out")
@@ -310,7 +314,7 @@ if __name__ == "__main__":
     all_sbatch_kwargs = {
         "sim_dir": sim_dir,
         "train_dir": train_dir,
-        "slurm_dir": slurm_dir,
+        "slurm_dir": bias_adjust_slurm_dir,
         "output_dir": output_dir,
         "tmp_dir": tmp_dir,
         "worker_script": worker_script,

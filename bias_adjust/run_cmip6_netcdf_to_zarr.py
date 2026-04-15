@@ -93,6 +93,14 @@ def validate_args(args):
         logging.warning(
             f"Some specified model/scenario combinations were not found in the input directory: {set(modscens_from_args) - set(model_scenarios_in_input_dir)}. Skipping these model/scenario combinations."
         )
+
+    # Store actual validated (model, scenario) pairs — do not flatten to separate
+    # lists, which would re-introduce non-existent combinations via cross-product.
+    args.model_scenarios = model_scenarios_in_input_dir
+    logging.info(
+        f"Processing {len(args.model_scenarios)} validated model/scenario combinations."
+    )
+
     args.variables = args.variables.split(" ")
 
     return args
@@ -177,8 +185,7 @@ def parse_args():
         args.worker_script,
         args.netcdf_dir,
         args.output_dir,
-        args.models,
-        args.scenarios,
+        args.model_scenarios,
         args.variables,
         args.chunks_dict,
         args.slurm_dir,
@@ -188,8 +195,7 @@ def parse_args():
 
 def write_netcdf_to_zarr_cmip6_config_file(
     config_path,
-    models,
-    scenarios,
+    model_scenarios,
     variables,
 ):
     """Write a config file for the Zarr conversion slurm job script.
@@ -199,10 +205,8 @@ def write_netcdf_to_zarr_cmip6_config_file(
     ----------
     config_path : pathlib.PosixPath
         path to write the config file
-    models : list of str
-        list of models to process
-    scenarios : list of str
-        list of scenarios to process
+    model_scenarios : list of (str, str)
+        list of validated (model, scenario) pairs to process
     variables : list of str
         list of variables to process
 
@@ -214,8 +218,8 @@ def write_netcdf_to_zarr_cmip6_config_file(
     array_list = []
     with open(config_path, "w") as f:
         f.write("array_id\tmodel\tscenario\tvariable\tstart_year\tend_year\n")
-        for array_id, (model, scenario, variable) in enumerate(
-            product(models, scenarios, variables), start=1
+        for array_id, ((model, scenario), variable) in enumerate(
+            product(model_scenarios, variables), start=1
         ):
             start_year = cmip6_year_ranges[scenario]["start_year"]
             end_year = cmip6_year_ranges[scenario]["end_year"]
@@ -310,8 +314,7 @@ if __name__ == "__main__":
         worker_script,
         netcdf_dir,
         output_dir,
-        models,
-        scenarios,
+        model_scenarios,
         variables,
         chunks_dict,
         slurm_dir,
@@ -320,24 +323,27 @@ if __name__ == "__main__":
 
     output_dir.mkdir(exist_ok=True)
     slurm_dir.mkdir(exist_ok=True)
+    # Create subdirectory for CMIP6 conversion slurm outputs
+    convert_cmip6_slurm_dir = slurm_dir.joinpath("convert_cmip6")
+    convert_cmip6_slurm_dir.mkdir(exist_ok=True)
+
     if clear_out_files:
-        for file in slurm_dir.glob(
+        for file in convert_cmip6_slurm_dir.glob(
             cmip6_netcdf_to_zarr_sbatch_tmp_fn.replace(".slurm", "*.out")
         ):
             file.unlink()
 
     # filepath for slurm script
-    sbatch_path = slurm_dir.joinpath(cmip6_netcdf_to_zarr_sbatch_tmp_fn)
+    sbatch_path = convert_cmip6_slurm_dir.joinpath(cmip6_netcdf_to_zarr_sbatch_tmp_fn)
     # filepath for slurm stdout
-    sbatch_out_path = slurm_dir.joinpath(
+    sbatch_out_path = convert_cmip6_slurm_dir.joinpath(
         sbatch_path.name.replace(".slurm", "_%A-%a.out")
     )
 
-    config_path = slurm_dir.joinpath("cmip6_netcdf_to_zarr_config.txt")
+    config_path = convert_cmip6_slurm_dir.joinpath("cmip6_netcdf_to_zarr_config.txt")
     array_range = write_netcdf_to_zarr_cmip6_config_file(
         config_path=config_path,
-        models=models,
-        scenarios=scenarios,
+        model_scenarios=model_scenarios,
         variables=variables,
     )
 

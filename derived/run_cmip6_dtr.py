@@ -346,16 +346,22 @@ if __name__ == "__main__":
             ).mkdir(parents=True, exist_ok=True)
 
     slurm_dir.mkdir(exist_ok=True)
+    # Create subdirectory for DTR processing slurm outputs
+    dtr_slurm_dir = slurm_dir.joinpath("process_cmip6_dtr")
+    dtr_slurm_dir.mkdir(exist_ok=True)
+
     if clear_out_files:
-        for file in slurm_dir.glob(dtr_sbatch_tmp_fn.replace(".slurm", "*.out")):
+        for file in dtr_slurm_dir.glob(dtr_sbatch_tmp_fn.replace(".slurm", "*.out")):
             file.unlink()
 
     # filepath for slurm script
-    sbatch_fp = slurm_dir.joinpath(dtr_sbatch_tmp_fn)
+    sbatch_fp = dtr_slurm_dir.joinpath(dtr_sbatch_tmp_fn)
     # filepath for slurm stdout
-    sbatch_out_fp = slurm_dir.joinpath(sbatch_fp.name.replace(".slurm", "_%A-%a.out"))
+    sbatch_out_fp = dtr_slurm_dir.joinpath(
+        sbatch_fp.name.replace(".slurm", "_%A-%a.out")
+    )
 
-    config_path = slurm_dir.joinpath(dtr_sbatch_config_tmp_fn)
+    config_path = dtr_slurm_dir.joinpath(dtr_sbatch_config_tmp_fn)
     array_range = write_config_file(
         config_path=config_path,
         models=models,

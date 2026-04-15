@@ -274,8 +274,12 @@ if __name__ == "__main__":
     ) = parse_args()
 
     output_dir.mkdir(exist_ok=True)
+    # Create subdirectory for training slurm outputs
+    train_slurm_dir = slurm_dir.joinpath("train")
+    train_slurm_dir.mkdir(exist_ok=True)
+
     if clear_out_files:
-        for file in slurm_dir.glob(
+        for file in train_slurm_dir.glob(
             train_qm_sbatch_tmp_fn.format(model="*", var_id="*").replace(
                 ".slurm", ".out"
             )
@@ -289,7 +293,7 @@ if __name__ == "__main__":
     all_sbatch_kwargs = {
         "sim_dir": sim_dir,
         "ref_dir": ref_dir,
-        "slurm_dir": slurm_dir,
+        "slurm_dir": train_slurm_dir,
         "output_dir": output_dir,
         "tmp_dir": tmp_dir,
         "worker_script": worker_script,
