@@ -26,6 +26,10 @@ Legacy mode (--legacy):
 
     To override the default legacy grid file, pass --legacy-grid-file.
 
+    Using the same set of variable names for new and old parameters (e.g. 
+    --old rh2_mean rh2_min snow_sum --new rh2_mean rh2_min snow_sum) allows 
+    for regridding and/or unit conversion without renaming the variables.
+
 Example usage (standard):
     python prep_era5_variables.py \
         /import/beegfs/CMIP6/jdpaul3/wrf_era5_daily \
