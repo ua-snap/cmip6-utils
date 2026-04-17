@@ -1199,6 +1199,13 @@ def prep_for_landsea(src_init_ds, dst_ds, src_sftlf_fp, dst_sftlf_fp):
     if landsea_variables[var_id] == "sea":
         mask_val, nan_val = nan_val, mask_val
 
+    # Normalize spatial_ref: if dst_ds carries it as a data variable (e.g. ERA5/rasterio
+    # convention) but dst_landmask carries it as a coordinate (xESMF convention after
+    # regridding to a projected grid), xr.where raises a MergeError. Promote to coordinate
+    # in dst_ds so both agree before the assignment.
+    if "spatial_ref" in dst_ds.data_vars:
+        dst_ds = dst_ds.set_coords("spatial_ref")
+
     # add mask to destination dataset
     dst_ds["mask"] = xr.where(dst_landmask, mask_val, nan_val)
 
