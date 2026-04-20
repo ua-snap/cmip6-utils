@@ -346,6 +346,7 @@ def validate_args(args):
     args.sim_path = Path(args.sim_path)
     args.ref_path = Path(args.ref_path)
     args.train_path = Path(args.train_path)
+    args.tmp_path = Path(args.tmp_path)
     if not args.sim_path.exists():
         raise FileNotFoundError(f"Zarr store {args.sim_path} not found.")
     if not args.ref_path.exists():
