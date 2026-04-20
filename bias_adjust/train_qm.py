@@ -37,7 +37,7 @@ logging.basicConfig(
 )
 
 
-def configure_dask_for_training(n_workers=4, threads_per_worker=4, memory_limit="30GB"):
+def configure_dask_for_training(n_workers=4, threads_per_worker=4, memory_limit="30GB", local_directory=None):
     """Configure Dask LocalCluster optimized for QDM training on 128GB nodes.
 
     Args:
@@ -81,6 +81,7 @@ def configure_dask_for_training(n_workers=4, threads_per_worker=4, memory_limit=
         memory_limit=memory_limit,
         processes=True,  # Use processes not threads for GIL-bound work
         dashboard_address=None,  # Disable dashboard on compute nodes
+        local_directory=str(local_directory) if local_directory else None,
     )
 
     client = Client(cluster)
@@ -725,10 +726,13 @@ if __name__ == "__main__":
     try:
         # Configure Dask with explicit cluster
         logging.info("Configuring Dask cluster...")
+        worker_dir = tmp_path / f"train-{sim_path.stem}-{os.getpid()}"
+        worker_dir.mkdir(parents=True, exist_ok=True)
         client = configure_dask_for_training(
             n_workers=4,
             threads_per_worker=4,
             memory_limit="28GB",  # 4 workers × 28GB = 112GB, leaving 16GB for system
+            local_directory=worker_dir,
         )
 
         logging.info(f"Starting QM training for {sim_path.name}")
@@ -818,11 +822,11 @@ if __name__ == "__main__":
         # Use smaller spatial chunks to compensate for large time chunk
         # Memory per chunk: 18,250 × 50 × 50 × 4 bytes = ~1.8GB (×2 for hist+ref = 3.6GB)
         logging.info("Rechunking data for training (time=-1 required by xclim)...")
-        training_chunks = {"time": -1, "x": 50, "y": 50}
+        training_chunks = {"time": -1, "x": 30, "y": 30}
         hist = hist.chunk(training_chunks)
         ref = ref.chunk(training_chunks)
-        logging.info(f"  Training chunks: time=-1, x=50, y=50")
-        logging.info(f"  Memory per spatial chunk: ~3.6GB (both arrays)")
+        logging.info(f"  Training chunks: time=-1, x=30, y=30")
+        logging.info(f"  Memory per spatial chunk: ~1.3GB (both arrays)")
         logging.info(f"  hist chunks: {hist.chunks}")
         logging.info(f"  ref chunks: {ref.chunks}")
 
