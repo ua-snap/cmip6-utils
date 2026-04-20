@@ -483,14 +483,11 @@ if __name__ == "__main__":
                         src_sftlf = None
                         dst_sftlf = None
                         if var in landsea_variables:
-                            assert (
-                                target_sftlf_fp is not None
-                            ), "A target sftlf file must be supplied if any variables are land/sea"
                             try:
                                 src_sftlf = model_sftlf_lu[model]
                             except KeyError:
                                 src_sftlf = None
-                            dst_sftlf = target_sftlf_fp
+                            dst_sftlf = target_sftlf_fp if target_sftlf_fp is not None else src_sftlf
 
                         batch_files_info.append(
                             (var, model, scenario, freq, fp, src_sftlf, dst_sftlf)

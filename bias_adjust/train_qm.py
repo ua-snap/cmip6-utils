@@ -28,7 +28,7 @@ import xarray as xr
 from zarr.sync import ThreadSynchronizer
 import numcodecs
 from xclim import sdba
-from luts import sim_ref_var_lu, varid_adj_kind_lu, jitter_under_lu
+from luts import sim_ref_var_lu, varid_adj_kind_lu, jitter_under_lu, adapt_freq_thresh_lu
 
 logging.basicConfig(
     level=logging.INFO,
@@ -37,7 +37,7 @@ logging.basicConfig(
 )
 
 
-def configure_dask_for_training(n_workers=4, threads_per_worker=4, memory_limit="30GB"):
+def configure_dask_for_training(n_workers=4, threads_per_worker=4, memory_limit="30GB", local_directory=None):
     """Configure Dask LocalCluster optimized for QDM training on 128GB nodes.
 
     Args:
@@ -81,6 +81,7 @@ def configure_dask_for_training(n_workers=4, threads_per_worker=4, memory_limit=
         memory_limit=memory_limit,
         processes=True,  # Use processes not threads for GIL-bound work
         dashboard_address=None,  # Disable dashboard on compute nodes
+        local_directory=str(local_directory) if local_directory else None,
     )
 
     client = Client(cluster)
@@ -345,6 +346,7 @@ def validate_args(args):
     args.sim_path = Path(args.sim_path)
     args.ref_path = Path(args.ref_path)
     args.train_path = Path(args.train_path)
+    args.tmp_path = Path(args.tmp_path)
     if not args.sim_path.exists():
         raise FileNotFoundError(f"Zarr store {args.sim_path} not found.")
     if not args.ref_path.exists():
@@ -487,10 +489,20 @@ def apply_jitter(da):
 
 
 def get_var_id(ds):
-    """Get the variable ID from the dataset."""
-    if len(ds.data_vars) > 1:
-        raise ValueError("More than one variable found in dataset.")
-    var_id = [v for v in ds.data_vars][0]
+    """Get the variable ID from the dataset.
+
+    Filters out metadata variables (mask, spatial_ref, etc.) by selecting
+    only variables with 3 dimensions (time, x, y).
+    """
+    # Filter to only 3D variables (time, x, y) - excludes mask (2D), spatial_ref (0D), etc.
+    climate_vars = [v for v in ds.data_vars if len(ds[v].dims) == 3]
+
+    if len(climate_vars) == 0:
+        raise ValueError(f"No 3D climate variable found in dataset. Available variables: {list(ds.data_vars)}")
+    if len(climate_vars) > 1:
+        raise ValueError(f"Multiple 3D variables found in dataset: {climate_vars}")
+
+    var_id = climate_vars[0]
     return var_id
 
 
@@ -715,10 +727,13 @@ if __name__ == "__main__":
     try:
         # Configure Dask with explicit cluster
         logging.info("Configuring Dask cluster...")
+        worker_dir = tmp_path / f"train-{sim_path.stem}-{os.getpid()}"
+        worker_dir.mkdir(parents=True, exist_ok=True)
         client = configure_dask_for_training(
             n_workers=4,
             threads_per_worker=4,
             memory_limit="28GB",  # 4 workers × 28GB = 112GB, leaving 16GB for system
+            local_directory=worker_dir,
         )
 
         logging.info(f"Starting QM training for {sim_path.name}")
@@ -808,11 +823,11 @@ if __name__ == "__main__":
         # Use smaller spatial chunks to compensate for large time chunk
         # Memory per chunk: 18,250 × 50 × 50 × 4 bytes = ~1.8GB (×2 for hist+ref = 3.6GB)
         logging.info("Rechunking data for training (time=-1 required by xclim)...")
-        training_chunks = {"time": -1, "x": 50, "y": 50}
+        training_chunks = {"time": -1, "x": 30, "y": 30}
         hist = hist.chunk(training_chunks)
         ref = ref.chunk(training_chunks)
-        logging.info(f"  Training chunks: time=-1, x=50, y=50")
-        logging.info(f"  Memory per spatial chunk: ~3.6GB (both arrays)")
+        logging.info(f"  Training chunks: time=-1, x=30, y=30")
+        logging.info(f"  Memory per spatial chunk: ~1.3GB (both arrays)")
         logging.info(f"  hist chunks: {hist.chunks}")
         logging.info(f"  ref chunks: {ref.chunks}")
 
@@ -825,10 +840,10 @@ if __name__ == "__main__":
             window=31,
             kind=varid_adj_kind_lu[var_id],
         )
-        if var_id == "pr":
-            # do the adapt frequency thingy for precipitation data
-            logging.info("Using adapt_freq_thresh for precipitation")
-            train_kwargs.update(adapt_freq_thresh="0.254 mm d-1")
+        if var_id in adapt_freq_thresh_lu:
+            thresh = adapt_freq_thresh_lu[var_id]
+            logging.info(f"Using adapt_freq_thresh={thresh} for {var_id}")
+            train_kwargs.update(adapt_freq_thresh=thresh)
 
         qm_train = sdba.QuantileDeltaMapping.train(**train_kwargs)
         logging.info(f"QDM training completed for {var_id}")

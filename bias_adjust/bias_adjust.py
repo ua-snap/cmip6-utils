@@ -389,11 +389,13 @@ def drop_non_coord_vars(ds, keep_spatial_ref=True, keep_latlon=True):
         ds (xarray.Dataset): dataset with only dimension coordinates
     """
     coords_to_drop = [coord for coord in ds.coords if ds[coord].dims != (coord,)]
-    if keep_spatial_ref:
+    if keep_spatial_ref and "spatial_ref" in coords_to_drop:
         coords_to_drop.remove("spatial_ref")
     if keep_latlon:
-        coords_to_drop.remove("lat")
-        coords_to_drop.remove("lon")
+        if "lat" in coords_to_drop:
+            coords_to_drop.remove("lat")
+        if "lon" in coords_to_drop:
+            coords_to_drop.remove("lon")
 
     vars_to_drop = [var for var in ds.data_vars if len(ds[var].dims) < 3]
     ds = ds.drop_vars(coords_to_drop + vars_to_drop)

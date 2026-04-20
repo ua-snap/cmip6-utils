@@ -19,6 +19,7 @@ import logging
 from pathlib import Path
 from itertools import islice
 from slurm import submit_sbatch
+from config import landsea_variables
 
 logging.basicConfig(
     level=logging.INFO,
@@ -84,6 +85,12 @@ def parse_args():
         required=True,
         choices=["second", "final"],
     )
+    parser.add_argument(
+        "--sftlf_dir",
+        type=str,
+        help="Path to directory containing model-specific sftlf files for land-sea masking (optional)",
+        required=False,
+    )
     args = parser.parse_args()
     return (
         args.partition,
@@ -96,7 +103,121 @@ def parse_args():
         Path(args.regrid_again_batch_dir),
         Path(args.output_dir),
         args.stage,
+        Path(args.sftlf_dir) if args.sftlf_dir else None,
     )
+
+
+def extract_model_from_path(filepath):
+    """Extract model name from regridded file path.
+
+    Expected structure: .../model/scenario/frequency/variable/file.nc
+
+    Parameters
+    ----------
+    filepath : Path
+        Path to regridded file
+
+    Returns
+    -------
+    str or None
+        Model name if found, None otherwise
+    """
+    parts = filepath.parts
+    # Model should be 5th from the end: model/scenario/freq/var/file.nc
+    if len(parts) >= 5:
+        return parts[-5]
+    return None
+
+
+def write_batch_files_with_models(src_fps, regrid_again_batch_dir):
+    """Write batch files grouped by model for model-specific sftlf handling.
+
+    Parameters
+    ----------
+    src_fps : list of Path
+        List of source file paths
+    regrid_again_batch_dir : Path
+        Directory to write batch files
+
+    Returns
+    -------
+    list of dict
+        List of batch info dicts with keys: 'batch_file', 'model', 'files'
+    """
+    logging.info(
+        f"Grouping files by model and writing batch files to {regrid_again_batch_dir}"
+    )
+
+    # Group files by model
+    files_by_model = {}
+    for fp in src_fps:
+        model = extract_model_from_path(fp)
+        if model:
+            if model not in files_by_model:
+                files_by_model[model] = []
+            files_by_model[model].append(fp)
+        else:
+            logging.warning(f"Could not extract model from path: {fp}")
+
+    # Create batch files for each model
+    batch_size = 200
+    batch_infos = []
+    batch_num = 1
+
+    for model, model_files in sorted(files_by_model.items()):
+        logging.info(f"  Model {model}: {len(model_files)} files")
+
+        # Split model files into batches
+        for i in range(0, len(model_files), batch_size):
+            batch_files = model_files[i : i + batch_size]
+            batch_file = regrid_again_batch_dir.joinpath(
+                f"batch_{batch_num}_{model}.txt"
+            )
+
+            with open(batch_file, "w") as f:
+                for src_fp in batch_files:
+                    f.write(f"{src_fp}\n")
+
+            batch_infos.append(
+                {
+                    "batch_file": batch_file,
+                    "model": model,
+                    "file_count": len(batch_files),
+                }
+            )
+            batch_num += 1
+
+    logging.info(
+        f"Created {len(batch_infos)} batch files for {len(files_by_model)} models"
+    )
+    return batch_infos
+
+
+def write_config_file_with_models(config_path, batch_infos):
+    """Write config file with model information for array job.
+
+    Parameters
+    ----------
+    config_path : Path
+        Path to write config file
+    batch_infos : list of dict
+        List of batch info dicts from write_batch_files_with_models
+
+    Returns
+    -------
+    str
+        Array range string for SLURM
+    """
+    logging.info(f"Writing config file with model info to {config_path}")
+
+    with open(config_path, "w") as f:
+        f.write("array_id\tbatch_file\tmodel\n")
+        for array_id, batch_info in enumerate(batch_infos, start=1):
+            f.write(f"{array_id}\t{batch_info['batch_file']}\t{batch_info['model']}\n")
+
+    array_range = f"1-{len(batch_infos)}"
+    logging.info(f"Config file written with array range: {array_range}")
+    return array_range
 
 
 def write_batch_files(src_fps, regrid_again_batch_dir):
@@ -195,8 +316,15 @@ def write_sbatch_regrid_again(
     interp_method,
     array_range,
     stage,
+    sftlf_dir=None,
 ):
-    """Write the sbatch file for the regrid again job."""
+    """Write the sbatch file for the regrid again job.
+
+    Parameters
+    ----------
+    sftlf_dir : Path or None
+        Directory containing model-specific sftlf files (e.g., second_regrid_target_sftlf_CESM2.nc)
+    """
     sbatch_file = slurm_subdir.joinpath(f"regrid_{stage}.slurm")
     sbatch_out_file = slurm_subdir.joinpath(f"regrid_{stage}_%A_%a.out")
 
@@ -205,17 +333,45 @@ def write_sbatch_regrid_again(
     )
 
     pycommands = "\n"
+
+    # Extract batch file and model from config
     pycommands += (
-        # Extract the model and scenario to process for the current $SLURM_ARRAY_TASK_ID
         f"config={config_file}\n"
         "batch_file=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $2}' $config)\n"
+        "model=$(awk -v array_id=$SLURM_ARRAY_TASK_ID '$1==array_id {print $3}' $config)\n"
+        "\n"
+    )
+
+    # Build regrid command
+    regrid_cmd = (
         f"python {regrid_script} "
         f"-b $batch_file "
         f"-d {target_grid_file} "
         f"-o {output_dir} "
-        f"--interp_method {interp_method}\n\n"
+        f"--interp_method {interp_method}"
     )
 
+    # Add model-specific sftlf if sftlf_dir provided
+    if sftlf_dir:
+        pycommands += (
+            f"# Construct model-specific sftlf path\n"
+            f'sftlf_file="{sftlf_dir}/{stage}_regrid_target_sftlf_${{model}}.nc"\n'
+            f"\n"
+            f"# Check if sftlf file exists for this model\n"
+            f'if [ -f "$sftlf_file" ]; then\n'
+            f'  echo "Using model-specific sftlf: $sftlf_file"\n'
+            f'  sftlf_args="--src_sftlf_fp $sftlf_file --dst_sftlf_fp $sftlf_file"\n'
+            f"else\n"
+            f'  echo "No sftlf file found for model $model, proceeding without land masking"\n'
+            f'  sftlf_args=""\n'
+            f"fi\n"
+            f"\n"
+        )
+        regrid_cmd += " $sftlf_args"
+
+    regrid_cmd += "\n\n"
+
+    pycommands += regrid_cmd
     pycommands += f"echo End re-regridding && date\n\n"
     commands = sbatch_head + pycommands
 
@@ -272,6 +428,31 @@ def precreate_output_directories(src_fps, output_dir):
     logging.info(f"Pre-created {created_count} output directories")
 
 
+def check_if_needs_landmask(src_fps):
+    """Check if any of the source files contain land-sea variables.
+
+    Parameters
+    ----------
+    src_fps : list of Path
+        List of source file paths
+
+    Returns
+    -------
+    bool
+        True if any files contain land-sea variables that need masking
+    """
+    for fp in src_fps:
+        # Extract variable from path: .../model/scenario/frequency/VARIABLE/file.nc
+        if len(fp.parts) >= 2:
+            variable = fp.parts[-2]
+            if variable in landsea_variables:
+                logging.info(
+                    f"Detected land-sea variable '{variable}' - land masking will be used if sftlf files provided"
+                )
+                return True
+    return False
+
+
 if __name__ == "__main__":
     (
         partition,
@@ -284,6 +465,7 @@ if __name__ == "__main__":
         regrid_again_batch_dir,
         output_dir,
         stage,
+        sftlf_dir,
     ) = parse_args()
 
     # Create stage-specific subdirectory for organized slurm outputs
@@ -297,15 +479,28 @@ if __name__ == "__main__":
 
     src_fps = list(regridded_dir.glob("**/*.nc"))
 
+    # Check if land masking is needed
+    needs_landmask = check_if_needs_landmask(src_fps)
+    if needs_landmask and sftlf_dir:
+        logging.info(
+            f"Land-sea masking will be applied using model-specific files from: {sftlf_dir}"
+        )
+    elif needs_landmask and not sftlf_dir:
+        logging.warning(
+            "Land-sea variables detected but no sftlf directory provided - masking will not be applied"
+        )
+    else:
+        logging.info("No land-sea variables detected in batch")
+
     # Pre-create all output directories to avoid race conditions in parallel array jobs
     precreate_output_directories(src_fps, output_dir)
 
-    # write batch files for the regrid again job
-    batch_files = write_batch_files(src_fps, batch_subdir)
+    # Write batch files grouped by model for model-specific sftlf handling
+    batch_infos = write_batch_files_with_models(src_fps, batch_subdir)
 
-    # write the config file for the regrid again job
+    # Write the config file with model information
     config_path = slurm_subdir.joinpath(f"regrid_{stage}_config.txt")
-    array_range = write_config_file(config_path, batch_files)
+    array_range = write_config_file_with_models(config_path, batch_infos)
 
     # write the sbatch file for the regrid again job
     sbatch_kwargs = {
@@ -319,6 +514,7 @@ if __name__ == "__main__":
         "interp_method": interp_method,
         "array_range": array_range,
         "stage": stage,
+        "sftlf_dir": sftlf_dir,
     }
     sbatch_file = write_sbatch_regrid_again(**sbatch_kwargs)
 
