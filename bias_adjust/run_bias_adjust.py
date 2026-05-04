@@ -310,6 +310,7 @@ if __name__ == "__main__":
     sbatch_head_kwargs = {
         "partition": partition,
         "conda_env_name": conda_env_name,
+        "time_limit": "06:00:00",
     }
     all_sbatch_kwargs = {
         "sim_dir": sim_dir,

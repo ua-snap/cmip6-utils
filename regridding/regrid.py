@@ -19,7 +19,7 @@ import numpy as np
 import pandas as pd
 import xesmf as xe
 import xarray as xr
-from pyproj import CRS
+from pyproj import CRS, Transformer
 from xclim.core import units
 import dask
 from dask.distributed import Client, LocalCluster
@@ -441,6 +441,34 @@ def init_regridder(src_ds, dst_ds, interp_method):
     if len(dst_ds.lon.dims) == 1:
         dst_ds = dst_ds.sortby(dst_ds.lon, ascending=True)
     # initialize the regridder which now contains standard -180 to 180 longitude values
+
+    # conservative regridding requires cell bounds; compute them from the projected
+    # x/y coordinates if they are not already present in dst_ds
+    if interp_method == "conservative" and "lon_b" not in dst_ds and "lat_b" not in dst_ds:
+        if "x" in dst_ds.dims and "y" in dst_ds.dims and "spatial_ref" in dst_ds:
+            logging.info(
+                "Conservative method selected but dst_ds has no bounds. "
+                "Computing lon_b/lat_b from projected x/y coordinates."
+            )
+            crs_wkt = dst_ds["spatial_ref"].attrs.get("crs_wkt")
+            transformer = Transformer.from_crs(crs_wkt, "EPSG:4326", always_xy=True)
+            x = dst_ds["x"].values
+            y = dst_ds["y"].values
+            # compute edge coordinates (n+1 points) by extending midpoints to the boundaries
+            x_edges = np.concatenate([
+                [x[0] - (x[1] - x[0]) / 2],
+                (x[:-1] + x[1:]) / 2,
+                [x[-1] + (x[-1] - x[-2]) / 2],
+            ])
+            y_edges = np.concatenate([
+                [y[0] - (y[1] - y[0]) / 2],
+                (y[:-1] + y[1:]) / 2,
+                [y[-1] + (y[-1] - y[-2]) / 2],
+            ])
+            xx_edges, yy_edges = np.meshgrid(x_edges, y_edges)
+            lon_b, lat_b = transformer.transform(xx_edges, yy_edges)
+            dst_ds["lon_b"] = xr.DataArray(lon_b, dims=["y_b", "x_b"])
+            dst_ds["lat_b"] = xr.DataArray(lat_b, dims=["y_b", "x_b"])
 
     # determine whether dataset is periodic in longitude
     periodic = is_periodic_longitude(dst_ds, lon_dim="lon")
@@ -1065,7 +1093,7 @@ def regrid_sftlf_landmask(sftlf_fp, target_ds, threshold):
     sftlf_fp : str
         Path to sftlf file to derive landmask from
     target_ds : xarray.Dataset
-        Dataset to regrid the landmask to
+        Dataset with target grid coordinates (can be just a grid template, doesn't need variables)
     threshold : float
         Threshold for land/sea mask (0-100)
 
@@ -1076,11 +1104,11 @@ def regrid_sftlf_landmask(sftlf_fp, target_ds, threshold):
     """
     sftlf_ds = xr.open_dataset(sftlf_fp)
     landmask = sftlf_ds["sftlf"] > threshold
-    var_id = get_var_id(target_ds)
 
+    # xESMF Regridder only needs grid info (lat/lon coords), not actual variables
     target_regridder = xe.Regridder(
         landmask,
-        target_ds[var_id],
+        target_ds,
         method="nearest_s2d",
         unmapped_to_nan=True,
     )
@@ -1170,6 +1198,13 @@ def prep_for_landsea(src_init_ds, dst_ds, src_sftlf_fp, dst_sftlf_fp):
     mask_val, nan_val = 1, 0
     if landsea_variables[var_id] == "sea":
         mask_val, nan_val = nan_val, mask_val
+
+    # Normalize spatial_ref: if dst_ds carries it as a data variable (e.g. ERA5/rasterio
+    # convention) but dst_landmask carries it as a coordinate (xESMF convention after
+    # regridding to a projected grid), xr.where raises a MergeError. Promote to coordinate
+    # in dst_ds so both agree before the assignment.
+    if "spatial_ref" in dst_ds.data_vars:
+        dst_ds = dst_ds.set_coords("spatial_ref")
 
     # add mask to destination dataset
     dst_ds["mask"] = xr.where(dst_landmask, mask_val, nan_val)
@@ -1565,8 +1600,11 @@ if __name__ == "__main__":
             assert (
                 dst_sftlf_fp
             ), "If source sftlf file is provided, destination sftlf file must also be provided"
-        # assume dst_sftlf_fp will ALWAYS be provided if we are dealing with masked variables
-        if dst_sftlf_fp:
+        # Only apply land/sea masking if dst_sftlf_fp is provided AND the variable
+        # is a recognised land/sea variable. This allows dst_sftlf_fp to be passed
+        # to batch jobs that may contain a mix of land and non-land variable files
+        # (e.g. from run_regrid_again.py) without crashing on non-land variables.
+        if dst_sftlf_fp and check_src_landsea(src_init_ds):
             logging.info("Preparing land-sea masking...")
             src_init_ds, dst_ds = prep_for_landsea(
                 src_init_ds,
