@@ -13,13 +13,11 @@
 papermill downscaled_sfcWind.ipynb downscaled_sfcWind_CESM2.ipynb -p models 'CESM2' -p scenarios 'historical ssp126 ssp245 ssp370 ssp585' -p threshold 31.3
 papermill downscaled_hurs.ipynb downscaled_hurs_CESM2.ipynb -p models 'CESM2' -p scenarios 'historical ssp126 ssp245 ssp370 ssp585'
 
-# CNRM-CM6-1-HR	sfcWind: historical; hurs/hursmin: historical, ssp126, ssp245, ssp370, ssp585
-papermill downscaled_sfcWind.ipynb downscaled_sfcWind_CNRM-CM6-1-HR.ipynb -p models 'CNRM-CM6-1-HR' -p scenarios 'historical' -p threshold 31.3
+# CNRM-CM6-1-HR	sfcWind: none; hurs/hursmin: historical, ssp126, ssp245, ssp370, ssp585
 papermill downscaled_hurs.ipynb downscaled_hurs_CNRM-CM6-1-HR.ipynb -p models 'CNRM-CM6-1-HR' -p scenarios 'historical ssp126 ssp245 ssp370 ssp585'
 papermill downscaled_hursmin.ipynb downscaled_hursmin_CNRM-CM6-1-HR.ipynb -p models 'CNRM-CM6-1-HR' -p scenarios 'historical ssp126 ssp245 ssp370 ssp585'
 
-# EC-Earth3-Veg	sfcWind: historical; hurs: historical, ssp126, ssp370, ssp585; hursmin: historical, ssp126, ssp245, ssp370, ssp585
-papermill downscaled_sfcWind.ipynb downscaled_sfcWind_EC-Earth3-Veg.ipynb -p models 'EC-Earth3-Veg' -p scenarios 'historical' -p threshold 31.3
+# EC-Earth3-Veg	sfcWind: none; hurs: historical, ssp126, ssp370, ssp585; hursmin: historical, ssp126, ssp245, ssp370, ssp585
 papermill downscaled_hurs.ipynb downscaled_hurs_EC-Earth3-Veg.ipynb -p models 'EC-Earth3-Veg' -p scenarios 'historical ssp126 ssp370 ssp585'
 papermill downscaled_hursmin.ipynb downscaled_hursmin_EC-Earth3-Veg.ipynb -p models 'EC-Earth3-Veg' -p scenarios 'historical ssp126 ssp245 ssp370 ssp585'
 
