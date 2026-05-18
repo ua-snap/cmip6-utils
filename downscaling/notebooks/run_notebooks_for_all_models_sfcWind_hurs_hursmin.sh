@@ -3,7 +3,7 @@
 # its recommended to use the cmip6-utils environment and a high-memory node to run these notebooks (e.g. "analysis")
 # for example:
 #
-# srun --partition=analysis --pty /bin/bash
+# srun --partition=analysis --mem=250G --pty /bin/bash
 # export BASE_DIR=/beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_new_vars/sfcWind_hurs_hursmin/
 # cd /path/to/cmip6-utils/downscaling/notebooks
 # conda activate cmip6-utils
