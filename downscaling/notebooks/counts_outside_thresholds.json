@@ -1,0 +1,20 @@
+{
+    "variables": {
+        "hurs": {
+            "path": "/beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_new_vars/sfcWind_hurs_hursmin/adjusted",
+            "thresholds": [0, 100]
+        },
+        "hursmin": {
+            "path": "/beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_new_vars/sfcWind_hurs_hursmin/adjusted",
+            "thresholds": [0, 100]
+        },
+        "sfcWind": {
+            "path": "/beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_new_vars/sfcWind_hurs_hursmin/adjusted",
+            "thresholds": [0, 31.3]
+        },
+        "snw": {
+            "path": "/beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_new_vars/snw/adjusted",
+            "thresholds": [0, 3000]
+        }
+    }
+}
