@@ -3,11 +3,11 @@
 # its recommended to the cmip6-utils environment and a high-memory node to run these notebooks (e.g. "analysis")
 # for example:
 #
-# srun --partition=analysis --pty /bin/bash
-# export BASE_DIR=/beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_all/cmip6_12km_downscaling/
+# srun --partition=analysis --mem=250G --pty /bin/bash
+# export BASE_DIR=/beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_original_vars/cmip6_12km_downscaling/
 # cd /path/to/cmip6-utils/downscaling/notebooks
 # conda activate cmip6-utils
-# bash run_notebooks_for_all_models.sh
+# bash run_notebooks_for_all_models_tasmin_tasmax_dtr_pr.sh
 
 #GFDL-ESM4    historical, ssp126, ssp245, ssp370, ssp585	pr, tasmax, tasmin
 papermill downscaled_pr.ipynb downscaled_pr_GFDL-ESM4.ipynb -p models 'GFDL-ESM4' -p scenarios 'historical ssp126 ssp245 ssp370 ssp585' -p threshold 400
