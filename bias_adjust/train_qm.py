@@ -732,7 +732,7 @@ if __name__ == "__main__":
         client = configure_dask_for_training(
             n_workers=4,
             threads_per_worker=4,
-            memory_limit="28GB",  # 4 workers × 28GB = 112GB, leaving 16GB for system
+            memory_limit="110GB",
             local_directory=worker_dir,
         )
 
