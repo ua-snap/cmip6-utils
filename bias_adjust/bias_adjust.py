@@ -601,7 +601,7 @@ if __name__ == "__main__":
         client = configure_dask_for_adjustment(
             n_workers=4,
             threads_per_worker=4,
-            memory_limit="28GB",
+            memory_limit="110GB",
             worker_dir=worker_base_dir,
         )
 
