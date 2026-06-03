@@ -800,27 +800,10 @@ if __name__ == "__main__":
         # Use fixed output chunks that work for all scenarios
         output_chunks = (365, 100, 100)  # (time, y, x)
 
-        # CRITICAL: Force rechunking BEFORE writing by persisting the result
-        # The squeeze operations create lazy task graphs that may have wrong physical chunk layout
-        # Calling .persist() forces Dask to execute the rechunk and materialize the array
-        # with the correct chunk structure in memory before we try to write it
-        logging.info(
-            f"Rechunking to {output_chunks} and persisting to force execution..."
-        )
+        logging.info(f"Rechunking to {output_chunks} before write...")
         scen_ds = scen_ds.chunk(
             {"time": output_chunks[0], "y": output_chunks[1], "x": output_chunks[2]}
         )
-
-        # Persist forces the rechunk to actually execute, not just create a lazy graph
-        # This materializes the array in distributed memory with correct chunks
-        logging.info("Persisting rechunked dataset (this executes the rechunk)...")
-        scen_ds = scen_ds.persist()
-
-        # Wait for persist to complete
-        from dask.distributed import wait
-
-        wait(scen_ds)
-        logging.info("Persist completed - array now has correct physical chunk layout")
 
         encoding = {
             var_id: {
@@ -833,96 +816,38 @@ if __name__ == "__main__":
             }
         }
 
-        # ROBUST FALLBACK CHAIN: Try multiple strategies until write succeeds
-        write_success = False
-
-        # STRATEGY 1: Persist + write with safety checks (DISABLED)
-        # Disabled: chunk overlap error causes fallback to Strategy 2, which uses
-        # safe_chunks=False and creates a race condition → non-deterministic NaN output.
-        # try:
-        #     logging.info("STRATEGY 1: Writing with persist() and safety checks...")
-        #     scen_ds.to_zarr(
-        #         adj_path,
-        #         encoding=encoding,
-        #         synchronizer=synchronizer,
-        #         consolidated=True,
-        #         compute=True,
-        #     )
-        #     logging.info("✓ Strategy 1 succeeded - write completed with safety checks")
-        #     write_success = True
-        # except Exception as e:
-        #     error_msg = str(e)
-        #     if "would overlap multiple dask chunks" in error_msg:
-        #         logging.warning(
-        #             f"Strategy 1 failed with chunk overlap error (false positive)"
-        #         )
-        #         logging.warning(
-        #             "This is likely a Dask graph optimization issue, not real corruption risk"
-        #         )
-        #     else:
-        #         logging.error(f"Strategy 1 failed with unexpected error: {e}")
-
-        # STRATEGY 2: Bypass safety check with safe_chunks=False (DISABLED)
-        # Disabled: safe_chunks=False allows concurrent writes to the same zarr chunk,
-        # creating a race condition where last-writer-wins varies per run → non-deterministic NaN.
-        #     try:
-        #         logging.info("STRATEGY 2: Retrying with safe_chunks=False...")
-        #         if adj_path.exists():
-        #             shutil.rmtree(adj_path, ignore_errors=True)
-        #         scen_ds.to_zarr(
-        #             adj_path,
-        #             encoding=encoding,
-        #             synchronizer=synchronizer,
-        #             consolidated=True,
-        #             compute=True,
-        #             safe_chunks=False,
-        #         )
-        #         logging.info(
-        #             "✓ Strategy 2 succeeded - write completed with safe_chunks=False"
-        #         )
-        #         write_success = True
-        #     except Exception as e2:
-        #         logging.error(f"Strategy 2 failed: {e2}")
-
-        # STRATEGY 3: Compute to memory, then write (PRIMARY)
-        # Computes the full dataset into numpy arrays first, eliminating Dask chunk
-        # overlap issues and race conditions during write. Dataset is ~7-8 GB in memory.
+        # Write to a .writing sibling first, then atomically rename to adj_path.
+        # This ensures a failed or partial run never corrupts the live output: the
+        # old store stays intact until the new one is fully written.
+        # .compute() is called directly on the lazy graph — no prior persist() — so
+        # dask retries any failed tasks instead of returning cached NaN futures.
+        tmp_adj_path = adj_path.parent / (adj_path.name + ".writing")
         try:
-            logging.info("STRATEGY 3: Computing to memory then writing...")
-            logging.info("This may take extra time and memory...")
-            if adj_path.exists():
-                shutil.rmtree(adj_path, ignore_errors=True)
+            # Clean up any temp store left by a previous failed run
+            if tmp_adj_path.exists():
+                shutil.rmtree(tmp_adj_path)
 
-            # Compute loads the entire dataset into memory as numpy arrays
             logging.info("Loading dataset to memory (compute)...")
             scen_ds_computed = scen_ds.compute()
 
-            # Write directly from numpy-backed dataset
-            # No need to rechunk - that would create a lazy graph again!
-            # xarray/zarr will chunk the numpy arrays during write based on encoding
-            logging.info(
-                "Writing numpy-backed dataset directly (no lazy rechunking)..."
-            )
+            logging.info(f"Writing to temp path {tmp_adj_path.name}...")
             scen_ds_computed.to_zarr(
-                adj_path,
+                tmp_adj_path,
                 encoding=encoding,
                 synchronizer=synchronizer,
                 consolidated=True,
             )
-            logging.info("✓ Strategy 3 succeeded - write completed from memory")
-            write_success = True
-        except Exception as e3:
-            logging.error(f"Strategy 3 failed: {e3}")
-            logging.error("ALL WRITE STRATEGIES FAILED!")
-            if adj_path.exists():
-                shutil.rmtree(adj_path, ignore_errors=True)
-            raise RuntimeError(
-                f"Failed to write {adj_path} after trying all strategies. "
-                f"Strategy 3: {e3}"
-            )
 
-        if not write_success:
-            raise RuntimeError(f"Write did not complete successfully for {adj_path}")
+            # Swap in the new store only after the write is fully complete
+            if adj_path.exists():
+                shutil.rmtree(adj_path)
+            tmp_adj_path.rename(adj_path)
+            logging.info("✓ Write succeeded and renamed to final path")
+        except Exception as e:
+            logging.error(f"Write failed: {e}")
+            if tmp_adj_path.exists():
+                shutil.rmtree(tmp_adj_path, ignore_errors=True)
+            raise RuntimeError(f"Failed to write {adj_path}: {e}")
 
         logging.info(f"Initial write to {adj_path} completed successfully")
 
@@ -952,10 +877,10 @@ if __name__ == "__main__":
     except Exception as e:
         logging.error(f"FATAL ERROR during processing or writing: {e}")
         logging.error(f"Bias adjustment FAILED for {sim_path.name}")
-        # Clean up any partial output
-        if adj_path.exists():
-            logging.info(f"Cleaning up failed output at {adj_path}")
-            shutil.rmtree(adj_path, ignore_errors=True)
+        for path_to_clean in [adj_path, adj_path.parent / (adj_path.name + ".writing")]:
+            if path_to_clean.exists():
+                logging.info(f"Cleaning up {path_to_clean}")
+                shutil.rmtree(path_to_clean, ignore_errors=True)
         sys.exit(1)
 
     finally:
