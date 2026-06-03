@@ -599,9 +599,9 @@ if __name__ == "__main__":
         # Configure Dask
         logging.info("Configuring Dask cluster...")
         client = configure_dask_for_adjustment(
-            n_workers=4,
-            threads_per_worker=4,
-            memory_limit="110GB",
+            n_workers=2,
+            threads_per_worker=2,
+            memory_limit="240GB",
             worker_dir=worker_base_dir,
         )
 
@@ -836,85 +836,90 @@ if __name__ == "__main__":
         # ROBUST FALLBACK CHAIN: Try multiple strategies until write succeeds
         write_success = False
 
-        # STRATEGY 1: Persist + write with safety checks (current approach)
+        # STRATEGY 1: Persist + write with safety checks (DISABLED)
+        # Disabled: chunk overlap error causes fallback to Strategy 2, which uses
+        # safe_chunks=False and creates a race condition → non-deterministic NaN output.
+        # try:
+        #     logging.info("STRATEGY 1: Writing with persist() and safety checks...")
+        #     scen_ds.to_zarr(
+        #         adj_path,
+        #         encoding=encoding,
+        #         synchronizer=synchronizer,
+        #         consolidated=True,
+        #         compute=True,
+        #     )
+        #     logging.info("✓ Strategy 1 succeeded - write completed with safety checks")
+        #     write_success = True
+        # except Exception as e:
+        #     error_msg = str(e)
+        #     if "would overlap multiple dask chunks" in error_msg:
+        #         logging.warning(
+        #             f"Strategy 1 failed with chunk overlap error (false positive)"
+        #         )
+        #         logging.warning(
+        #             "This is likely a Dask graph optimization issue, not real corruption risk"
+        #         )
+        #     else:
+        #         logging.error(f"Strategy 1 failed with unexpected error: {e}")
+
+        # STRATEGY 2: Bypass safety check with safe_chunks=False (DISABLED)
+        # Disabled: safe_chunks=False allows concurrent writes to the same zarr chunk,
+        # creating a race condition where last-writer-wins varies per run → non-deterministic NaN.
+        #     try:
+        #         logging.info("STRATEGY 2: Retrying with safe_chunks=False...")
+        #         if adj_path.exists():
+        #             shutil.rmtree(adj_path, ignore_errors=True)
+        #         scen_ds.to_zarr(
+        #             adj_path,
+        #             encoding=encoding,
+        #             synchronizer=synchronizer,
+        #             consolidated=True,
+        #             compute=True,
+        #             safe_chunks=False,
+        #         )
+        #         logging.info(
+        #             "✓ Strategy 2 succeeded - write completed with safe_chunks=False"
+        #         )
+        #         write_success = True
+        #     except Exception as e2:
+        #         logging.error(f"Strategy 2 failed: {e2}")
+
+        # STRATEGY 3: Compute to memory, then write (PRIMARY)
+        # Computes the full dataset into numpy arrays first, eliminating Dask chunk
+        # overlap issues and race conditions during write. Dataset is ~7-8 GB in memory.
         try:
-            logging.info("STRATEGY 1: Writing with persist() and safety checks...")
-            scen_ds.to_zarr(
+            logging.info("STRATEGY 3: Computing to memory then writing...")
+            logging.info("This may take extra time and memory...")
+            if adj_path.exists():
+                shutil.rmtree(adj_path, ignore_errors=True)
+
+            # Compute loads the entire dataset into memory as numpy arrays
+            logging.info("Loading dataset to memory (compute)...")
+            scen_ds_computed = scen_ds.compute()
+
+            # Write directly from numpy-backed dataset
+            # No need to rechunk - that would create a lazy graph again!
+            # xarray/zarr will chunk the numpy arrays during write based on encoding
+            logging.info(
+                "Writing numpy-backed dataset directly (no lazy rechunking)..."
+            )
+            scen_ds_computed.to_zarr(
                 adj_path,
                 encoding=encoding,
                 synchronizer=synchronizer,
                 consolidated=True,
-                compute=True,
             )
-            logging.info("✓ Strategy 1 succeeded - write completed with safety checks")
+            logging.info("✓ Strategy 3 succeeded - write completed from memory")
             write_success = True
-        except Exception as e:
-            error_msg = str(e)
-            if "would overlap multiple dask chunks" in error_msg:
-                logging.warning(
-                    f"Strategy 1 failed with chunk overlap error (false positive)"
-                )
-                logging.warning(
-                    "This is likely a Dask graph optimization issue, not real corruption risk"
-                )
-            else:
-                logging.error(f"Strategy 1 failed with unexpected error: {e}")
-
-            # STRATEGY 2: Bypass safety check with safe_chunks=False
-            try:
-                logging.info("STRATEGY 2: Retrying with safe_chunks=False...")
-                if adj_path.exists():
-                    shutil.rmtree(adj_path, ignore_errors=True)
-
-                scen_ds.to_zarr(
-                    adj_path,
-                    encoding=encoding,
-                    synchronizer=synchronizer,
-                    consolidated=True,
-                    compute=True,
-                    safe_chunks=False,  # Override safety check
-                )
-                logging.info(
-                    "✓ Strategy 2 succeeded - write completed with safe_chunks=False"
-                )
-                write_success = True
-            except Exception as e2:
-                logging.error(f"Strategy 2 failed: {e2}")
-
-                # STRATEGY 3: Compute to memory, then write
-                try:
-                    logging.info("STRATEGY 3: Computing to memory then writing...")
-                    logging.info("This may take extra time and memory...")
-                    if adj_path.exists():
-                        shutil.rmtree(adj_path, ignore_errors=True)
-
-                    # Compute loads the entire dataset into memory as numpy arrays
-                    logging.info("Loading dataset to memory (compute)...")
-                    scen_ds_computed = scen_ds.compute()
-
-                    # Write directly from numpy-backed dataset
-                    # No need to rechunk - that would create a lazy graph again!
-                    # xarray/zarr will chunk the numpy arrays during write based on encoding
-                    logging.info(
-                        "Writing numpy-backed dataset directly (no lazy rechunking)..."
-                    )
-                    scen_ds_computed.to_zarr(
-                        adj_path,
-                        encoding=encoding,
-                        synchronizer=synchronizer,
-                        consolidated=True,
-                    )
-                    logging.info("✓ Strategy 3 succeeded - write completed from memory")
-                    write_success = True
-                except Exception as e3:
-                    logging.error(f"Strategy 3 failed: {e3}")
-                    logging.error("ALL WRITE STRATEGIES FAILED!")
-                    if adj_path.exists():
-                        shutil.rmtree(adj_path, ignore_errors=True)
-                    raise RuntimeError(
-                        f"Failed to write {adj_path} after trying all strategies. "
-                        f"Strategy 1: {error_msg}, Strategy 2: {e2}, Strategy 3: {e3}"
-                    )
+        except Exception as e3:
+            logging.error(f"Strategy 3 failed: {e3}")
+            logging.error("ALL WRITE STRATEGIES FAILED!")
+            if adj_path.exists():
+                shutil.rmtree(adj_path, ignore_errors=True)
+            raise RuntimeError(
+                f"Failed to write {adj_path} after trying all strategies. "
+                f"Strategy 3: {e3}"
+            )
 
         if not write_success:
             raise RuntimeError(f"Write did not complete successfully for {adj_path}")
