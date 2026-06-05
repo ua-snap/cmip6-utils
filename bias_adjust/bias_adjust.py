@@ -598,10 +598,17 @@ if __name__ == "__main__":
 
         # Configure Dask
         logging.info("Configuring Dask cluster...")
+        _partition = os.environ.get("SLURM_JOB_PARTITION", "analysis")
+        if _partition == "analysis":
+            _memory_limit = "60GB"
+        elif _partition == "t2small":
+            _memory_limit = "30GB"
+        else:
+            raise ValueError(f"Unsupported SLURM partition: {_partition!r}. Expected 'analysis' or 't2small'.")
         client = configure_dask_for_adjustment(
-            n_workers=2,
-            threads_per_worker=2,
-            memory_limit="240GB",
+            n_workers=4,
+            threads_per_worker=4,
+            memory_limit=_memory_limit,
             worker_dir=worker_base_dir,
         )
 
@@ -620,6 +627,18 @@ if __name__ == "__main__":
         train_ds = xr.open_zarr(
             train_path, consolidated=True
         )  # Training data is small, no need to chunk
+
+        # CRITICAL FIX: Some training datasets have wrong dimension order (x, y) instead of (y, x)
+        # This causes non-deterministic NaN creation during bias adjustment
+        # Transpose training data if needed to match simulation data dimensions
+        for var in train_ds.data_vars:
+            if train_ds[var].dims[:2] == ('x', 'y'):
+                logging.warning(f"Training data has wrong dimension order: {train_ds[var].dims}")
+                logging.warning(f"Transposing {var} from ('x', 'y', ...) to ('y', 'x', ...)")
+                # Transpose spatial dimensions while preserving other dimensions
+                train_ds[var] = train_ds[var].transpose('y', 'x', ...)
+                logging.info(f"After transpose: {var} dims = {train_ds[var].dims}")
+
         qm = sdba.QuantileDeltaMapping.from_dataset(train_ds)
 
         # Load simulation data with optimized chunks
@@ -654,6 +673,22 @@ if __name__ == "__main__":
             extrapolation="constant",
             interp="nearest",
         )
+        logging.info(f"DEBUG: After QDM adjust - dims={scen.dims}, shape={scen.shape}")
+
+        # CRITICAL FIX: QDM may return dimensions in wrong order - ensure (time, y, x)
+        expected_dims = ('time', 'y', 'x')
+        if scen.dims != expected_dims:
+            logging.warning(f"QDM returned wrong dimension order: {scen.dims}, transposing to {expected_dims}")
+            scen = scen.transpose(*expected_dims)
+            logging.info(f"DEBUG: After transpose - dims={scen.dims}, shape={scen.shape}")
+
+        # FIX: xclim QDM returns NaN when sim=0 and hist_q_min > 0 (a snow-specific failure
+        # mode where warming drives cells to zero that historically had non-zero snow).
+        # Fill QDM-produced NaN with the unadjusted sim value: sim=0 fills as 0 (correct),
+        # ocean/no-data NaN fills as NaN (preserved). Result: output NaN == input NaN.
+        logging.info("Applying fillna fix: replacing QDM-produced NaN with unadjusted sim values")
+        scen = scen.fillna(sim_var_rechunked)
+
         scen_ds = scen.to_dataset(name=var_id)
         scen_ds = drop_non_coord_vars(scen_ds)
         scen_ds = add_global_attrs(scen_ds, sim_ds)

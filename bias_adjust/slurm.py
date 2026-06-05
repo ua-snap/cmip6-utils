@@ -40,7 +40,7 @@ def make_sbatch_head(
         f"#SBATCH --time={time_limit}\n"
     )
     if partition == "analysis":
-        sbatch_head += "#SBATCH --mem=500G\n"
+        sbatch_head += "#SBATCH --mem=250G\n"
     if array_range is not None:
         sbatch_head += f"#SBATCH --array={array_range}%10\n"
     sbatch_head += (

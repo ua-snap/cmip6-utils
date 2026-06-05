@@ -729,10 +729,17 @@ if __name__ == "__main__":
         logging.info("Configuring Dask cluster...")
         worker_dir = tmp_path / f"train-{sim_path.stem}-{os.getpid()}"
         worker_dir.mkdir(parents=True, exist_ok=True)
+        _partition = os.environ.get("SLURM_JOB_PARTITION", "analysis")
+        if _partition == "analysis":
+            _memory_limit = "60GB"
+        elif _partition == "t2small":
+            _memory_limit = "30GB"
+        else:
+            raise ValueError(f"Unsupported SLURM partition: {_partition!r}. Expected 'analysis' or 't2small'.")
         client = configure_dask_for_training(
             n_workers=4,
             threads_per_worker=4,
-            memory_limit="110GB",
+            memory_limit=_memory_limit,
             local_directory=worker_dir,
         )
 
