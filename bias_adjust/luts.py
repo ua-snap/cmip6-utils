@@ -6,7 +6,7 @@ sim_ref_var_lu = {
     "pr": "pr",
     "hurs": "rh2_mean",
     "hursmin": "rh2_min",
-    "snw": "snow_sum",
+    "snw": "snow_mean",
     "sfcWind": "wspd10_mean",
 }
 

@@ -27,7 +27,7 @@ Legacy mode (--legacy):
     To override the default legacy grid file, pass --legacy-grid-file.
 
     Using the same set of variable names for new and old parameters (e.g. 
-    --old rh2_mean rh2_min snow_sum --new rh2_mean rh2_min snow_sum) allows 
+    --old rh2_mean rh2_min snow_mean --new rh2_mean rh2_min snow_mean) allows 
     for regridding and/or unit conversion without renaming the variables.
 
 Example usage (standard):
