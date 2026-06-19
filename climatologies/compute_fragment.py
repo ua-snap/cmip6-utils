@@ -89,8 +89,15 @@ def pr_tot_aggregate(da: xr.DataArray, eras: list[Era], periods: list[Period]) -
             months_present = set(np.unique(sel_months[ymask]).tolist())
             if months_present != required_months:
                 continue  # incomplete season-year at a time-series edge; exclude
+            year_days = sel_values[ymask]
             with np.errstate(invalid="ignore"):
-                year_sums[int(yr)] = np.nansum(sel_values[ymask], axis=0)
+                year_sum = np.nansum(year_days, axis=0)
+            # np.nansum returns 0 (not NaN) for an all-NaN slice -- restore
+            # NaN at pixels with zero valid days (e.g. the ocean mask), or
+            # every out-of-domain cell would silently become a fake 0.0.
+            no_valid_days = np.all(np.isnan(year_days), axis=0)
+            year_sum[no_valid_days] = np.nan
+            year_sums[int(yr)] = year_sum
 
         for ei, era in enumerate(eras):
             stack = [v for yr, v in year_sums.items() if era.start_year <= yr <= era.end_year]
