@@ -170,6 +170,45 @@ resolved by explicit clarifying questions during development:
   repo and not under `/import/home` (a shared, mostly-full quota) —
   multi-GB pipeline output doesn't belong in either place.
 
+## QC
+
+`qc.py` validates the *pipeline*, not the source data -- the source data
+has already been through its own QC process, and this script does not
+re-check whether values are physically plausible. Every check compares
+quantities this pipeline itself computed against a mathematical
+relationship that must hold if the computation is correct (e.g. `pr_tot`
+must equal `pr`'s mean times the period's day-count; the ensemble mean
+must equal `nanmean` of its configured members). A violation means *this
+pipeline* has a bug.
+
+Run manually after a pipeline run, on a compute node (not the login node
+-- it opens the full master output and a couple of variables at a time
+can be a few GB):
+
+```sh
+sbatch slurm/submit_qc.sbatch
+```
+
+Writes to `${paths.output_root}/qc/`:
+- `nan_checks.log` -- `pr`/`pr_tot` NaN-mask equality; a coverage-gap
+  cross-check against `intermediate/fragments/`.
+- `calc_checks.log` + `calc_checks_summary.png` -- `min<=mean<=max`;
+  the `pr_tot` exact-identity check (`pr_tot.temporal_mean ==
+  pr.temporal_mean x days_in_period`, exact on any fixed-calendar CMIP6
+  model); `tmean` vs `tmax`/`tmin` bounds; ensemble re-derivation.
+- `delta_maps/<var>/<var>__<period>.png` -- one PNG per variable x
+  representative period (`DJF`/`JJA`/`AMJJAS`/`ONDJFM` by default,
+  configurable under `qc.delta_maps.periods`), each an 8-panel
+  scenario x era grid of `CMIP6-Ensemble[scenario,era] - WRF-ERA5[historical
+  baseline]`. Doubles as a sanity figure (an obviously-wrong delta pattern
+  usually means a sign/unit/scenario-label bug) and as a genuinely useful
+  "does the projected change look physically sane" plot.
+
+All of the QC parameters (the baseline era, which periods/scenarios get
+delta maps, the tolerance used by the identity checks) live under
+`config.yaml`'s `qc:` section, same single-config-location rule as
+everything else.
+
 ## Why dataclasses in `config.py`
 
 `config.py` defines a handful of `@dataclass`-decorated classes (`Era`,
@@ -205,5 +244,6 @@ configuration mid-run.
 | `metadata.py` | builds output attrs by filling `config.yaml` templates (no hardcoded text) |
 | `combine.py` | stage 3 — fragments -> master Dataset, ensemble, NaN-fill |
 | `write_outputs.py` | stage 4 — master Dataset -> Zarr + NetCDF |
-| `slurm/generate_sbatch.py` | writes `slurm/submit_fragments.sbatch` / `submit_combine.sbatch` from `config.yaml`'s `slurm:` section |
-| `slurm/run_pipeline.sh` | runs stage 1, regenerates sbatch scripts, submits the SLURM jobs |
+| `qc.py` | validates the pipeline's own calculations + renders delta maps -- run manually, see "QC" above |
+| `slurm/generate_sbatch.py` | writes `slurm/submit_fragments.sbatch` / `submit_combine.sbatch` / `submit_qc.sbatch` from `config.yaml`'s `slurm:` section |
+| `slurm/run_pipeline.sh` | runs stage 1, regenerates sbatch scripts, submits the SLURM jobs (fragments + combine only -- `qc.py` is run separately) |

@@ -245,6 +245,10 @@ slurm:
     mem: "400G"
     cpus_per_task: 8
     time: "02:00:00"
+  qc:
+    mem: "64G"
+    cpus_per_task: 4
+    time: "00:30:00"
 
 output:
   zarr_name: cmip6_wrf_climatologies.zarr
@@ -307,5 +311,26 @@ metadata:
       description_template: >
         Temporal aggregation applied within each Period+Era. See each data
         variable's own attrs for the exact methodology -- it differs for
-        Pr_tot (aggregated across per-year period-sums) versus every other
+        pr_tot (aggregated across per-year period-sums) versus every other
         variable (aggregated directly over days).
+
+# Parameters for qc.py (run manually after a pipeline run -- see README.md).
+qc:
+  delta_maps:
+    # ERA5 historical baseline that projections are compared against.
+    baseline:
+      model: WRF-ERA5
+      scenario: historical
+      era: "1981-2010"
+    projection_model: CMIP6-Ensemble
+    future_eras: ["2040-2069", "2070-2099"]
+    scenarios: [ssp126, ssp245, ssp370, ssp585]
+    periods: [DJF, JJA, AMJJAS, ONDJFM]
+    aggregation: temporal_mean
+  calc_checks:
+    # relative tolerance for the pr_tot/tmean exact-identity checks (float32 roundoff)
+    rtol: 1.0e-3
+    # noleap calendar applies to every CMIP6 model; WRF-ERA5 uses a real
+    # gregorian calendar (variable Feb length), so it's excluded from the
+    # pr_tot day-count identity check specifically.
+    fixed_calendar_models_excluded: [WRF-ERA5]

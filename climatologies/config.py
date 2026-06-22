@@ -71,10 +71,15 @@ class Config:
     slurm: dict
     output: dict
     metadata: dict
+    qc: dict
 
     @property
     def output_root(self) -> Path:
         return Path(self.paths["output_root"])
+
+    @property
+    def qc_dir(self) -> Path:
+        return self.output_root / "qc"
 
     @property
     def fragments_dir(self) -> Path:
@@ -141,6 +146,7 @@ def load_config(path: str | os.PathLike) -> Config:
         slurm=raw["slurm"],
         output=raw["output"],
         metadata=raw["metadata"],
+        qc=raw["qc"],
     )
 
 
