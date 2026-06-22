@@ -45,15 +45,16 @@ Input data lives in three separate directory trees (one each for
 sfcWind/hurs/hursmin, the "original" temperature/precip/dtr variables, and
 snw), each with an `era5_zarr/` subtree (the WRF-downscaled ERA5 reference)
 and an `adjusted/` subtree (WRF-downscaled, bias-adjusted CMIP6, one zarr
-store per model/scenario). All of it is daily data on the same 211x282
-projected WRF grid.
+store per model/scenario). 
+
+⚠️ Note that the input data directories are likely to change soon, as user development data gets moved to a shared production location.
 
 The pipeline reduces that daily data down to 10 output variables, each
-shaped `(Model, Scenario, Era, Period, Aggregation, y, x)`:
+shaped `(model, scenario, era, period, aggregation, y, x)`:
 
 | Variable | Meaning |
 |---|---|
-| `tmin`, `tmax` | daily min/max near-surface air temperature (degC by default -- source data is Kelvin, see "Editing the config" below) |
+| `tmin`, `tmax` | daily min/max near-surface air temperature (degC by default; source data is Kelvin, see "Editing the config" below) |
 | `tmean` | derived: daily `(tmax + tmin) / 2` (degC by default) |
 | `dtr` | diurnal temperature range (its own bias-adjusted variable, not derived from tmax-tmin; degC by default, though its value is identical in degC and K since it's a difference) |
 | `pr` | daily total precipitation |
@@ -61,13 +62,6 @@ shaped `(Model, Scenario, Era, Period, Aggregation, y, x)`:
 | `hurs`, `hursmin` | daily mean/min near-surface relative humidity |
 | `sfcwind` | daily mean near-surface wind speed |
 | `snw` | surface snow water equivalent |
-
-All 10 data variable names are lowercase by convention. The 5 dimension
-names (`Model`, `Scenario`, `Era`, `Period`, `Aggregation` in prose
-throughout this doc) are likewise lowercase (`model`, `scenario`, `era`,
-`period`, `aggregation`) in the actual output files -- this doc keeps the
-capitalized form for readability since it matches the original spec, but
-don't expect to see it that way if you open the Zarr/NetCDF yourself.
 
 - **Model**: the 13 CMIP6 models, plus `CMIP6-Ensemble` (a multi-model
   mean) and `WRF-ERA5` (the reference; only populated under
@@ -82,7 +76,7 @@ don't expect to see it that way if you open the Zarr/NetCDF yourself.
 Not every model has data for every variable/scenario (e.g. `CESM2` has no
 `tmax`/`tmin`/`dtr` data at all; `hursmin` only exists for 6 of 13 models).
 Missing combinations are simply `NaN` throughout — this is expected, not a
-bug.
+bug. See "Variable, Model, and Scenario Support" below.
 
 ## How it works
 
@@ -94,8 +88,8 @@ Four stages, each its own script:
    scenario) combination that actually has data.
 2. **`compute_fragment.py`** — run once per `job_list.json` entry (as a
    SLURM array task). Loads the *entire* daily time series for that one
-   variable/model/scenario into memory, then computes every Era x Period
-   x Aggregation value from it in one pass, and writes a small "fragment"
+   variable/model/scenario into memory, then computes every era x period
+   x aggregation value from it in one pass, and writes a small "fragment"
    zarr (`intermediate/fragments/{variable}__{model}__{scenario}.zarr`).
    Two methods are used (see "Design decisions" below): a direct
    day-level reduction for everything except `pr_tot`, and a per-year
@@ -139,7 +133,7 @@ YAML and re-run `slurm/run_pipeline.sh`.
   `kelvin`. Source data is always Kelvin; `celsius` applies a K -> degC
   shift to `tmax`/`tmin`/`tmean`. `dtr` is a temperature *difference*, so
   its stored values never change between unit systems (a 1 K difference
-  is the same size as a 1 degC difference) -- only its `units` label
+  is the same size as a 1 degC difference); only its `units` label
   follows the setting, for consistency with the other temperature
   variables. Changing this requires recomputing the `tmax`/`tmin`/`tmean`
   fragments (the value conversion happens in `compute_fragment.py`, not
@@ -147,20 +141,14 @@ YAML and re-run `slurm/run_pipeline.sh`.
 
 ## Design decisions
 
-A few of these were genuinely ambiguous from the original spec and were
-resolved by explicit clarifying questions during development:
-
 - **Aggregation method.** For every variable except `pr_tot`,
-  `temporal_min`/`mean`/`max` are computed directly over every individual
-  day in the given Period+Era (e.g. "the coldest single April day across
+  `temporal_min`/`temporal_mean`/`temporal_max` are computed directly over every individual
+  day in the given period+era (e.g. "the coldest single April day across
   1981-2010") — not by first collapsing each year to one value and then
-  reducing across years. This was chosen because it's the simpler,
-  single-stage reduction, and matches how the spec described `pr`
-  specifically (separately from `pr_tot`, which does need the two-stage
-  treatment).
-- **`pr_tot`.** Per the spec, this needs the sum of `pr` over the period,
-  computed *per year*, with `temporal_min`/`mean`/`max` then taken across
-  those per-year sums (e.g. "the driest vs. wettest April on record").
+  reducing across years.
+- **`pr_tot`.** This is the sum of `pr` over the period,
+  computed *per year*, with `temporal_min`/`temporal_mean`/`temporal_max` then taken across
+  those per-year sums (e.g. "the driest vs. wettest April in the period").
 - **Season-year convention for `DJF`/`ONDJFM`.** These cross a calendar
   year boundary. A season instance is labeled by the year of its *last*
   month (DJF's year = the Jan/Feb year), and it counts toward an era if
@@ -172,14 +160,10 @@ resolved by explicit clarifying questions during development:
   for a given slice — only `NaN` if *zero* members have data. Given that
   some variables (e.g. `hursmin`) only have 6 of 13 models, requiring all
   members to be present would make the ensemble almost always `NaN`.
-- **Output location.** Intermediate fragments and the final master
-  outputs live under `/beegfs/CMIP6/jdpaul3/climatologies/`, not in this
-  repo and not under `/import/home` (a shared, mostly-full quota) —
-  multi-GB pipeline output doesn't belong in either place.
 
 ## QC
 
-`qc.py` validates the *pipeline*, not the source data -- the source data
+`qc.py` validates the *pipeline*, not the source data. The source data
 has already been through its own QC process, and this script does not
 re-check whether values are physically plausible. Every check compares
 quantities this pipeline itself computed against a mathematical
@@ -188,8 +172,7 @@ must equal `pr`'s mean times the period's day-count; the ensemble mean
 must equal `nanmean` of its configured members). A violation means *this
 pipeline* has a bug.
 
-Run manually after a pipeline run, on a compute node (not the login node
--- it opens the full master output and a couple of variables at a time
+Run manually after a pipeline run, on a compute node (not the login node, since it opens the full master output and a couple of variables at a time
 can be a few GB):
 
 ```sh
@@ -197,39 +180,35 @@ sbatch slurm/submit_qc.sbatch
 ```
 
 Writes to `${paths.output_root}/qc/`:
-- `nan_checks.log` -- `pr`/`pr_tot` NaN-mask equality; a coverage-gap
+- `nan_checks.log`: `pr`/`pr_tot` NaN-mask equality; a coverage-gap
   cross-check against `intermediate/fragments/`.
-- `calc_checks.log` -- `min<=mean<=max`; the `pr_tot` exact-identity check
+- `calc_checks.log`: `min<=mean<=max`; the `pr_tot` exact-identity check
   (`pr_tot.temporal_mean == pr.temporal_mean x days_in_period`, exact on
   any fixed-calendar CMIP6 model, with an era-length-scaled tolerance for
-  the wrapping periods `DJF`/`ONDJFM` -- see the file for why); `tmean` vs
+  the wrapping periods `DJF`/`ONDJFM`: see the file for why); `tmean` vs
   `tmax`/`tmin` bounds; ensemble re-derivation. Ends with a one-line
   `ALL CHECKS PASSED` / `N TOTAL VIOLATIONS` summary.
-- `delta_maps/<var>/<var>__<period>.png` -- one PNG per variable x *every*
+- `delta_maps/<var>/<var>__<period>.png`: one PNG per variable x *every*
   configured Period (180 total for the default 10 vars x 18 periods),
   each an 8-panel scenario x era grid of
   `CMIP6-Ensemble[scenario,era] projection - WRF-ERA5[historical baseline]`.
-  Doubles as a sanity figure (an obviously-wrong delta pattern usually
-  means a sign/unit/scenario-label bug) and as a genuinely useful "does
-  the projected change look physically sane" plot.
 
 Once you've reviewed the QC output, run `python cleanup_intermediate.py
 --yes` to delete `intermediate/fragments/` (defaults to a dry run without
-`--yes`) -- do this *after* QC, not before, since the coverage-gap
+`--yes`); do this *after* QC, not before, since the coverage-gap
 cross-check reads fragment filenames.
 
 All of the QC parameters (the baseline era, which scenarios/eras get
 delta maps, the tolerance used by the identity checks) live under
-`config.yaml`'s `qc:` section, same single-config-location rule as
-everything else.
+`config.yaml`'s `qc:` section.
 
 ## Why dataclasses in `config.py`
 
 `config.py` defines a handful of `@dataclass`-decorated classes (`Era`,
 `Period`, `SourceFamily`, `DerivedVar`, `Config`) that `load_config()`
 parses `config.yaml` into. They hold **zero hardcoded values** — every
-field's value still comes from `config.yaml`; this is a thin loader, not
-a second configuration surface.
+field's value still comes from `config.yaml`; this is a just a loader, not
+a second configuration file.
 
 The benefit: the same `Config` object gets passed into five different
 scripts (`build_job_list.py`, `compute_fragment.py`, `combine.py`,
@@ -259,7 +238,136 @@ configuration mid-run.
 | `metadata.py` | builds output attrs by filling `config.yaml` templates (no hardcoded text) |
 | `combine.py` | stage 3 — fragments -> master Dataset, ensemble, NaN-fill |
 | `write_outputs.py` | stage 4 — master Dataset -> Zarr + NetCDF |
-| `qc.py` | validates the pipeline's own calculations + renders delta maps -- run manually, see "QC" above |
-| `cleanup_intermediate.py` | deletes `intermediate/fragments/` -- run manually, after `qc.py`, see "QC" above |
+| `qc.py` | validates the pipeline's own calculations + renders delta maps (run manually, see "QC" above) |
+| `cleanup_intermediate.py` | deletes `intermediate/fragments/` (run manually, after `qc.py`, see "QC" above) |
 | `slurm/generate_sbatch.py` | writes `slurm/submit_fragments.sbatch` / `submit_combine.sbatch` / `submit_qc.sbatch` from `config.yaml`'s `slurm:` section |
-| `slurm/run_pipeline.sh` | runs stage 1, regenerates sbatch scripts, submits the SLURM jobs (fragments + combine only -- `qc.py`/`cleanup_intermediate.py` are run separately) |
+| `slurm/run_pipeline.sh` | runs stage 1, regenerates sbatch scripts, submits the SLURM jobs (fragments + combine only; `qc.py`/`cleanup_intermediate.py` are run separately) |
+
+## Variable, Model, and Scenario Support
+Copied from https://github.com/ua-snap/prefect/tree/main/downscaling#variable-model-and-scenario-support. Derived variables (`tmean`, `dtr`, `pr_tot` are not included here.)
+
+### `pr` — Precipitation
+
+| Model | historical | ssp126 | ssp245 | ssp370 | ssp585 | Notes |
+|-------|:----------:|:------:|:------:|:------:|:------:|-------|
+| CESM2 | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| CNRM-CM6-1-HR | ✓ | ✓ | — | — | ✓ | |
+| E3SM-2-0 | ✓ | — | — | ✓ | — | |
+| EC-Earth3-Veg | ✓ | ✓ | — | ✓ | ✓ | |
+| GFDL-ESM4 | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| HadGEM3-GC31-LL | ✓ | ✓ | ✓ | — | ✓ | |
+| HadGEM3-GC31-MM | ✓ | ✓ | — | — | ✓ | |
+| KACE-1-0-G | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| MIROC6 | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| MPI-ESM1-2-HR | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| MRI-ESM2-0 | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| NorESM2-MM | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| TaiESM1 | ✓ | ✓ | ✓ | ✓ | ✓ | |
+
+### `tasmax` — Daily Maximum Near-Surface Air Temperature
+
+| Model | historical | ssp126 | ssp245 | ssp370 | ssp585 | Notes |
+|-------|:----------:|:------:|:------:|:------:|:------:|-------|
+| CESM2 | — | — | — | — | — | No data available. |
+| CNRM-CM6-1-HR | ✓ | ✓ | — | — | ✓ | |
+| E3SM-2-0 | ✓ | — | — | ✓ | — | |
+| EC-Earth3-Veg | ✓ | — | — | ✓ | ✓ | |
+| GFDL-ESM4 | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| HadGEM3-GC31-LL | ✓ | ✓ | ✓ | — | ✓ | |
+| HadGEM3-GC31-MM | ✓ | ✓ | — | — | ✓ | |
+| KACE-1-0-G | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| MIROC6 | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| MPI-ESM1-2-HR | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| MRI-ESM2-0 | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| NorESM2-MM | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| TaiESM1 | ✓ | ✓ | ✓ | ✓ | ✓ | |
+
+### `tasmin` — Daily Minimum Near-Surface Air Temperature
+
+| Model | historical | ssp126 | ssp245 | ssp370 | ssp585 | Notes |
+|-------|:----------:|:------:|:------:|:------:|:------:|-------|
+| CESM2 | — | — | — | — | — | No data available. |
+| CNRM-CM6-1-HR | ✓ | ✓ | — | — | ✓ | |
+| E3SM-2-0 | ✓ | — | — | ✓ | — | |
+| EC-Earth3-Veg | ✓ | — | — | ✓ | ✓ | |
+| GFDL-ESM4 | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| HadGEM3-GC31-LL | ✓ | ✓ | ✓ | — | ✓ | |
+| HadGEM3-GC31-MM | ✓ | ✓ | — | — | ✓ | |
+| KACE-1-0-G | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| MIROC6 | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| MPI-ESM1-2-HR | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| MRI-ESM2-0 | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| NorESM2-MM | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| TaiESM1 | ✓ | ✓ | ✓ | ✓ | ✓ | |
+
+### `snw` — Surface Snow Amount
+
+| Model | historical | ssp126 | ssp245 | ssp370 | ssp585 | Notes |
+|-------|:----------:|:------:|:------:|:------:|:------:|-------|
+| CESM2 | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| CNRM-CM6-1-HR | ✓ | — | — | — | — | |
+| E3SM-2-0 | — | — | — | — | — | No data available. |
+| EC-Earth3-Veg | ✓ | — | — | — | — | |
+| GFDL-ESM4 | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| HadGEM3-GC31-LL | ✓ | — | ✓ | — | — | |
+| HadGEM3-GC31-MM | ✓ | — | — | — | — | |
+| KACE-1-0-G | — | — | — | — | — | No data available. |
+| MIROC6 | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| MPI-ESM1-2-HR | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| MRI-ESM2-0 | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| NorESM2-MM | — | — | — | — | — | No data available. |
+| TaiESM1 | — | — | — | — | — | No data available. |
+
+### `hurs` — Near-Surface Relative Humidity
+
+| Model | historical | ssp126 | ssp245 | ssp370 | ssp585 | Notes |
+|-------|:----------:|:------:|:------:|:------:|:------:|-------|
+| CESM2 | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| CNRM-CM6-1-HR | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| E3SM-2-0 | — | — | — | — | — | No data available. |
+| EC-Earth3-Veg | ✓ | ✓ | ✓* | ✓ | ✓ | *ssp245 only covers 2061–2100. |
+| GFDL-ESM4 | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| HadGEM3-GC31-LL | ✓ | ✓ | ✓ | — | ✓ | |
+| HadGEM3-GC31-MM | ✓ | ✓ | — | — | ✓ | |
+| KACE-1-0-G | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| MIROC6 | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| MPI-ESM1-2-HR | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| MRI-ESM2-0 | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| NorESM2-MM | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| TaiESM1 | ✓ | ✓ | ✓ | ✓ | ✓ | |
+
+### `hursmin` — Daily Minimum Near-Surface Relative Humidity
+
+| Model | historical | ssp126 | ssp245 | ssp370 | ssp585 | Notes |
+|-------|:----------:|:------:|:------:|:------:|:------:|-------|
+| CESM2 | — | — | — | — | — | No data available. |
+| CNRM-CM6-1-HR | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| E3SM-2-0 | — | — | — | — | — | No data available. |
+| EC-Earth3-Veg | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| GFDL-ESM4 | — | — | — | — | — | No data available. |
+| HadGEM3-GC31-LL | — | — | — | — | — | No data available. |
+| HadGEM3-GC31-MM | — | — | — | — | — | No data available. |
+| KACE-1-0-G | ✓ | — | — | — | ✓ | |
+| MIROC6 | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| MPI-ESM1-2-HR | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| MRI-ESM2-0 | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| NorESM2-MM | — | — | — | — | — | No data available. |
+| TaiESM1 | — | — | — | — | — | No data available. |
+
+### `sfcWind` — Near-Surface Wind Speed
+
+| Model | historical | ssp126 | ssp245 | ssp370 | ssp585 | Notes |
+|-------|:----------:|:------:|:------:|:------:|:------:|-------|
+| CESM2 | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| CNRM-CM6-1-HR | ✓ | — | — | — | — | |
+| E3SM-2-0 | — | — | — | — | — | No data available. |
+| EC-Earth3-Veg | ✓ | — | — | — | — | |
+| GFDL-ESM4 | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| HadGEM3-GC31-LL | ✓ | ✓ | ✓ | — | ✓ | |
+| HadGEM3-GC31-MM | ✓ | ✓ | — | — | ✓ | |
+| KACE-1-0-G | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| MIROC6 | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| MPI-ESM1-2-HR | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| MRI-ESM2-0 | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| NorESM2-MM | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| TaiESM1 | ✓ | ✓ | ✓ | ✓ | ✓ | |
