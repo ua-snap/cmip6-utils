@@ -1,12 +1,12 @@
 """Generate submit_fragments.sbatch, submit_combine.sbatch, and
-submit_qc.sbatch from config.yaml -- so SLURM resource requests
+submit_qc.sbatch from the given config -- so SLURM resource requests
 (partition, mem, cpus, time, array concurrency) are tunable in one place
-(config.yaml) without ever touching these scripts by hand.
+(the config YAML) without ever touching these scripts by hand.
 
 Run this (or just run_pipeline.sh, which calls it for you, for the
-fragments/combine scripts) after build_job_list.py and any time
-config.yaml's `slurm:` section changes:
-    python slurm/generate_sbatch.py [--config ../config.yaml]
+fragments/combine scripts) after build_job_list.py and any time the
+config's `slurm:` section changes:
+    python slurm/generate_sbatch.py --config ../config_12km.yaml
 
 submit_qc.sbatch is not part of run_pipeline.sh -- qc.py is run manually
 after a pipeline run, via `sbatch slurm/submit_qc.sbatch`, since it's

@@ -6,7 +6,7 @@ source path(s) and source variable name(s) needed to read it. The SLURM
 array index maps directly to a position in this list.
 
 Run manually (not via SLURM -- this is a fast disk scan):
-    python build_job_list.py [--config config.yaml]
+    python build_job_list.py --config config_12km.yaml
 """
 
 from __future__ import annotations

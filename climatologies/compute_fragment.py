@@ -1,10 +1,10 @@
 """Compute one job's climatology fragment(s) from job_list.json.
 
 Usage (one task, e.g. for local testing):
-    python compute_fragment.py --job-index 0
+    python compute_fragment.py --job-index 0 --config config_12km.yaml
 
 Usage (from within a SLURM array task):
-    python compute_fragment.py --job-index $SLURM_ARRAY_TASK_ID
+    python compute_fragment.py --job-index $SLURM_ARRAY_TASK_ID --config config_12km.yaml
 
 Reads the source zarr(s) for the job, loads the full daily series into
 memory once, and computes temporal_min/mean/max for every (era, period)

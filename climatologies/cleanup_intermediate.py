@@ -12,8 +12,8 @@ intermediate/job_list.json is intentionally left alone -- it's tiny and
 useful as a record of exactly what was run.
 
 Usage:
-    python cleanup_intermediate.py [--config config.yaml]   # dry run, default
-    python cleanup_intermediate.py [--config config.yaml] --yes   # actually delete
+    python cleanup_intermediate.py --config config_12km.yaml   # dry run, default
+    python cleanup_intermediate.py --config config_12km.yaml --yes   # actually delete
 """
 
 from __future__ import annotations

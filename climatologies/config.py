@@ -1,8 +1,9 @@
-"""Loader for config.yaml -- the single source of truth for this pipeline.
+"""Loader for the pipeline's config YAML (e.g. config_12km.yaml,
+config_4km.yaml) -- the single source of truth for a given pipeline run.
 
 Every other script imports `load_config` from here rather than reading
-config.yaml directly, so there is exactly one place that knows the file's
-schema.
+the config YAML directly, so there is exactly one place that knows the
+file's schema.
 """
 
 from __future__ import annotations
@@ -125,7 +126,7 @@ def load_config(path: str | os.PathLike) -> Config:
         missing = derivable_vars - declared_vars
         extra = declared_vars - derivable_vars
         raise ValueError(
-            "config.yaml's output_variable_order doesn't match the output_vars "
+            f"{path}'s output_variable_order doesn't match the output_vars "
             f"produced by source_families+derived. Missing from order: {sorted(missing)}. "
             f"In order but not produced by any family/derived entry: {sorted(extra)}."
         )
@@ -152,4 +153,4 @@ def load_config(path: str | os.PathLike) -> Config:
     )
 
 
-DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "config.yaml"
+DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "config_12km.yaml"

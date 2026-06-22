@@ -7,7 +7,7 @@ paths:
   # Large intermediate + final outputs live here. This is the only path that must be changed for a new user.
   # All other paths are relative to this root.
   # The output directory must be on a filesystem with enough space to hold the final zarr and netcdf outputs.
-  output_root: /beegfs/CMIP6/jdpaul3/climatologies
+  output_root: /beegfs/CMIP6/jdpaul3/climatologies/12km
 
 # Temperature unit for the output. "celsius" (default) applies a K -> degC
 # shift to tmax/tmin/tmean (the source data is always Kelvin); dtr's stored

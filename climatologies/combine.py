@@ -8,7 +8,7 @@ Fragments are discovered by globbing <output_root>/intermediate/fragments/
 fine -- whatever's missing just stays NaN.
 
 Usage:
-    python combine.py [--config config.yaml]
+    python combine.py --config config_12km.yaml
 """
 
 from __future__ import annotations

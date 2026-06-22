@@ -10,7 +10,7 @@ A violation means *this pipeline* has a bug; it says nothing about
 whether the underlying climate data is "right".
 
 Run manually after a pipeline run finishes:
-    python qc.py [--config config.yaml]
+    python qc.py --config config_12km.yaml
 
 Reads only the small combined master Zarr output (not the heavy daily
 source data), except for the fragment-presence cross-check, which just
@@ -239,7 +239,7 @@ def check_ensemble_derivation(ds: xr.Dataset, config: Config, log: Log) -> dict:
     log.write("## CMIP6-Ensemble re-derivation")
     log.write("Recomputes nanmean of the configured ensemble members directly from the")
     log.write("final array and compares to the stored ensemble value -- catches drift")
-    log.write("between config.yaml's member list and what's actually in the output.")
+    log.write("between the config's member list and what's actually in the output.")
     log.write("")
     results = {}
     for var in config.output_variable_order:
