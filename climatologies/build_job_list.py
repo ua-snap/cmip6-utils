@@ -68,7 +68,7 @@ def build_tmean_jobs(config, jobs_by_family: dict) -> list:
         jobs.append(
             {
                 "family": "tmean",
-                "output_var": "Tmean",
+                "output_var": config.derived["tmean"].output_var,
                 "kind": "tmean",
                 "model": model,
                 "scenario": scenario,

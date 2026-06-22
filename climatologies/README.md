@@ -44,7 +44,7 @@ config" below.
 ## What it does
 
 Input data lives in three separate directory trees (one each for
-sfcWind/hurs/hursmin, the "original" temperature/precip/DTR variables, and
+sfcWind/hurs/hursmin, the "original" temperature/precip/dtr variables, and
 snw), each with an `era5_zarr/` subtree (the WRF-downscaled ERA5 reference)
 and an `adjusted/` subtree (WRF-downscaled, bias-adjusted CMIP6, one zarr
 store per model/scenario). All of it is daily data on the same 211x282
@@ -55,14 +55,21 @@ shaped `(Model, Scenario, Era, Period, Aggregation, y, x)`:
 
 | Variable | Meaning |
 |---|---|
-| `Tmin`, `Tmax` | daily min/max near-surface air temperature |
-| `Tmean` | derived: daily `(Tmax + Tmin) / 2` |
-| `DTR` | diurnal temperature range (its own bias-adjusted variable, not derived from Tmax-Tmin) |
-| `Pr` | daily total precipitation |
-| `Pr_tot` | derived: total precipitation *summed over the period, per year* (see below) |
-| `Hurs`, `Hursmin` | daily mean/min near-surface relative humidity |
-| `SfcWind` | daily mean near-surface wind speed |
-| `Snw` | surface snow water equivalent |
+| `tmin`, `tmax` | daily min/max near-surface air temperature |
+| `tmean` | derived: daily `(tmax + tmin) / 2` |
+| `dtr` | diurnal temperature range (its own bias-adjusted variable, not derived from tmax-tmin) |
+| `pr` | daily total precipitation |
+| `pr_tot` | derived: total precipitation *summed over the period, per year* (see below) |
+| `hurs`, `hursmin` | daily mean/min near-surface relative humidity |
+| `sfcwind` | daily mean near-surface wind speed |
+| `snw` | surface snow water equivalent |
+
+All 10 data variable names are lowercase by convention. The 5 dimension
+names (`Model`, `Scenario`, `Era`, `Period`, `Aggregation` in prose
+throughout this doc) are likewise lowercase (`model`, `scenario`, `era`,
+`period`, `aggregation`) in the actual output files -- this doc keeps the
+capitalized form for readability since it matches the original spec, but
+don't expect to see it that way if you open the Zarr/NetCDF yourself.
 
 - **Model**: the 13 CMIP6 models, plus `CMIP6-Ensemble` (a multi-model
   mean) and `WRF-ERA5` (the reference; only populated under
@@ -75,7 +82,7 @@ shaped `(Model, Scenario, Era, Period, Aggregation, y, x)`:
 - **Aggregation**: `temporal_min`, `temporal_mean`, `temporal_max`.
 
 Not every model has data for every variable/scenario (e.g. `CESM2` has no
-`Tmax`/`Tmin`/`DTR` data at all; `Hursmin` only exists for 6 of 13 models).
+`tmax`/`tmin`/`dtr` data at all; `hursmin` only exists for 6 of 13 models).
 Missing combinations are simply `NaN` throughout — this is expected, not a
 bug.
 
@@ -93,8 +100,8 @@ Four stages, each its own script:
    x Aggregation value from it in one pass, and writes a small "fragment"
    zarr (`intermediate/fragments/{variable}__{model}__{scenario}.zarr`).
    Two methods are used (see "Design decisions" below): a direct
-   day-level reduction for everything except `Pr_tot`, and a per-year
-   sum-then-reduce method for `Pr_tot`.
+   day-level reduction for everything except `pr_tot`, and a per-year
+   sum-then-reduce method for `pr_tot`.
 3. **`combine.py`** assembles every fragment into the full master arrays,
    fills in `NaN` for any (model, scenario) combination with no fragment
    at all, computes the `CMIP6-Ensemble` mean, and attaches all
@@ -136,15 +143,15 @@ YAML and re-run `slurm/run_pipeline.sh`.
 A few of these were genuinely ambiguous from the original spec and were
 resolved by explicit clarifying questions during development:
 
-- **Aggregation method.** For every variable except `Pr_tot`,
+- **Aggregation method.** For every variable except `pr_tot`,
   `temporal_min`/`mean`/`max` are computed directly over every individual
   day in the given Period+Era (e.g. "the coldest single April day across
   1981-2010") — not by first collapsing each year to one value and then
   reducing across years. This was chosen because it's the simpler,
-  single-stage reduction, and matches how the spec described `Pr`
-  specifically (separately from `Pr_tot`, which does need the two-stage
+  single-stage reduction, and matches how the spec described `pr`
+  specifically (separately from `pr_tot`, which does need the two-stage
   treatment).
-- **`Pr_tot`.** Per the spec, this needs the sum of `Pr` over the period,
+- **`pr_tot`.** Per the spec, this needs the sum of `pr` over the period,
   computed *per year*, with `temporal_min`/`mean`/`max` then taken across
   those per-year sums (e.g. "the driest vs. wettest April on record").
 - **Season-year convention for `DJF`/`ONDJFM`.** These cross a calendar
@@ -156,7 +163,7 @@ resolved by explicit clarifying questions during development:
 - **`CMIP6-Ensemble` and missing data.** The ensemble mean is a `nanmean`
   across whichever configured member models actually have non-NaN data
   for a given slice — only `NaN` if *zero* members have data. Given that
-  some variables (e.g. `Hursmin`) only have 6 of 13 models, requiring all
+  some variables (e.g. `hursmin`) only have 6 of 13 models, requiring all
   members to be present would make the ensemble almost always `NaN`.
 - **Output location.** Intermediate fragments and the final master
   outputs live under `/beegfs/CMIP6/jdpaul3/climatologies/`, not in this

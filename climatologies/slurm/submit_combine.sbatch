@@ -8,6 +8,7 @@
 #SBATCH --time=02:00:00
 #SBATCH --output=/beegfs/CMIP6/jdpaul3/climatologies/logs/slurm/combine_%j.out
 
+set -e
 echo Start slurm && date
 eval "$($HOME/miniconda3/bin/conda shell.bash hook)"
 conda activate cmip6-utils

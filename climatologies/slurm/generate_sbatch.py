@@ -36,6 +36,7 @@ FRAGMENTS_TEMPLATE = """#!/bin/sh
 #SBATCH --array=0-{max_index}%{concurrency}
 #SBATCH --output={logs_dir}/fragment_%A_%a.out
 
+set -e
 echo Start slurm && date
 {conda_hook}
 python {climatologies_dir}/compute_fragment.py --job-index $SLURM_ARRAY_TASK_ID --config {config_path}
@@ -52,6 +53,7 @@ COMBINE_TEMPLATE = """#!/bin/sh
 #SBATCH --time={time}
 #SBATCH --output={logs_dir}/combine_%j.out
 
+set -e
 echo Start slurm && date
 {conda_hook}
 python {climatologies_dir}/combine.py --config {config_path}

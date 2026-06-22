@@ -14,7 +14,7 @@ paths:
 # the unsqueezed siblings in the parent adjusted/ dir must never be read.
 source_families:
   tasmax:
-    output_var: Tmax
+    output_var: tmax
     cmip6_var: tasmax
     era5_var: t2max
     units: K
@@ -22,7 +22,7 @@ source_families:
     adjusted_glob: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_original_vars/cmip6_12km_downscaling/adjusted/tasmax_{model}_{scenario}_adjusted.zarr
     era5_zarr: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_original_vars/cmip6_12km_downscaling/era5_zarr/t2max_era5.zarr
   tasmin:
-    output_var: Tmin
+    output_var: tmin
     cmip6_var: tasmin
     era5_var: t2min
     units: K
@@ -30,7 +30,7 @@ source_families:
     adjusted_glob: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_original_vars/cmip6_12km_downscaling/adjusted/tasmin_{model}_{scenario}_adjusted.zarr
     era5_zarr: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_original_vars/cmip6_12km_downscaling/era5_zarr/t2min_era5.zarr
   dtr:
-    output_var: DTR
+    output_var: dtr
     cmip6_var: dtr
     era5_var: dtr
     units: K
@@ -38,7 +38,7 @@ source_families:
     adjusted_glob: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_original_vars/cmip6_12km_downscaling/adjusted/dtr_{model}_{scenario}_adjusted.zarr
     era5_zarr: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_original_vars/cmip6_12km_downscaling/era5_zarr/dtr_era5.zarr
   pr:
-    output_var: Pr
+    output_var: pr
     cmip6_var: pr
     era5_var: pr
     units: mm d-1
@@ -46,7 +46,7 @@ source_families:
     adjusted_glob: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_original_vars/cmip6_12km_downscaling/adjusted/pr_{model}_{scenario}_adjusted.zarr
     era5_zarr: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_original_vars/cmip6_12km_downscaling/era5_zarr/pr_era5.zarr
   hurs:
-    output_var: Hurs
+    output_var: hurs
     cmip6_var: hurs
     era5_var: rh2_mean
     units: "%"
@@ -54,7 +54,7 @@ source_families:
     adjusted_glob: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_new_vars/sfcWind_hurs_hursmin/adjusted/hurs_squeezed/hurs_{model}_{scenario}_squeezed.zarr
     era5_zarr: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_new_vars/sfcWind_hurs_hursmin/era5_zarr/rh2_mean_era5.zarr
   hursmin:
-    output_var: Hursmin
+    output_var: hursmin
     cmip6_var: hursmin
     era5_var: rh2_min
     units: "%"
@@ -62,7 +62,7 @@ source_families:
     adjusted_glob: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_new_vars/sfcWind_hurs_hursmin/adjusted/hursmin_squeezed/hursmin_{model}_{scenario}_squeezed.zarr
     era5_zarr: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_new_vars/sfcWind_hurs_hursmin/era5_zarr/rh2_min_era5.zarr
   sfcWind:
-    output_var: SfcWind
+    output_var: sfcwind
     cmip6_var: sfcWind
     era5_var: wspd10_mean
     units: m s-1
@@ -70,7 +70,7 @@ source_families:
     adjusted_glob: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_new_vars/sfcWind_hurs_hursmin/adjusted/sfcWind_{model}_{scenario}_adjusted.zarr
     era5_zarr: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_new_vars/sfcWind_hurs_hursmin/era5_zarr/wspd10_mean_era5.zarr
   snw:
-    output_var: Snw
+    output_var: snw
     cmip6_var: snw
     era5_var: snow_mean
     units: kg m-2
@@ -82,13 +82,13 @@ source_families:
 # directly from a source family.
 derived:
   tmean:
-    output_var: Tmean
+    output_var: tmean
     requires: [tasmax, tasmin]
     units: K
     long_name: daily mean near-surface air temperature
     description: Daily mean temperature, computed as (Tmax + Tmin) / 2 from daily Tmax/Tmin before temporal aggregation.
   pr_tot:
-    output_var: Pr_tot
+    output_var: pr_tot
     requires: [pr]
     units: mm
     long_name: total precipitation accumulated over the period

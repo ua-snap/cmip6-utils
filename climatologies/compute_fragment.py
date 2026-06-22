@@ -161,14 +161,16 @@ def run_job(job: dict, config: Config) -> list[Path]:
 
     elif job["kind"] == "pr":
         da = load_var(job["source_paths"]["main"], job["source_vars"]["main"])
+        pr_var = config.source_families["pr"].output_var
+        pr_tot_var = config.derived["pr_tot"].output_var
 
         pr_values = direct_aggregate(da, config.eras, config.periods)
-        pr_ds = make_fragment_dataset(pr_values, "Pr", config, da["y"], da["x"])
-        written.append(write_fragment(pr_ds, "Pr", job["model"], job["scenario"], config))
+        pr_ds = make_fragment_dataset(pr_values, pr_var, config, da["y"], da["x"])
+        written.append(write_fragment(pr_ds, pr_var, job["model"], job["scenario"], config))
 
         pr_tot_values = pr_tot_aggregate(da, config.eras, config.periods)
-        pr_tot_ds = make_fragment_dataset(pr_tot_values, "Pr_tot", config, da["y"], da["x"])
-        written.append(write_fragment(pr_tot_ds, "Pr_tot", job["model"], job["scenario"], config))
+        pr_tot_ds = make_fragment_dataset(pr_tot_values, pr_tot_var, config, da["y"], da["x"])
+        written.append(write_fragment(pr_tot_ds, pr_tot_var, job["model"], job["scenario"], config))
 
     else:
         raise ValueError(f"Unknown job kind: {job['kind']!r}")

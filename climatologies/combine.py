@@ -1,5 +1,5 @@
 """Assemble all per-(output_var, model, scenario) fragments into the single
-master Dataset (Model x Scenario x Era x Period x Aggregation x y x x for
+master Dataset (model x scenario x era x period x aggregation x y x x for
 each of the 10 data variables), compute the CMIP6-Ensemble multi-model
 mean, attach all attrs, and write zarr + netCDF via write_outputs.py.
 
@@ -30,7 +30,7 @@ from write_outputs import write_outputs
 warnings.filterwarnings("ignore", category=RuntimeWarning, message="Mean of empty slice")
 
 # Mirrors the spec's "Data vars" list order exactly.
-MASTER_VARS = ["Tmin", "Tmax", "Tmean", "DTR", "Pr", "Pr_tot", "Hurs", "Hursmin", "SfcWind", "Snw"]
+MASTER_VARS = ["tmin", "tmax", "tmean", "dtr", "pr", "pr_tot", "hurs", "hursmin", "sfcwind", "snw"]
 
 
 def discover_fragments(config: Config) -> dict:
@@ -98,13 +98,13 @@ def combine_variable(
 
     out = xr.DataArray(
         arr,
-        dims=("Model", "Scenario", "Era", "Period", "Aggregation", "y", "x"),
+        dims=("model", "scenario", "era", "period", "aggregation", "y", "x"),
         coords={
-            "Model": model_dim_values,
-            "Scenario": config.scenarios,
-            "Era": era_names,
-            "Period": period_names,
-            "Aggregation": agg_names,
+            "model": model_dim_values,
+            "scenario": config.scenarios,
+            "era": era_names,
+            "period": period_names,
+            "aggregation": agg_names,
             "y": y,
             "x": x,
         },
@@ -129,11 +129,11 @@ def build_master_dataset(config: Config) -> xr.Dataset:
 
     ds = xr.Dataset(data_vars, coords=grid_extras)
 
-    ds["Era"].attrs.update(metadata.era_attrs(config))
-    ds["Model"].attrs.update(metadata.model_attrs(config))
-    ds["Period"].attrs.update(metadata.period_attrs(config))
-    ds["Scenario"].attrs.update(metadata.scenario_attrs(config))
-    ds["Aggregation"].attrs.update(metadata.aggregation_attrs(config))
+    ds["era"].attrs.update(metadata.era_attrs(config))
+    ds["model"].attrs.update(metadata.model_attrs(config))
+    ds["period"].attrs.update(metadata.period_attrs(config))
+    ds["scenario"].attrs.update(metadata.scenario_attrs(config))
+    ds["aggregation"].attrs.update(metadata.aggregation_attrs(config))
     ds.attrs.update(metadata.global_attrs(config))
 
     return ds

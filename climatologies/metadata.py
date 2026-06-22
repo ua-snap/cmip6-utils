@@ -79,10 +79,10 @@ def _family_for_output_var(config: Config, output_var: str):
 
 
 def variable_attrs(output_var: str, config: Config) -> dict:
-    if output_var == "Pr_tot":
+    if output_var == config.derived["pr_tot"].output_var:
         derived = config.derived["pr_tot"]
         return {"long_name": derived.long_name, "units": derived.units, "description": derived.description}
-    if output_var == "Tmean":
+    if output_var == config.derived["tmean"].output_var:
         derived = config.derived["tmean"]
         return {
             "long_name": derived.long_name,
