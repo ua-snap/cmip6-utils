@@ -1,21 +1,18 @@
-# climatologies
+# Downscaled CMIP6 Climatologies
 
 Computes climatologies (temporal min/mean/max by month/season and by
 configurable historical/future era) from WRF-downscaled, bias-adjusted
 CMIP6 data and the WRF-downscaled ERA5 reference, for 13 CMIP6 models plus
 a multi-model ensemble mean. Produces a single master output (identical
 content in Zarr and NetCDF) with dimensions
-`Model x Scenario x Era x Period x Aggregation x y x x`.
+`model, scenario, era, period, aggregation, y, x`.
 
-For the full design rationale, data inventory, and a step-by-step build
-log, see `~/CLIMATOLOGIES_PLAN.md` (deliberately kept outside this repo so
-it never gets committed). This README is the user-facing "how do I run
-this" doc; that file is the engineering log.
 
 ## Quick start
 
+Adjust paths in `config.yaml`, then run:
+
 ```sh
-eval "$($HOME/miniconda3/bin/conda shell.bash hook)"
 conda activate cmip6-utils
 cd cmip6-utils/climatologies
 bash slurm/run_pipeline.sh
@@ -25,21 +22,22 @@ That rebuilds the job list from whatever's currently on disk, regenerates
 the SLURM scripts from `config.yaml`, and submits two jobs to the
 `analysis` partition: a fragment-computation array job, then a combine job
 that runs automatically once every fragment task succeeds. Check progress
-with `squeue -u $USER`. When it's done, the result is at:
+with `squeue --me`. When it's done, the result is at:
 
 ```
 ${paths.output_root}/output/cmip6_wrf_climatologies.zarr
 ${paths.output_root}/output/cmip6_wrf_climatologies.nc
 ```
 
-(`output_root` is set in `config.yaml`; by default
-`/beegfs/CMIP6/jdpaul3/climatologies`.)
+Then run the QC and  clean up the intermediate file:
 
-If you only want to change *what* gets computed (eras, periods, models,
-ensemble membership, paths, SLURM resources, or any descriptive text in
-the output's attributes), **edit `config.yaml` and re-run
-`slurm/run_pipeline.sh`** — nothing else needs to change. See "Editing the
-config" below.
+```sh
+sbatch slurm/submit_qc.sbatch
+# check ${paths.output_root}/qc/{nan_checks,calc_checks}.log and
+# ${paths.output_root}/qc/delta_maps/ before proceeding
+python cleanup_intermediate.py --yes
+```
+
 
 ## What it does
 
@@ -55,9 +53,9 @@ shaped `(Model, Scenario, Era, Period, Aggregation, y, x)`:
 
 | Variable | Meaning |
 |---|---|
-| `tmin`, `tmax` | daily min/max near-surface air temperature |
-| `tmean` | derived: daily `(tmax + tmin) / 2` |
-| `dtr` | diurnal temperature range (its own bias-adjusted variable, not derived from tmax-tmin) |
+| `tmin`, `tmax` | daily min/max near-surface air temperature (degC by default -- source data is Kelvin, see "Editing the config" below) |
+| `tmean` | derived: daily `(tmax + tmin) / 2` (degC by default) |
+| `dtr` | diurnal temperature range (its own bias-adjusted variable, not derived from tmax-tmin; degC by default, though its value is identical in degC and K since it's a difference) |
 | `pr` | daily total precipitation |
 | `pr_tot` | derived: total precipitation *summed over the period, per year* (see below) |
 | `hurs`, `hursmin` | daily mean/min near-surface relative humidity |
@@ -137,6 +135,15 @@ YAML and re-run `slurm/run_pipeline.sh`.
   (dataset title/institution/summary, the per-dimension description
   templates, the methodology note attached to most variables). See
   "Why dataclasses" below for why this is safe to edit freely.
+- **Temperature units** — `units.temperature_unit`: `celsius` (default) or
+  `kelvin`. Source data is always Kelvin; `celsius` applies a K -> degC
+  shift to `tmax`/`tmin`/`tmean`. `dtr` is a temperature *difference*, so
+  its stored values never change between unit systems (a 1 K difference
+  is the same size as a 1 degC difference) -- only its `units` label
+  follows the setting, for consistency with the other temperature
+  variables. Changing this requires recomputing the `tmax`/`tmin`/`tmean`
+  fragments (the value conversion happens in `compute_fragment.py`, not
+  at write time) and re-running `combine.py`.
 
 ## Design decisions
 
@@ -192,19 +199,26 @@ sbatch slurm/submit_qc.sbatch
 Writes to `${paths.output_root}/qc/`:
 - `nan_checks.log` -- `pr`/`pr_tot` NaN-mask equality; a coverage-gap
   cross-check against `intermediate/fragments/`.
-- `calc_checks.log` + `calc_checks_summary.png` -- `min<=mean<=max`;
-  the `pr_tot` exact-identity check (`pr_tot.temporal_mean ==
-  pr.temporal_mean x days_in_period`, exact on any fixed-calendar CMIP6
-  model); `tmean` vs `tmax`/`tmin` bounds; ensemble re-derivation.
-- `delta_maps/<var>/<var>__<period>.png` -- one PNG per variable x
-  representative period (`DJF`/`JJA`/`AMJJAS`/`ONDJFM` by default,
-  configurable under `qc.delta_maps.periods`), each an 8-panel
-  scenario x era grid of `CMIP6-Ensemble[scenario,era] - WRF-ERA5[historical
-  baseline]`. Doubles as a sanity figure (an obviously-wrong delta pattern
-  usually means a sign/unit/scenario-label bug) and as a genuinely useful
-  "does the projected change look physically sane" plot.
+- `calc_checks.log` -- `min<=mean<=max`; the `pr_tot` exact-identity check
+  (`pr_tot.temporal_mean == pr.temporal_mean x days_in_period`, exact on
+  any fixed-calendar CMIP6 model, with an era-length-scaled tolerance for
+  the wrapping periods `DJF`/`ONDJFM` -- see the file for why); `tmean` vs
+  `tmax`/`tmin` bounds; ensemble re-derivation. Ends with a one-line
+  `ALL CHECKS PASSED` / `N TOTAL VIOLATIONS` summary.
+- `delta_maps/<var>/<var>__<period>.png` -- one PNG per variable x *every*
+  configured Period (180 total for the default 10 vars x 18 periods),
+  each an 8-panel scenario x era grid of
+  `CMIP6-Ensemble[scenario,era] projection - WRF-ERA5[historical baseline]`.
+  Doubles as a sanity figure (an obviously-wrong delta pattern usually
+  means a sign/unit/scenario-label bug) and as a genuinely useful "does
+  the projected change look physically sane" plot.
 
-All of the QC parameters (the baseline era, which periods/scenarios get
+Once you've reviewed the QC output, run `python cleanup_intermediate.py
+--yes` to delete `intermediate/fragments/` (defaults to a dry run without
+`--yes`) -- do this *after* QC, not before, since the coverage-gap
+cross-check reads fragment filenames.
+
+All of the QC parameters (the baseline era, which scenarios/eras get
 delta maps, the tolerance used by the identity checks) live under
 `config.yaml`'s `qc:` section, same single-config-location rule as
 everything else.
@@ -238,6 +252,7 @@ configuration mid-run.
 | `config.yaml` | every tunable parameter and every piece of output-facing text |
 | `config.py` | loads `config.yaml` into typed objects (no values of its own) |
 | `periods.py` | period-membership and season-year ("label year") logic |
+| `units.py` | K <-> degC conversion for temperature variables, driven by `config.yaml`'s `units:` section |
 | `source_catalog.py` | glob/regex helpers for discovering what's on disk |
 | `build_job_list.py` | stage 1 — writes `intermediate/job_list.json` |
 | `compute_fragment.py` | stage 2 — one job -> one or two fragment zarr(s) |
@@ -245,5 +260,6 @@ configuration mid-run.
 | `combine.py` | stage 3 — fragments -> master Dataset, ensemble, NaN-fill |
 | `write_outputs.py` | stage 4 — master Dataset -> Zarr + NetCDF |
 | `qc.py` | validates the pipeline's own calculations + renders delta maps -- run manually, see "QC" above |
+| `cleanup_intermediate.py` | deletes `intermediate/fragments/` -- run manually, after `qc.py`, see "QC" above |
 | `slurm/generate_sbatch.py` | writes `slurm/submit_fragments.sbatch` / `submit_combine.sbatch` / `submit_qc.sbatch` from `config.yaml`'s `slurm:` section |
-| `slurm/run_pipeline.sh` | runs stage 1, regenerates sbatch scripts, submits the SLURM jobs (fragments + combine only -- `qc.py` is run separately) |
+| `slurm/run_pipeline.sh` | runs stage 1, regenerates sbatch scripts, submits the SLURM jobs (fragments + combine only -- `qc.py`/`cleanup_intermediate.py` are run separately) |

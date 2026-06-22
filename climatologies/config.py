@@ -72,6 +72,7 @@ class Config:
     output: dict
     metadata: dict
     qc: dict
+    units: dict
 
     @property
     def output_root(self) -> Path:
@@ -99,7 +100,7 @@ class Config:
 
     @property
     def all_model_dim_values(self) -> list:
-        """Exact Model coordinate order: named models, then ensemble, then reference."""
+        """Exact model coordinate order: named models, then ensemble, then reference."""
         return list(self.models) + [self.ensemble_name, self.reference_model]
 
 
@@ -147,6 +148,7 @@ def load_config(path: str | os.PathLike) -> Config:
         output=raw["output"],
         metadata=raw["metadata"],
         qc=raw["qc"],
+        units=raw["units"],
     )
 
 

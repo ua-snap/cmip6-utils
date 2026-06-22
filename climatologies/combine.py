@@ -5,7 +5,7 @@ mean, attach all attrs, and write zarr + netCDF via write_outputs.py.
 
 Fragments are discovered by globbing <output_root>/intermediate/fragments/
 (not by re-reading job_list.json), so a partial/rerun set of fragments is
-handled gracefully -- whatever's missing just stays NaN.
+fine -- whatever's missing just stays NaN.
 
 Usage:
     python combine.py [--config config.yaml]

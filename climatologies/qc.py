@@ -19,9 +19,13 @@ lists fragment filenames (no data read).
 Writes to <paths.output_root>/qc/:
     nan_checks.log            -- pr/pr_tot NaN-mask equality, coverage-gap cross-check
     calc_checks.log           -- min<=mean<=max, pr_tot identity, tmean bounds, ensemble re-derivation
-    calc_checks_summary.png   -- one figure summarizing all calc_checks results
-    delta_maps/<var>/<var>__<period>.png  -- scenario x era grids of
+    delta_maps/<var>/<var>__<period>.png  -- one PNG per variable x every
+        configured period, each a scenario x era grid of
         (CMIP6-Ensemble projection) - (WRF-ERA5 historical baseline)
+
+This reads (but does not modify) intermediate/fragments/ for the
+coverage-gap cross-check -- run cleanup_intermediate.py only after this
+script has been run and its results reviewed.
 """
 
 from __future__ import annotations
@@ -257,33 +261,6 @@ def check_ensemble_derivation(ds: xr.Dataset, config: Config, log: Log) -> dict:
     return results
 
 
-def render_calc_checks_summary(results: dict, out_path: Path):
-    """One bar per check *category* (not per variable/period -- that level of
-    detail lives in calc_checks.log) so this is readable at a glance."""
-    labels = list(results.keys())
-    violations = [r["n_violations"] for r in results.values()]
-    checked = [r["n_checked"] for r in results.values()]
-    total_violations = sum(violations)
-
-    fig, ax = plt.subplots(figsize=(max(8, len(labels) * 1.1), 5.5))
-    colors = ["#d62728" if v > 0 else "#2ca02c" for v in violations]
-    bars = ax.bar(range(len(labels)), violations, color=colors)
-    ax.set_xticks(range(len(labels)))
-    ax.set_xticklabels(labels, rotation=30, ha="right", fontsize=9)
-    ax.set_ylabel("violation count")
-    headline = "ALL CHECKS PASSED" if total_violations == 0 else f"{total_violations} VIOLATIONS FOUND -- see calc_checks.log"
-    ax.set_title(f"QC calculation-correctness checks\n{headline}", fontsize=12, fontweight="bold")
-    ymax = max(violations) if max(violations) > 0 else 1
-    ax.set_ylim(0, ymax * 1.25)
-    for bar, v, c in zip(bars, violations, checked):
-        ax.text(bar.get_x() + bar.get_width() / 2, ymax * 0.03, f"{v}/{c}\nchecked", ha="center", va="bottom", fontsize=8)
-    fig.text(0.5, 0.01, "Per-variable/per-period detail is in calc_checks.log", ha="center", fontsize=8, style="italic")
-    fig.tight_layout(rect=(0, 0.03, 1, 1))
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path, dpi=110)
-    plt.close(fig)
-
-
 # --------------------------------------------------------------------------
 # Delta maps
 # --------------------------------------------------------------------------
@@ -325,7 +302,8 @@ def render_delta_map(ds: xr.Dataset, config: Config, output_var: str, period: st
             ax.set_xticks([])
             ax.set_yticks([])
     fig.suptitle(
-        f"{output_var} ({units}) delta vs {baseline['model']} {baseline['scenario']} {baseline['era']}\n"
+        f"{output_var} ({units}): {cfg['projection_model']} projection minus "
+        f"{baseline['model']} {baseline['scenario']} {baseline['era']} baseline\n"
         f"Period={period}, Aggregation={agg}",
         fontsize=11,
     )
@@ -337,9 +315,11 @@ def render_delta_map(ds: xr.Dataset, config: Config, output_var: str, period: st
 
 
 def generate_delta_maps(ds: xr.Dataset, config: Config):
-    cfg = config.qc["delta_maps"]
+    # Every configured period, not just a representative subset -- fragments/the
+    # combined output already hold every period, so this is free.
     for output_var in config.output_variable_order:
-        for period in cfg["periods"]:
+        for period in ds["period"].values:
+            period = str(period)
             out_path = config.qc_dir / "delta_maps" / output_var / f"{output_var}__{period}.png"
             render_delta_map(ds, config, output_var, period, out_path)
             print(f"  wrote {out_path}")
@@ -371,27 +351,16 @@ def main():
     pr_tot_identity = check_pr_tot_identity(ds, config, calc_log)
     tmean_bounds = check_tmean_bounds(ds, config, calc_log)
     ensemble_check = check_ensemble_derivation(ds, config, calc_log)
-    calc_log.save(config.qc_dir / "calc_checks.log")
 
-    summary = {
-        "min<=mean<=max": {
-            "n_violations": sum(min_mean_max.values()),
-            "n_checked": sum(int(ds[v].sel(aggregation="temporal_mean").size) for v in min_mean_max),
-        },
-        "pr_tot identity": {
-            "n_violations": sum(r["n_violations"] for r in pr_tot_identity.values()),
-            "n_checked": sum(r["n_checked"] for r in pr_tot_identity.values()),
-        },
-        "tmean mean\nequality": tmean_bounds["mean_equality"],
-        "tmean min\nbound": tmean_bounds["min_bound"],
-        "tmean max\nbound": tmean_bounds["max_bound"],
-        "ensemble\nre-derivation": {
-            "n_violations": sum(r["n_violations"] for r in ensemble_check.values()),
-            "n_checked": sum(r["n_checked"] for r in ensemble_check.values()),
-        },
-    }
-    render_calc_checks_summary(summary, config.qc_dir / "calc_checks_summary.png")
-    print(f"wrote {config.qc_dir / 'calc_checks_summary.png'}")
+    total_violations = (
+        sum(min_mean_max.values())
+        + sum(r["n_violations"] for r in pr_tot_identity.values())
+        + sum(r["n_violations"] for r in tmean_bounds.values())
+        + sum(r["n_violations"] for r in ensemble_check.values())
+    )
+    calc_log.write("## Summary")
+    calc_log.write("ALL CHECKS PASSED" if total_violations == 0 else f"{total_violations} TOTAL VIOLATIONS -- see above for detail")
+    calc_log.save(config.qc_dir / "calc_checks.log")
 
     print("generating delta maps...")
     generate_delta_maps(ds, config)

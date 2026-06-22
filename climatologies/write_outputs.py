@@ -1,5 +1,4 @@
-"""Write the combined master Dataset to both Zarr and NetCDF (identical
-content, two formats), per the spec.
+"""Write the combined master Dataset to both Zarr and NetCDF (identical content)
 """
 
 from __future__ import annotations

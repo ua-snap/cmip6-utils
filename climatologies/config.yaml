@@ -4,14 +4,25 @@
 # Python code should need to change for those kinds of edits.
 
 paths:
-  # Large intermediate + final outputs live here, NOT in the repo and NOT
-  # under /import/home (shared quota, currently at 84%).
+  # Large intermediate + final outputs live here. This is the only path that must be changed for a new user.
+  # All other paths are relative to this root.
+  # The output directory must be on a filesystem with enough space to hold the final zarr and netcdf outputs.
   output_root: /beegfs/CMIP6/jdpaul3/climatologies
+
+# Temperature unit for the output. "celsius" (default) applies a K -> degC
+# shift to tmax/tmin/tmean (the source data is always Kelvin); dtr's stored
+# values never change between unit systems since it's a difference, not an
+# absolute temperature (see units.py) -- only its units label follows this
+# setting, for consistency with the other temperature variables.
+# "kelvin" leaves everything in the source data's native units.
+units:
+  temperature_unit: celsius
+  temperature_vars: [tmax, tmin, tmean, dtr]
 
 # One entry per source variable family. `adjusted_glob` uses {model} and
 # {scenario} placeholders that build_job_list.py expands/parses. hurs and
-# hursmin point at the *_squeezed subdirectories per explicit instruction --
-# the unsqueezed siblings in the parent adjusted/ dir must never be read.
+# hursmin point at the *_squeezed subdirectories --
+# the unsqueezed siblings in the parent adjusted/ dir are never read.
 source_families:
   tasmax:
     output_var: tmax
@@ -86,19 +97,19 @@ derived:
     requires: [tasmax, tasmin]
     units: K
     long_name: daily mean near-surface air temperature
-    description: Daily mean temperature, computed as (Tmax + Tmin) / 2 from daily Tmax/Tmin before temporal aggregation.
+    description: Daily mean temperature, computed as (tmax + tmin) / 2 from daily tmax/tmin before temporal aggregation.
   pr_tot:
     output_var: pr_tot
     requires: [pr]
     units: mm
     long_name: total precipitation accumulated over the period
     description: >
-      Sum of daily Pr over all days in the period, computed per calendar
+      Sum of daily precipitation over all days in the period, computed per calendar
       year (using the period's season-year convention), then aggregated
       (temporal_min/temporal_mean/temporal_max) across the years within
-      the era. E.g. for Period=Apr, this is the distribution of total
+      the era. E.g. for period=Apr, this is the distribution of total
       April precipitation across the era's years -- answers questions like
-      "what is the maximum April rainfall for era 2040-2069".
+      "what is the maximum April rainfall for era 2040-2069?".
 
 # Exact order of the 10 master output variables in the final Dataset.
 # Must contain exactly the set of output_var values produced by
@@ -117,7 +128,7 @@ output_variable_order:
   - sfcwind
   - snw
 
-# Order here is preserved exactly in the output Model dimension (followed
+# Order here is preserved exactly in the output model dimension (followed
 # by the ensemble name, then the reference model -- see combine.py).
 models:
   - CESM2
@@ -163,7 +174,7 @@ scenarios:
   - ssp370
   - ssp585
 
-# Edit freely. name is used as the Era coordinate label; start_year/end_year
+# Edit freely. name is used as the era coordinate label; start_year/end_year
 # are inclusive calendar years (see periods.py's module docstring for how
 # cross-year seasons like DJF/ONDJFM are assigned to a year).
 eras:
@@ -255,29 +266,29 @@ output:
   netcdf_name: cmip6_wrf_climatologies.nc
   netcdf_compression_level: 4
 
-# All human-readable text that ends up in the output's attrs lives here --
+# All human-readable text that ends up in the output's attributes lives here --
 # metadata.py only assembles these templates with computed values (era
 # lists, ensemble member lists, etc); it has no hardcoded text of its own.
 # {placeholder} fields are filled in by metadata.py via str.format().
 metadata:
   global_attrs:
-    title: "Climatologies of WRF-downscaled, bias-adjusted CMIP6 and WRF-downscaled ERA5 data for Alaska"
-    institution: "Alaska Climate Adaptation Science Center, University of Alaska Fairbanks"
+    title: "Climatologies of downscaled, bias-adjusted CMIP6 and WRF-downscaled ERA5 data for Alaska"
+    institution: "Scenarios Network for Alaska and Arctic Planning, International Arctic Research Center, University of Alaska Fairbanks; Alaska Climate Adaptation Science Center, University of Alaska Fairbanks"
     summary: >
-      Temporal min/mean/max climatologies by calendar Period (month or season)
-      and climatological Era, for 13 CMIP6 models, a multi-model ensemble mean,
-      and the WRF-downscaled ERA5 reference. See the Model, Scenario, Era,
-      Period, and Aggregation coordinate attributes, and each data variable's
+      Temporal min/mean/max climatologies by calendar period (month or season)
+      and climatological era, for 13 CMIP6 models, a multi-model ensemble mean,
+      and the WRF-downscaled ERA5 reference. See the model, scenario, era,
+      period, and aggregation coordinate attributes, and each data variable's
       own attributes, for full methodology.
     conventions: "CF-1.8"
     history_template: "{timestamp}Z: created by cmip6-utils/climatologies pipeline."
 
-  # Applies to every data variable except Pr_tot (which has its own
+  # Applies to every data variable except pr_tot (which has its own
   # two-stage methodology described in derived.pr_tot.description above).
   direct_method_note: >
-    Aggregation (see the Aggregation dimension) is computed directly over
-    every day falling in the given Period and Era -- e.g. temporal_max is
-    the single most extreme day's value within that Period+Era, not an
+    Aggregation (see the aggregation dimension) is computed directly over
+    every day falling in the given period and era -- e.g. temporal_max is
+    the single most extreme day's value within that period+era, not an
     average of yearly extremes.
 
   dimensions:
@@ -290,11 +301,11 @@ metadata:
       description_template: >
         Model or model-ensemble identifier. '{ensemble_name}' is the
         equal-weighted multi-model mean, computed via nanmean (skipping any
-        member with no data for a given variable/Scenario/Era/Period/Aggregation
+        member with no data for a given variable/scenario/era/period/aggregation
         slice -- only NaN if zero members have data) across these
         {n_members} members: {members}. '{reference_model}' is the
         WRF-downscaled ERA5 reanalysis used as the downscaling/bias-adjustment
-        reference; it is only populated under Scenario='historical'.
+        reference; it is only populated under scenario='historical'.
     period:
       long_name: period
       description_template: "Period over which the temporal aggregation is computed. {period_lines}."
@@ -309,8 +320,8 @@ metadata:
     aggregation:
       long_name: temporal aggregation method
       description_template: >
-        Temporal aggregation applied within each Period+Era. See each data
-        variable's own attrs for the exact methodology -- it differs for
+        Temporal aggregation applied within each period+era. See each data
+        variable's own attributes for the exact methodology -- it differs for
         pr_tot (aggregated across per-year period-sums) versus every other
         variable (aggregated directly over days).
 
@@ -325,7 +336,8 @@ qc:
     projection_model: CMIP6-Ensemble
     future_eras: ["2040-2069", "2070-2099"]
     scenarios: [ssp126, ssp245, ssp370, ssp585]
-    periods: [DJF, JJA, AMJJAS, ONDJFM]
+    # Delta maps are rendered for every configured Period automatically
+    # (no separate period list here -- the master output already has all of them).
     aggregation: temporal_mean
   calc_checks:
     # relative tolerance for the pr_tot/tmean exact-identity checks (float32 roundoff)

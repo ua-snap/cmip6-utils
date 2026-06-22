@@ -34,6 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from config import DEFAULT_CONFIG_PATH, Config, Era, Period, load_config
 from periods import in_period_and_label_year
+import units
 
 # Ocean/out-of-domain grid cells are NaN throughout in every source
 # variable (confirmed during data inventory). nanmin/nanmean/nanmax on
@@ -144,6 +145,7 @@ def run_job(job: dict, config: Config) -> list[Path]:
 
     if job["kind"] == "direct":
         da = load_var(job["source_paths"]["main"], job["source_vars"]["main"])
+        da = units.convert_value_if_needed(job["output_var"], da, config)
         values = direct_aggregate(da, config.eras, config.periods)
         ds = make_fragment_dataset(values, job["output_var"], config, da["y"], da["x"])
         written.append(write_fragment(ds, job["output_var"], job["model"], job["scenario"], config))
@@ -156,6 +158,11 @@ def run_job(job: dict, config: Config) -> list[Path]:
                 f"tmax/tmin time index mismatch for {job['model']}/{job['scenario']} "
                 f"({da_max.sizes['time']} vs {da_min.sizes['time']} steps)"
             )
+        # Convert tmax/tmin to the configured unit *before* averaging -- for a
+        # pure additive shift like K->degC this gives the exact same tmean as
+        # converting after, since tmean is linear in tmax/tmin.
+        da_max = units.convert_value_if_needed("tmax", da_max, config)
+        da_min = units.convert_value_if_needed("tmin", da_min, config)
         da_mean = (da_max + da_min) / 2.0
         values = direct_aggregate(da_mean, config.eras, config.periods)
         ds = make_fragment_dataset(values, job["output_var"], config, da_max["y"], da_max["x"])

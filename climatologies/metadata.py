@@ -17,6 +17,7 @@ import calendar
 import datetime
 
 from config import Config
+import units
 
 
 def _dim(config: Config, name: str) -> dict:
@@ -86,13 +87,13 @@ def variable_attrs(output_var: str, config: Config) -> dict:
         derived = config.derived["tmean"]
         return {
             "long_name": derived.long_name,
-            "units": derived.units,
+            "units": units.units_label(output_var, derived.units, config),
             "description": f"{derived.description} {config.metadata['direct_method_note']}",
         }
     family = _family_for_output_var(config, output_var)
     return {
         "long_name": family.long_name,
-        "units": family.units,
+        "units": units.units_label(output_var, family.units, config),
         "description": config.metadata["direct_method_note"],
     }
 
