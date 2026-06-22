@@ -29,9 +29,6 @@ from write_outputs import write_outputs
 
 warnings.filterwarnings("ignore", category=RuntimeWarning, message="Mean of empty slice")
 
-# Mirrors the spec's "Data vars" list order exactly.
-MASTER_VARS = ["tmin", "tmax", "tmean", "dtr", "pr", "pr_tot", "hurs", "hursmin", "sfcwind", "snw"]
-
 
 def discover_fragments(config: Config) -> dict:
     """{output_var: [{"model":..., "scenario":..., "path":...}, ...]}"""
@@ -120,7 +117,7 @@ def build_master_dataset(config: Config) -> xr.Dataset:
     y, x, grid_extras = load_grid_reference(config)
 
     data_vars = {}
-    for output_var in MASTER_VARS:
+    for output_var in config.output_variable_order:
         fragments = fragments_by_var.get(output_var, [])
         if not fragments:
             print(f"WARNING: no fragments found for {output_var} -- it will be entirely NaN", file=sys.stderr)

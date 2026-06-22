@@ -1,11 +1,11 @@
 """Period membership and season-year labeling.
 
-See PLAN.md S5.2 for the rationale. A "label year" is the calendar year a
-day's season-instance is attributed to: for non-wrapping periods (single
-months, MAM/JJA/SON/AMJJAS) this is just the day's own calendar year. For
-wrapping periods (DJF, ONDJFM) it's the calendar year of the period's last
-month -- e.g. December days get bumped forward one year to align with the
-Jan/Feb that completes their winter.
+A "label year" is the calendar year a day's season-instance is attributed
+to: for non-wrapping periods (single months, MAM/JJA/SON/AMJJAS) this is
+just the day's own calendar year. For wrapping periods (DJF, ONDJFM) it's
+the calendar year of the period's last month -- e.g. December days get
+bumped forward one year to align with the Jan/Feb that completes their
+winter.
 """
 
 from __future__ import annotations

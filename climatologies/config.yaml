@@ -1,7 +1,7 @@
-# Central configuration for the climatologies pipeline.
-# See PLAN.md for the full design rationale. Edit this file to change
-# eras, periods, models, ensemble membership, paths, or SLURM resources --
-# none of the Python code should need to change for those kinds of edits.
+# Central configuration for the climatologies pipeline. See README.md for
+# the full design rationale. Edit this file to change eras, periods,
+# models, ensemble membership, paths, or SLURM resources -- none of the
+# Python code should need to change for those kinds of edits.
 
 paths:
   # Large intermediate + final outputs live here, NOT in the repo and NOT
@@ -100,6 +100,23 @@ derived:
       April precipitation across the era's years -- answers questions like
       "what is the maximum April rainfall for era 2040-2069".
 
+# Exact order of the 10 master output variables in the final Dataset.
+# Must contain exactly the set of output_var values produced by
+# source_families + derived above (load_config() validates this and
+# raises if they ever drift apart -- e.g. a new variable added to
+# source_families but forgotten here).
+output_variable_order:
+  - tmin
+  - tmax
+  - tmean
+  - dtr
+  - pr
+  - pr_tot
+  - hurs
+  - hursmin
+  - sfcwind
+  - snw
+
 # Order here is preserved exactly in the output Model dimension (followed
 # by the ensemble name, then the reference model -- see combine.py).
 models:
@@ -147,8 +164,8 @@ scenarios:
   - ssp585
 
 # Edit freely. name is used as the Era coordinate label; start_year/end_year
-# are inclusive calendar years (see PLAN.md S5.2 for how cross-year seasons
-# like DJF/ONDJFM are assigned to a year).
+# are inclusive calendar years (see periods.py's module docstring for how
+# cross-year seasons like DJF/ONDJFM are assigned to a year).
 eras:
   - name: "1981-2010"
     start_year: 1981

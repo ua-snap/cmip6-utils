@@ -58,6 +58,7 @@ class Config:
     paths: dict
     source_families: dict  # name -> SourceFamily
     derived: dict  # name -> DerivedVar
+    output_variable_order: list  # exact order of the 10 master output_var names
     models: list
     reference_model: str
     ensemble_name: str
@@ -111,10 +112,23 @@ def load_config(path: str | os.PathLike) -> Config:
     eras = [Era(**e) for e in raw["eras"]]
     periods = [Period(name=p["name"], months=list(p["months"])) for p in raw["periods"]]
 
+    output_variable_order = list(raw["output_variable_order"])
+    derivable_vars = {f.output_var for f in source_families.values()} | {d.output_var for d in derived.values()}
+    declared_vars = set(output_variable_order)
+    if declared_vars != derivable_vars:
+        missing = derivable_vars - declared_vars
+        extra = declared_vars - derivable_vars
+        raise ValueError(
+            "config.yaml's output_variable_order doesn't match the output_vars "
+            f"produced by source_families+derived. Missing from order: {sorted(missing)}. "
+            f"In order but not produced by any family/derived entry: {sorted(extra)}."
+        )
+
     return Config(
         paths=raw["paths"],
         source_families=source_families,
         derived=derived,
+        output_variable_order=output_variable_order,
         models=list(raw["models"]),
         reference_model=raw["reference_model"],
         ensemble_name=raw["ensemble"]["name"],

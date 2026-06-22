@@ -7,10 +7,12 @@ Usage (from within a SLURM array task):
     python compute_fragment.py --job-index $SLURM_ARRAY_TASK_ID
 
 Reads the source zarr(s) for the job, loads the full daily series into
-memory once, computes temporal_min/mean/max for every (era, period) per
-PLAN.md S5.3 (direct method, used by "direct" and "tmean" jobs) or S5.4
-(two-stage method, used for the Pr_tot half of "pr" jobs), and writes the
-result fragment(s) to <output_root>/intermediate/fragments/.
+memory once, and computes temporal_min/mean/max for every (era, period)
+using one of two methods: a direct reduction over every day in the
+period+era (used by "direct" and "tmean" jobs), or, for the "pr_tot" half
+of "pr" jobs, a two-stage method (sum per year, then min/mean/max across
+years -- see `pr_tot_aggregate` below). Writes the result fragment(s) to
+<output_root>/intermediate/fragments/.
 
 A fragment is a small zarr store with dims (era, period, aggregation, y, x)
 holding just one (output_var, model, scenario) combination -- combine.py
@@ -49,7 +51,7 @@ def load_var(path: str, varname: str) -> xr.DataArray:
 
 
 def direct_aggregate(da: xr.DataArray, eras: list[Era], periods: list[Period]) -> np.ndarray:
-    """PLAN.md S5.3: temporal_min/mean/max over every day in period+era, directly."""
+    """temporal_min/mean/max over every day in period+era, directly."""
     ny, nx = da.sizes["y"], da.sizes["x"]
     out = np.full((len(eras), len(periods), 3, ny, nx), np.nan, dtype=np.float32)
     values = da.values
@@ -70,7 +72,7 @@ def direct_aggregate(da: xr.DataArray, eras: list[Era], periods: list[Period]) -
 
 
 def pr_tot_aggregate(da: xr.DataArray, eras: list[Era], periods: list[Period]) -> np.ndarray:
-    """PLAN.md S5.4: per-year period-sum, then temporal_min/mean/max across years."""
+    """per-year period-sum, then temporal_min/mean/max across years."""
     ny, nx = da.sizes["y"], da.sizes["x"]
     out = np.full((len(eras), len(periods), 3, ny, nx), np.nan, dtype=np.float32)
     values = da.values
