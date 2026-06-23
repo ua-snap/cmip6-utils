@@ -31,7 +31,7 @@ source_families:
     units: K
     long_name: daily maximum near-surface air temperature
     adjusted_glob: /beegfs/CMIP6/crstephenson/cmip6_downscaled/4km/outputs/tasmax_{model}_{scenario}_adjusted.zarr
-    era5_zarr: # NA
+    era5_zarr: /beegfs/CMIP6/crstephenson/cmip6_downscaled/4km/wrf_era5/tasmax_era5.zarr
   tasmin:
     output_var: tmin
     cmip6_var: tasmin
@@ -39,7 +39,7 @@ source_families:
     units: K
     long_name: daily minimum near-surface air temperature
     adjusted_glob: /beegfs/CMIP6/crstephenson/cmip6_downscaled/4km/outputs/tasmin_{model}_{scenario}_adjusted.zarr
-    era5_zarr: # NA
+    era5_zarr: /beegfs/CMIP6/crstephenson/cmip6_downscaled/4km/wrf_era5/tasmin_era5.zarr
   dtr:
     output_var: dtr
     cmip6_var: dtr
@@ -55,7 +55,7 @@ source_families:
     units: mm d-1
     long_name: daily total precipitation
     adjusted_glob: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_original_vars/cmip6_12km_downscaling/adjusted/pr_{model}_{scenario}_adjusted.zarr
-    era5_zarr: # NA
+    era5_zarr: /beegfs/CMIP6/crstephenson/cmip6_downscaled/4km/wrf_era5/pr_era5.zarr
   hurs:
     output_var: hurs
     cmip6_var: hurs
