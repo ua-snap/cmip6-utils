@@ -1,14 +1,14 @@
-"""Attribute generation for the master climatology output.
+"""Attribute generation for the master indicators_ds output.
 
 This module contains zero hardcoded descriptive text. Every string that
 ends up in an output attribute is sourced from config.yaml's `metadata:`
 section (or other config.yaml values, like era years / ensemble members /
-units). Functions here only assemble computed values (era line lists,
-ensemble member lists, period month names) into the templates config.yaml
-provides via str.format(). This keeps config.yaml the single place a user
-edits to change any descriptive text in the output -- editing this file
-should only ever be necessary to change *what gets computed*, never to
-change wording.
+indicator definitions). Functions here only assemble computed values
+(era line lists, ensemble member lists, period month names) into the
+templates config.yaml provides via str.format(). This keeps config.yaml
+the single place a user edits to change any descriptive text in the
+output -- editing this file should only ever be necessary to change *what
+gets computed*, never to change wording.
 """
 
 from __future__ import annotations
@@ -17,7 +17,6 @@ import calendar
 import datetime
 
 from config import Config
-import units
 
 
 def _dim(config: Config, name: str) -> dict:
@@ -72,29 +71,12 @@ def aggregation_attrs(config: Config) -> dict:
     return {"long_name": d["long_name"], "description": d["description_template"]}
 
 
-def _family_for_output_var(config: Config, output_var: str):
-    for family in config.source_families.values():
-        if family.output_var == output_var:
-            return family
-    raise KeyError(f"no source family has output_var={output_var!r}")
-
-
 def variable_attrs(output_var: str, config: Config) -> dict:
-    if output_var == config.derived["pr_tot"].output_var:
-        derived = config.derived["pr_tot"]
-        return {"long_name": derived.long_name, "units": derived.units, "description": derived.description}
-    if output_var == config.derived["tmean"].output_var:
-        derived = config.derived["tmean"]
-        return {
-            "long_name": derived.long_name,
-            "units": units.units_label(output_var, derived.units, config),
-            "description": f"{derived.description} {config.metadata['direct_method_note']}",
-        }
-    family = _family_for_output_var(config, output_var)
+    indicator = next(i for i in config.indicators.values() if i.output_var == output_var)
     return {
-        "long_name": family.long_name,
-        "units": units.units_label(output_var, family.units, config),
-        "description": config.metadata["direct_method_note"],
+        "long_name": indicator.long_name,
+        "units": indicator.units,
+        "description": f"{indicator.description} {config.metadata['aggregation_method_note']}",
     }
 
 

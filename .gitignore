@@ -17,4 +17,4 @@ _build/
 
 .claude/
 
-/climatologies/slurm/submit_*
+/indicators_ds/slurm/submit_*

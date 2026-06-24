@@ -4,7 +4,7 @@ been run and reviewed.
 This is a separate, manually-invoked step -- not part of run_pipeline.sh,
 and must run *after* qc.py, not before: qc.py's coverage-gap cross-check
 reads fragment filenames from intermediate/fragments/, so deleting them
-first would make that check vacuous (every variable/model/scenario would
+first would make that check vacuous (every indicator/model/scenario would
 look like "no fragment", and the check could no longer tell a missing
 fragment from a deleted one).
 

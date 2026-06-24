@@ -9,8 +9,7 @@ config's `slurm:` section changes:
     python slurm/generate_sbatch.py --config ../config_12km.yaml
 
 submit_qc.sbatch is not part of run_pipeline.sh -- qc.py is run manually
-after a pipeline run, via `sbatch slurm/submit_qc.sbatch`, since it's
-still being iterated on.
+after a pipeline run, via `sbatch slurm/submit_qc.sbatch`.
 """
 
 from __future__ import annotations
@@ -20,8 +19,8 @@ import json
 import sys
 from pathlib import Path
 
-CLIMATOLOGIES_DIR = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(CLIMATOLOGIES_DIR))
+INDICATORS_DS_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(INDICATORS_DS_DIR))
 
 from config import DEFAULT_CONFIG_PATH, load_config
 
@@ -31,7 +30,7 @@ CONDA_HOOK = (
 )
 
 FRAGMENTS_TEMPLATE = """#!/bin/sh
-#SBATCH --job-name=climatology_fragments
+#SBATCH --job-name=indicators_ds_fragments
 #SBATCH --partition={partition}
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -44,12 +43,12 @@ FRAGMENTS_TEMPLATE = """#!/bin/sh
 set -e
 echo Start slurm && date
 {conda_hook}
-python {climatologies_dir}/compute_fragment.py --job-index $SLURM_ARRAY_TASK_ID --config {config_path}
+python {indicators_ds_dir}/compute_fragment.py --job-index $SLURM_ARRAY_TASK_ID --config {config_path}
 echo End slurm && date
 """
 
 COMBINE_TEMPLATE = """#!/bin/sh
-#SBATCH --job-name=climatology_combine
+#SBATCH --job-name=indicators_ds_combine
 #SBATCH --partition={partition}
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -61,12 +60,12 @@ COMBINE_TEMPLATE = """#!/bin/sh
 set -e
 echo Start slurm && date
 {conda_hook}
-python {climatologies_dir}/combine.py --config {config_path}
+python {indicators_ds_dir}/combine.py --config {config_path}
 echo End slurm && date
 """
 
 QC_TEMPLATE = """#!/bin/sh
-#SBATCH --job-name=climatology_qc
+#SBATCH --job-name=indicators_ds_qc
 #SBATCH --partition={partition}
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -78,7 +77,7 @@ QC_TEMPLATE = """#!/bin/sh
 set -e
 echo Start slurm && date
 {conda_hook}
-python {climatologies_dir}/qc.py --config {config_path}
+python {indicators_ds_dir}/qc.py --config {config_path}
 echo End slurm && date
 """
 
@@ -108,7 +107,7 @@ def main():
         concurrency=frag_cfg["array_concurrency"],
         logs_dir=config.logs_dir,
         conda_hook=conda_hook,
-        climatologies_dir=CLIMATOLOGIES_DIR,
+        indicators_ds_dir=INDICATORS_DS_DIR,
         config_path=config_path,
     )
     frag_path = Path(__file__).resolve().parent / "submit_fragments.sbatch"
@@ -122,7 +121,7 @@ def main():
         time=comb_cfg["time"],
         logs_dir=config.logs_dir,
         conda_hook=conda_hook,
-        climatologies_dir=CLIMATOLOGIES_DIR,
+        indicators_ds_dir=INDICATORS_DS_DIR,
         config_path=config_path,
     )
     comb_path = Path(__file__).resolve().parent / "submit_combine.sbatch"
@@ -137,7 +136,7 @@ def main():
         time=qc_cfg["time"],
         logs_dir=config.logs_dir,
         conda_hook=conda_hook,
-        climatologies_dir=CLIMATOLOGIES_DIR,
+        indicators_ds_dir=INDICATORS_DS_DIR,
         config_path=config_path,
     )
     qc_path = Path(__file__).resolve().parent / "submit_qc.sbatch"

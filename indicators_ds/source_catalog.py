@@ -1,10 +1,12 @@
 """Path template <-> regex helpers for discovering what's actually on disk.
 
-We never hardcode the model/scenario coverage matrix -- `build_job_list.py`
+We never hardcode the model/scenario coverage matrix -- build_job_list.py
 globs the configured `adjusted_glob` template for each source family and
 parses out whichever (model, scenario) combinations actually exist. This
-way the pipeline picks up new models/scenarios/resolutions automatically
-once `config.yaml`'s paths are updated, without any code changes.
+way the pipeline picks up new models/scenarios automatically once
+config.yaml's paths are updated, without any code changes.
+
+Copied unchanged from climatologies/source_catalog.py.
 """
 
 from __future__ import annotations

@@ -1,6 +1,6 @@
-"""Assemble all per-(output_var, model, scenario) fragments into the single
+"""Assemble all per-(indicator, model, scenario) fragments into the single
 master Dataset (model x scenario x era x period x aggregation x y x x for
-each of the 10 data variables), compute the CMIP6-Ensemble multi-model
+each of the su/dw/ftc indicators), compute the CMIP6-Ensemble multi-model
 mean, attach all attrs, and write zarr + netCDF via write_outputs.py.
 
 Fragments are discovered by globbing <output_root>/intermediate/fragments/

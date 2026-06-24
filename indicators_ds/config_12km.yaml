@@ -1,0 +1,290 @@
+# Central configuration for the indicators_ds pipeline. See README.md and
+# ~/INDICATORS_PLAN.md for the full design rationale. Edit this file to
+# change eras, periods, models, indicator definitions, ensemble
+# membership, paths, or SLURM resources -- none of the Python code should
+# need to change for those kinds of edits.
+#
+# This pipeline is the indicator-computing sibling of ../climatologies/:
+# instead of aggregating raw daily variables directly, it computes one
+# indicator value per calendar year (su/dw/ftc -- see indicators: below),
+# then pools those per-year values across each era's years and reduces
+# with temporal_min/temporal_mean/temporal_max -- the same two-stage
+# method climatologies uses for pr_tot, generalized from summing values
+# to counting qualifying days.
+
+paths:
+  # Large intermediate + final outputs live here. This is the only path that must be changed for a new user.
+  output_root: /beegfs/CMIP6/jdpaul3/indicators_ds/12km
+
+# Source variables read from disk. tasmax/tasmin are never written as
+# standalone outputs here (unlike climatologies' source_families) -- they
+# are purely inputs to the indicators: block below.
+source_families:
+  tasmax:
+    cmip6_var: tasmax
+    era5_var: t2max
+    units: K
+    adjusted_glob: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_original_vars/cmip6_12km_downscaling/adjusted/tasmax_{model}_{scenario}_adjusted.zarr
+    era5_zarr: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_original_vars/cmip6_12km_downscaling/era5_zarr/t2max_era5.zarr
+  tasmin:
+    cmip6_var: tasmin
+    era5_var: t2min
+    units: K
+    adjusted_glob: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_original_vars/cmip6_12km_downscaling/adjusted/tasmin_{model}_{scenario}_adjusted.zarr
+    era5_zarr: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_original_vars/cmip6_12km_downscaling/era5_zarr/t2min_era5.zarr
+
+# Indicator definitions. `requires` lists which source_families entries
+# (above) must be present for a given model/scenario before a job can be
+# built (see build_job_list.py) -- for ftc this is an intersection of
+# tasmax and tasmin coverage, the same pattern climatologies uses for
+# its tmean derived variable. Thresholds/operators (see compute_fragment.py's
+# CRITERIA) are this pipeline's own authoritative definition of each
+# indicator -- edit them there if the definition ever needs to change.
+# plausible_min/plausible_max are user-set bounds on a *single year's*
+# count for this domain -- qc.py's check_plausible_range uses them
+# directly, since temporal_min/mean/max are all pooled from a set of
+# per-year counts and so must fall within the same bounds as any
+# individual year would.
+indicators:
+  su:
+    output_var: su
+    requires: [tasmax]
+    units: d
+    long_name: yearly number of summer days
+    plausible_min: 0
+    plausible_max: 200
+    description: >
+      Count of days per calendar year with daily maximum temperature
+      above 25 degC (tasmax > 25 degC, strict). Per-year counts are
+      pooled across each era's years and reduced via
+      temporal_min/temporal_mean/temporal_max -- see the
+      aggregation_method_note below.
+  dw:
+    output_var: dw
+    requires: [tasmin]
+    units: d
+    long_name: yearly number of deep winter days
+    plausible_min: 0
+    plausible_max: 275
+    description: >
+      Count of days per calendar year with daily minimum temperature
+      below -30 degC (tasmin < -30 degC, strict). Per-year counts are
+      pooled across each era's years and reduced via
+      temporal_min/temporal_mean/temporal_max.
+  ftc:
+    output_var: ftc
+    requires: [tasmax, tasmin]
+    units: d
+    long_name: yearly number of freeze-thaw cycles
+    plausible_min: 0
+    plausible_max: 250
+    description: >
+      Count of days per calendar year where daily minimum temperature is
+      at or below 0 degC and daily maximum temperature is above 0 degC on
+      that same day (tasmin <= 0 degC AND tasmax > 0 degC). Per-year
+      counts are pooled across each era's years and reduced via
+      temporal_min/temporal_mean/temporal_max.
+
+# Exact order of the 3 master output variables in the final Dataset. Must
+# match the set of output_var values produced by indicators above --
+# load_config() validates this and raises if they ever drift apart.
+output_variable_order:
+  - su
+  - dw
+  - ftc
+
+# Same model/scenario/era/ensemble grid as climatologies/config_12km.yaml
+# -- same input data, only what's being aggregated differs.
+models:
+  - CESM2
+  - CNRM-CM6-1-HR
+  - E3SM-2-0
+  - EC-Earth3-Veg
+  - GFDL-ESM4
+  - HadGEM3-GC31-LL
+  - HadGEM3-GC31-MM
+  - KACE-1-0-G
+  - MIROC6
+  - MPI-ESM1-2-HR
+  - MRI-ESM2-0
+  - NorESM2-MM
+  - TaiESM1
+
+reference_model: WRF-ERA5
+
+ensemble:
+  name: CMIP6-Ensemble
+  members:
+    - CESM2
+    - CNRM-CM6-1-HR
+    - E3SM-2-0
+    - EC-Earth3-Veg
+    - GFDL-ESM4
+    - HadGEM3-GC31-LL
+    - HadGEM3-GC31-MM
+    - KACE-1-0-G
+    - MIROC6
+    - MPI-ESM1-2-HR
+    - MRI-ESM2-0
+    - NorESM2-MM
+    - TaiESM1
+
+scenarios:
+  - historical
+  - ssp126
+  - ssp245
+  - ssp370
+  - ssp585
+
+eras:
+  - name: "1981-2010"
+    start_year: 1981
+    end_year: 2010
+  - name: "1965-2014"
+    start_year: 1965
+    end_year: 2014
+  - name: "2040-2069"
+    start_year: 2040
+    end_year: 2069
+  - name: "2070-2099"
+    start_year: 2070
+    end_year: 2099
+
+# First-pass scope is annual-only (see ~/INDICATORS_PLAN.md S4.3): a
+# single "Annual" period covering all 12 months. in_period_and_label_year
+# (periods.py, copied unchanged from climatologies) treats this like any
+# other non-wrapping period -- adding sub-annual periods later (e.g. JJA)
+# is purely a config change, no code changes needed.
+periods:
+  - name: Annual
+    months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+
+aggregations:
+  - temporal_min
+  - temporal_mean
+  - temporal_max
+
+# Reuse the same grid reference climatologies uses -- any adjusted zarr on
+# the same grid works, this one is guaranteed to exist.
+grid_reference:
+  zarr_path: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_original_vars/cmip6_12km_downscaling/adjusted/tasmax_MIROC6_historical_adjusted.zarr
+
+slurm:
+  partition: analysis
+  conda_env: cmip6-utils
+  # Starting points carried over from climatologies -- job count here is
+  # much smaller (~180-200 vs ~427, since there are only 3 indicators
+  # needing at most 2 source vars each, vs climatologies' 10 output vars
+  # across 7 source families) and combine.py only assembles 3 variables
+  # instead of 10, so these can likely be tuned down once a real run's
+  # actual memory usage is observed.
+  fragments:
+    mem: "128G"
+    cpus_per_task: 4
+    time: "01:00:00"
+    array_concurrency: 12
+  combine:
+    mem: "400G"
+    cpus_per_task: 8
+    time: "02:00:00"
+  qc:
+    mem: "64G"
+    cpus_per_task: 4
+    time: "00:30:00"
+
+output:
+  zarr_name: cmip6_wrf_indicators.zarr
+  netcdf_name: cmip6_wrf_indicators.nc
+  netcdf_compression_level: 4
+
+# All human-readable text that ends up in the output's attributes lives
+# here -- metadata.py only assembles these templates with computed values
+# (era lists, ensemble member lists, etc); it has no hardcoded text of its
+# own. {placeholder} fields are filled in by metadata.py via str.format().
+metadata:
+  global_attrs:
+    title: "Climate indicators from downscaled, bias-adjusted CMIP6 and WRF-downscaled ERA5 data for Alaska"
+    institution: "Scenarios Network for Alaska and Arctic Planning, International Arctic Research Center, University of Alaska Fairbanks; Alaska Climate Adaptation Science Center, University of Alaska Fairbanks"
+    summary: >
+      Temporal min/mean/max of yearly indicator counts (su, dw, ftc) by
+      climatological era, for 13 CMIP6 models, a multi-model ensemble
+      mean, and the WRF-downscaled ERA5 reference. See the model,
+      scenario, era, period, and aggregation coordinate attributes, and
+      each data variable's own attributes, for full methodology.
+    conventions: "CF-1.8"
+    history_template: "{timestamp}Z: created by cmip6-utils/indicators_ds pipeline."
+
+  # Applies to every indicator variable's description (appended by
+  # metadata.py).
+  aggregation_method_note: >
+    Aggregation (see the aggregation dimension) is computed by first
+    counting qualifying days within each calendar year (see the period
+    dimension), then taking temporal_min/temporal_mean/temporal_max
+    across the per-year counts within each era -- e.g. temporal_max for
+    era 2040-2069 is the single highest yearly count observed across
+    those 30 years, not a day-level extreme.
+
+  dimensions:
+    era:
+      long_name: climatological era
+      description_template: "Climatological era. {era_lines}"
+      line_template: "{name}: {start_year}-01-01 to {end_year}-12-31 inclusive."
+    model:
+      long_name: model
+      description_template: >
+        Model or model-ensemble identifier. '{ensemble_name}' is the
+        equal-weighted multi-model mean, computed via nanmean (skipping any
+        member with no data for a given variable/scenario/era/period/aggregation
+        slice -- only NaN if zero members have data) across these
+        {n_members} members: {members}. '{reference_model}' is the
+        WRF-downscaled ERA5 reanalysis used as the downscaling/bias-adjustment
+        reference; it is only populated under scenario='historical'.
+    period:
+      long_name: period
+      description_template: >
+        Calendar period over which each year's indicator count is
+        computed, before being pooled across the era (see
+        aggregation_method_note). {period_lines}. This first pass only
+        defines 'Annual'; sub-annual periods (e.g. JJA-only summer days)
+        can be added later as a config-only change.
+      line_template: "{name}: {month_names}{wrap_suffix}"
+      wrap_suffix: " (season-year = calendar year of the last listed month)"
+    scenario:
+      long_name: scenario
+      description_template: >
+        CMIP6 experiment/scenario. 'historical' covers the historical run and
+        is also the only scenario populated for the WRF-ERA5 reference.
+        ssp126/ssp245/ssp370/ssp585 are ScenarioMIP future projections.
+    aggregation:
+      long_name: temporal aggregation method
+      description_template: >
+        Temporal aggregation applied across the per-year indicator counts
+        within each period+era. See aggregation_method_note and each data
+        variable's own attributes for the exact methodology.
+
+# Source variables needing the K -> degC shift before the indicator
+# thresholds (all defined in degC) are evaluated -- the source zarrs are
+# always Kelvin. Unlike climatologies, there's no "kelvin" output option
+# here since indicator thresholds are fixed in degC by definition.
+units:
+  temperature_vars: [tasmax, tasmin]
+
+# Parameters for qc.py (run manually after a pipeline run -- see README.md).
+qc:
+  delta_maps:
+    # ERA5 historical baseline that projections are compared against --
+    # same baseline climatologies uses.
+    baseline:
+      model: WRF-ERA5
+      scenario: historical
+      era: "1981-2010"
+    projection_model: CMIP6-Ensemble
+    future_eras: ["2040-2069", "2070-2099"]
+    scenarios: [ssp126, ssp245, ssp370, ssp585]
+    # Delta maps are rendered for every configured period automatically
+    # (just "Annual" for now, see periods: above).
+    aggregation: temporal_mean
+  calc_checks:
+    # relative tolerance for the ensemble-re-derivation and
+    # integer-min/max checks (float32 roundoff)
+    rtol: 1.0e-3

@@ -1,11 +1,14 @@
 """Period membership and season-year labeling.
 
 A "label year" is the calendar year a day's season-instance is attributed
-to: for non-wrapping periods (single months, MAM/JJA/SON/AMJJAS) this is
-just the day's own calendar year. For wrapping periods (DJF, ONDJFM) it's
-the calendar year of the period's last month -- e.g. December days get
-bumped forward one year to align with the Jan/Feb that completes their
-winter. So the DJF period for the year 2000 is Dec 1999, Jan 2000, Feb 2000.
+to: for non-wrapping periods (this pipeline's first pass only has
+'Annual', months 1-12) this is just the day's own calendar year. For
+wrapping periods (e.g. DJF, if added later) it's the calendar year of the
+period's last month -- e.g. December days get bumped forward one year to
+align with the Jan/Feb that completes their winter.
+
+Copied unchanged from climatologies/periods.py -- this logic doesn't
+depend on what's being aggregated.
 """
 
 from __future__ import annotations

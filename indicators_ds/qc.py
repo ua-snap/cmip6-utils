@@ -1,13 +1,17 @@
-"""QC for the climatology *pipeline*, not the source data.
+"""QC for the indicators_ds *pipeline*, not the source data.
 
-The source data has already been through its own QC process -- this
-script does not re-check whether values are physically plausible. Every
-check here compares quantities this pipeline itself computed against a
-mathematical relationship that must hold if the computation is correct
-(e.g. pr_tot must equal pr's mean times the period's day-count; a
-multi-model ensemble mean must equal nanmean of its configured members).
-A violation means *this pipeline* has a bug; it says nothing about
-whether the underlying climate data is "right".
+The source data has already been through its own QC process (see
+climatologies/qc.py, which checks the same tasmax/tasmin inputs this
+pipeline reads) -- this script does not re-check whether the inputs are
+physically plausible. Every check here compares quantities this pipeline
+itself computed against a mathematical relationship that must hold if the
+computation is correct (e.g. temporal_min/temporal_max are literal
+per-year counts, so they must be exact integers; a multi-model ensemble
+mean must equal nanmean of its configured members), plus one plausibility
+check against the per-indicator bounds set in config.yaml's
+indicators:.../plausible_min/plausible_max. A violation in the calc
+checks means *this pipeline* has a bug; a violation in the plausible-range
+check is worth a look but isn't necessarily a bug.
 
 Run manually after a pipeline run finishes:
     python qc.py --config config_12km.yaml
@@ -17,15 +21,17 @@ source data), except for the fragment-presence cross-check, which just
 lists fragment filenames (no data read).
 
 Writes to <paths.output_root>/qc/:
-    nan_checks.log            -- pr/pr_tot NaN-mask equality, coverage-gap cross-check
-    calc_checks.log           -- min<=mean<=max, pr_tot identity, tmean bounds, ensemble re-derivation
-    delta_maps/<var>/<var>__<period>.png  -- one PNG per variable x every
+    nan_checks.log            -- fragment-presence / output-NaN coverage-gap cross-check
+    calc_checks.log           -- min<=mean<=max, integer min/max, non-negativity,
+                                  plausible range, ensemble re-derivation
+    delta_maps/<var>/<var>__<period>.png  -- one PNG per indicator x every
         configured period, each a scenario x era grid of
         (CMIP6-Ensemble projection) - (WRF-ERA5 historical baseline)
 
 This reads (but does not modify) intermediate/fragments/ for the
-coverage-gap cross-check -- run cleanup_intermediate.py only after this
-script has been run and its results reviewed.
+coverage-gap cross-check -- run cleanup_intermediate.py (once it exists --
+deferred for this pipeline's first pass) only after this script has been
+run and its results reviewed.
 """
 
 from __future__ import annotations
@@ -46,12 +52,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from config import DEFAULT_CONFIG_PATH, Config, load_config
 
-NOLEAP_DAYS_IN_MONTH = {1: 31, 2: 28, 3: 31, 4: 30, 5: 31, 6: 30, 7: 31, 8: 31, 9: 30, 10: 31, 11: 30, 12: 31}
-
-
-def period_day_count(months: list) -> int:
-    return sum(NOLEAP_DAYS_IN_MONTH[m] for m in months)
-
 
 class Log:
     """Accumulates report lines and echoes them to stdout as it goes."""
@@ -70,33 +70,8 @@ class Log:
 
 
 # --------------------------------------------------------------------------
-# NaN pattern checks -- only checks that compare quantities this pipeline
-# computed against each other or against its own fragment manifest. Do NOT
-# add checks here that compare different models'/eras'/variables' masks
-# against each other -- the source data legitimately has different masks
-# per variable (e.g. snw is land-only) and per model, and that is not this
-# pipeline's concern.
+# NaN pattern checks
 # --------------------------------------------------------------------------
-
-
-def check_pr_pr_tot_nan_match(ds: xr.Dataset, log: Log) -> int:
-    log.write("## pr vs pr_tot NaN-mask equality")
-    log.write("pr_tot is derived entirely from pr inside this pipeline, so any cell")
-    log.write("that's NaN in one must be NaN in the other. A mismatch is a pipeline bug.")
-    log.write("")
-    pr_nan = np.isnan(ds["pr"].values)
-    prtot_nan = np.isnan(ds["pr_tot"].values)
-    mismatch = pr_nan != prtot_nan
-    n_mismatch = int(mismatch.sum())
-    log.write(f"Total cells compared: {pr_nan.size}")
-    log.write(f"Mismatches: {n_mismatch}")
-    if n_mismatch:
-        idx = np.argwhere(mismatch)[:20]
-        log.write("Sample mismatching indices (model,scenario,era,period,agg,y,x):")
-        for row in idx:
-            log.write(f"  {tuple(row.tolist())}")
-    log.write("")
-    return n_mismatch
 
 
 def check_coverage_gaps(ds: xr.Dataset, config: Config, log: Log) -> int:
@@ -153,84 +128,71 @@ def check_min_mean_max(ds: xr.Dataset, config: Config, log: Log) -> dict:
     return results
 
 
-def check_pr_tot_identity(ds: xr.Dataset, config: Config, log: Log) -> dict:
-    log.write("## pr_tot identity: pr_tot.temporal_mean == pr.temporal_mean * days_in_period")
-    log.write("Exact for any model on a fixed-length (noleap) calendar -- pr_tot's mean is")
-    log.write("literally the same sum as pr's mean, just normalized by years vs. by days.")
-    log.write("WRF-ERA5 excluded due to real gregorian calendar (variable Feb length).")
+def check_min_max_are_integers(ds: xr.Dataset, config: Config, log: Log) -> dict:
+    log.write("## temporal_min/temporal_max are exact per-year counts")
+    log.write("Unlike temporal_mean, min/max are never averaged across years -- they're")
+    log.write("literally one of the per-year day-counts pulled into the era's value pool")
+    log.write("(see compute_fragment.py's count_aggregate), so they must be exact integers")
+    log.write("(within float32 round-off). A non-integer value here means the aggregation")
+    log.write("or criterion logic has a bug.")
     log.write("")
-    log.write("Wrapping periods (DJF, ONDJFM) get a looser, era-length-scaled tolerance:")
-    log.write("pr_tot's per-year completeness exclusion (see compute_fragment.py's")
-    log.write("pr_tot_aggregate) legitimately drops a boundary year that pr's direct")
-    log.write("pooling still includes, whenever an era's start year lands exactly on the")
-    log.write("first day of a model's available record (e.g. era 1965-2014 needs Dec 1964,")
-    log.write("which doesn't exist). That's at most ~1 year out of the era's length, not a bug.")
+    log.write(f"{config.ensemble_name} is excluded here -- it's a nanmean *across models*")
+    log.write("of each model's own (integer) min/max, which is itself generally fractional;")
+    log.write("that's expected, not a bug.")
     log.write("")
-    excluded = set(config.qc["calc_checks"]["fixed_calendar_models_excluded"])
-    rtol = config.qc["calc_checks"]["rtol"]
-    period_lookup = {p.name: p for p in config.periods}
-    era_lengths = {e.name: e.end_year - e.start_year + 1 for e in config.eras}
-    models = [m for m in ds["model"].values if m not in excluded]
-
-    pr_mean = ds["pr"].sel(aggregation="temporal_mean", model=models)
-    prtot_mean = ds["pr_tot"].sel(aggregation="temporal_mean", model=models)
-
+    models = [m for m in ds["model"].values if m != config.ensemble_name]
     results = {}
-    for period_name in ds["period"].values:
-        period_name = str(period_name)
-        period_obj = period_lookup[period_name]
-        ndays = period_day_count(period_obj.months)
-        n_checked_total = 0
-        n_bad_total = 0
-        for era in ds["era"].values:
-            era_rtol = max(rtol, 3.0 / era_lengths[str(era)]) if period_obj.wrap else rtol
-            expected = (pr_mean.sel(period=period_name, era=era) * ndays).values
-            actual = prtot_mean.sel(period=period_name, era=era).values
-            valid = ~np.isnan(expected) & ~np.isnan(actual)
-            if not valid.any():
-                continue
-            close = np.isclose(actual[valid], expected[valid], rtol=era_rtol, atol=1e-3)
-            n_checked_total += int(valid.sum())
-            n_bad_total += int((~close).sum())
-        if n_checked_total == 0:
-            continue
-        results[period_name] = {"n_checked": n_checked_total, "n_violations": n_bad_total}
-        log.write(f"  {period_name} (days={ndays}): checked {n_checked_total}, violations {n_bad_total}")
+    for var in config.output_variable_order:
+        da = ds[var].sel(model=models)
+        n_checked = 0
+        n_bad = 0
+        for agg in ("temporal_min", "temporal_max"):
+            values = da.sel(aggregation=agg).values
+            valid = ~np.isnan(values)
+            n_checked += int(valid.sum())
+            non_integer = np.abs(values[valid] - np.round(values[valid])) > 1e-3
+            n_bad += int(non_integer.sum())
+        results[var] = {"n_checked": n_checked, "n_violations": n_bad}
+        log.write(f"  {var}: checked {n_checked}, violations {n_bad}")
     log.write("")
     return results
 
 
-def check_tmean_bounds(ds: xr.Dataset, config: Config, log: Log) -> dict:
-    log.write("## tmean vs tmax/tmin")
-    log.write("tmean = (tmax+tmin)/2 daily, before aggregation, so:")
-    log.write("  temporal_mean: tmean.mean == (tmax.mean + tmin.mean)/2  [exact, mean is linear]")
-    log.write("  temporal_min:  tmean.min  >= (tmax.min  + tmin.min )/2 [bound only]")
-    log.write("  temporal_max:  tmean.max  <= (tmax.max  + tmin.max )/2 [bound only]")
+def check_nonnegative(ds: xr.Dataset, config: Config, log: Log) -> dict:
+    log.write("## All values are non-negative")
+    log.write("Every indicator here is a day-count, which can never be negative.")
     log.write("")
-    rtol = config.qc["calc_checks"]["rtol"]
-    tmax, tmin, tmean = ds["tmax"], ds["tmin"], ds["tmean"]
     results = {}
+    for var in config.output_variable_order:
+        values = ds[var].values
+        n_bad = int(np.nansum(values < -1e-3))
+        results[var] = n_bad
+        log.write(f"  {var}: {n_bad} violations")
+    log.write("")
+    return results
 
-    expected_mean = ((tmax.sel(aggregation="temporal_mean") + tmin.sel(aggregation="temporal_mean")) / 2).values
-    actual_mean = tmean.sel(aggregation="temporal_mean").values
-    valid = ~np.isnan(expected_mean) & ~np.isnan(actual_mean)
-    close = np.isclose(actual_mean[valid], expected_mean[valid], rtol=rtol, atol=1e-3)
-    results["mean_equality"] = {"n_checked": int(valid.sum()), "n_violations": int((~close).sum())}
 
-    lower = ((tmax.sel(aggregation="temporal_min") + tmin.sel(aggregation="temporal_min")) / 2).values
-    actual_min = tmean.sel(aggregation="temporal_min").values
-    valid2 = ~np.isnan(lower) & ~np.isnan(actual_min)
-    bad_min = actual_min[valid2] < (lower[valid2] - 1e-3)
-    results["min_bound"] = {"n_checked": int(valid2.sum()), "n_violations": int(bad_min.sum())}
-
-    upper = ((tmax.sel(aggregation="temporal_max") + tmin.sel(aggregation="temporal_max")) / 2).values
-    actual_max = tmean.sel(aggregation="temporal_max").values
-    valid3 = ~np.isnan(upper) & ~np.isnan(actual_max)
-    bad_max = actual_max[valid3] > (upper[valid3] + 1e-3)
-    results["max_bound"] = {"n_checked": int(valid3.sum()), "n_violations": int(bad_max.sum())}
-
-    for name, r in results.items():
-        log.write(f"  {name}: checked {r['n_checked']}, violations {r['n_violations']}")
+def check_plausible_range(ds: xr.Dataset, config: Config, log: Log) -> dict:
+    log.write("## Plausible value range (config.yaml's plausible_min/plausible_max)")
+    log.write("Bounds on a single year's indicator count for this domain; since")
+    log.write("temporal_min/mean/max are all pooled from a set of per-year counts, every")
+    log.write("one of them must fall within the same bounds as any individual year would.")
+    log.write("A violation is worth a closer look but isn't necessarily a pipeline bug --")
+    log.write("it could be a genuinely surprising value in the source data.")
+    log.write("")
+    results = {}
+    for indicator in config.indicators.values():
+        da = ds[indicator.output_var]
+        values = da.values
+        valid = ~np.isnan(values)
+        n_checked = int(valid.sum())
+        out_of_range = (values[valid] < indicator.plausible_min - 1e-3) | (values[valid] > indicator.plausible_max + 1e-3)
+        n_bad = int(out_of_range.sum())
+        results[indicator.output_var] = {"n_checked": n_checked, "n_violations": n_bad}
+        log.write(
+            f"  {indicator.output_var} (expected [{indicator.plausible_min}, {indicator.plausible_max}]): "
+            f"checked {n_checked}, violations {n_bad}"
+        )
     log.write("")
     return results
 
@@ -315,8 +277,9 @@ def render_delta_map(ds: xr.Dataset, config: Config, output_var: str, period: st
 
 
 def generate_delta_maps(ds: xr.Dataset, config: Config):
-    # Every configured period, not just a representative subset -- fragments/the
-    # combined output already hold every period, so this is free.
+    # Every configured period, not just a representative subset -- just
+    # "Annual" for this first pass, but the loop generalizes for free if
+    # sub-annual periods are added later.
     for output_var in config.output_variable_order:
         for period in ds["period"].values:
             period = str(period)
@@ -340,7 +303,6 @@ def main():
     nan_log = Log("QC: NaN pattern checks")
     nan_log.write(f"Master output: {zarr_path}")
     nan_log.write("")
-    check_pr_pr_tot_nan_match(ds, nan_log)
     check_coverage_gaps(ds, config, nan_log)
     nan_log.save(config.qc_dir / "nan_checks.log")
 
@@ -348,14 +310,16 @@ def main():
     calc_log.write(f"Master output: {zarr_path}")
     calc_log.write("")
     min_mean_max = check_min_mean_max(ds, config, calc_log)
-    pr_tot_identity = check_pr_tot_identity(ds, config, calc_log)
-    tmean_bounds = check_tmean_bounds(ds, config, calc_log)
+    integer_check = check_min_max_are_integers(ds, config, calc_log)
+    nonneg_check = check_nonnegative(ds, config, calc_log)
+    range_check = check_plausible_range(ds, config, calc_log)
     ensemble_check = check_ensemble_derivation(ds, config, calc_log)
 
     total_violations = (
         sum(min_mean_max.values())
-        + sum(r["n_violations"] for r in pr_tot_identity.values())
-        + sum(r["n_violations"] for r in tmean_bounds.values())
+        + sum(r["n_violations"] for r in integer_check.values())
+        + sum(nonneg_check.values())
+        + sum(r["n_violations"] for r in range_check.values())
         + sum(r["n_violations"] for r in ensemble_check.values())
     )
     calc_log.write("## Summary")

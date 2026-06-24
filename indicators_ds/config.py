@@ -1,5 +1,5 @@
-"""Loader for the pipeline's config YAML (e.g. config_12km.yaml,
-config_4km.yaml) -- the single source of truth for a given pipeline run.
+"""Loader for the pipeline's config YAML (e.g. config_12km.yaml) -- the
+single source of truth for a given pipeline run.
 
 Every other script imports `load_config` from here rather than reading
 the config YAML directly, so there is exactly one place that knows the
@@ -25,7 +25,7 @@ class Era:
 @dataclass(frozen=True)
 class Period:
     name: str
-    months: list  # chronological order, e.g. [12, 1, 2] for DJF
+    months: list  # chronological order, e.g. [1..12] for Annual
     wrap: bool = field(init=False)
 
     def __post_init__(self):
@@ -35,31 +35,31 @@ class Period:
 @dataclass(frozen=True)
 class SourceFamily:
     name: str
-    output_var: str
     cmip6_var: str
     era5_var: str
     units: str
-    long_name: str
     adjusted_glob: str
     era5_zarr: str
 
 
 @dataclass(frozen=True)
-class DerivedVar:
+class IndicatorDef:
     name: str
     output_var: str
-    requires: list
+    requires: list  # source_families keys needed to compute this indicator
     units: str
     long_name: str
     description: str
+    plausible_min: float  # user-set plausibility bounds for qc.py's range check
+    plausible_max: float
 
 
 @dataclass(frozen=True)
 class Config:
     paths: dict
     source_families: dict  # name -> SourceFamily
-    derived: dict  # name -> DerivedVar
-    output_variable_order: list  # exact order of the 10 master output_var names
+    indicators: dict  # name -> IndicatorDef
+    output_variable_order: list  # exact order of the master output_var names
     models: list
     reference_model: str
     ensemble_name: str
@@ -72,8 +72,8 @@ class Config:
     slurm: dict
     output: dict
     metadata: dict
-    qc: dict
     units: dict
+    qc: dict
 
     @property
     def output_root(self) -> Path:
@@ -110,31 +110,35 @@ def load_config(path: str | os.PathLike) -> Config:
         raw = yaml.safe_load(f)
 
     source_families = {
-        name: SourceFamily(name=name, **spec)
-        for name, spec in raw["source_families"].items()
+        name: SourceFamily(name=name, **spec) for name, spec in raw["source_families"].items()
     }
-    derived = {
-        name: DerivedVar(name=name, **spec) for name, spec in raw["derived"].items()
+    indicators = {
+        name: IndicatorDef(name=name, **spec) for name, spec in raw["indicators"].items()
     }
     eras = [Era(**e) for e in raw["eras"]]
     periods = [Period(name=p["name"], months=list(p["months"])) for p in raw["periods"]]
 
     output_variable_order = list(raw["output_variable_order"])
-    derivable_vars = {f.output_var for f in source_families.values()} | {d.output_var for d in derived.values()}
     declared_vars = set(output_variable_order)
-    if declared_vars != derivable_vars:
-        missing = derivable_vars - declared_vars
-        extra = declared_vars - derivable_vars
+    produced_vars = {i.output_var for i in indicators.values()}
+    if declared_vars != produced_vars:
+        missing = produced_vars - declared_vars
+        extra = declared_vars - produced_vars
         raise ValueError(
             f"{path}'s output_variable_order doesn't match the output_vars "
-            f"produced by source_families+derived. Missing from order: {sorted(missing)}. "
-            f"In order but not produced by any family/derived entry: {sorted(extra)}."
+            f"produced by indicators. Missing from order: {sorted(missing)}. "
+            f"In order but not produced by any indicator: {sorted(extra)}."
         )
+
+    for name, indicator in indicators.items():
+        unknown = set(indicator.requires) - set(source_families)
+        if unknown:
+            raise ValueError(f"indicator {name!r} requires unknown source_families: {sorted(unknown)}")
 
     return Config(
         paths=raw["paths"],
         source_families=source_families,
-        derived=derived,
+        indicators=indicators,
         output_variable_order=output_variable_order,
         models=list(raw["models"]),
         reference_model=raw["reference_model"],
@@ -148,8 +152,8 @@ def load_config(path: str | os.PathLike) -> Config:
         slurm=raw["slurm"],
         output=raw["output"],
         metadata=raw["metadata"],
-        qc=raw["qc"],
         units=raw["units"],
+        qc=raw["qc"],
     )
 
 
