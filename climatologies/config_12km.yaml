@@ -7,7 +7,7 @@ paths:
   # Large intermediate + final outputs live here. This is the only path that must be changed for a new user.
   # All other paths are relative to this root.
   # The output directory must be on a filesystem with enough space to hold the final zarr and netcdf outputs.
-  output_root: /beegfs/CMIP6/jdpaul3/climatologies/12km
+  output_root: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/climatologies/12km/
 
 # Temperature unit for the output. "celsius" (default) applies a K -> degC
 # shift to tmax/tmin/tmean (the source data is always Kelvin); dtr's stored
@@ -21,7 +21,7 @@ units:
 
 # One entry per source variable family. `adjusted_glob` uses {model} and
 # {scenario} placeholders that build_job_list.py expands/parses. hurs and
-# hursmin point at the *_squeezed subdirectories --
+# hursmin point at the *_squeezed subdirectories, except for era5
 # the unsqueezed siblings in the parent adjusted/ dir are never read.
 source_families:
   tasmax:
@@ -30,64 +30,64 @@ source_families:
     era5_var: t2max
     units: K
     long_name: daily maximum near-surface air temperature
-    adjusted_glob: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_original_vars/cmip6_12km_downscaling/adjusted/tasmax_{model}_{scenario}_adjusted.zarr
-    era5_zarr: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_original_vars/cmip6_12km_downscaling/era5_zarr/t2max_era5.zarr
+    adjusted_glob: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/adjusted/12km/tasmax_{model}_{scenario}_adjusted.zarr
+    era5_zarr: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/era5_zarr/12km/t2max_era5.zarr
   tasmin:
     output_var: tmin
     cmip6_var: tasmin
     era5_var: t2min
     units: K
     long_name: daily minimum near-surface air temperature
-    adjusted_glob: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_original_vars/cmip6_12km_downscaling/adjusted/tasmin_{model}_{scenario}_adjusted.zarr
-    era5_zarr: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_original_vars/cmip6_12km_downscaling/era5_zarr/t2min_era5.zarr
+    adjusted_glob: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/adjusted/12km/tasmin_{model}_{scenario}_adjusted.zarr
+    era5_zarr: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/era5_zarr/12km/t2min_era5.zarr
   dtr:
     output_var: dtr
     cmip6_var: dtr
     era5_var: dtr
     units: K
     long_name: diurnal temperature range (bias-adjusted independently, not derived from Tmax-Tmin)
-    adjusted_glob: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_original_vars/cmip6_12km_downscaling/adjusted/dtr_{model}_{scenario}_adjusted.zarr
-    era5_zarr: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_original_vars/cmip6_12km_downscaling/era5_zarr/dtr_era5.zarr
+    adjusted_glob: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/adjusted/12km/dtr_{model}_{scenario}_adjusted.zarr
+    era5_zarr: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/era5_zarr/12km/dtr_era5.zarr
   pr:
     output_var: pr
     cmip6_var: pr
     era5_var: pr
     units: mm d-1
     long_name: daily total precipitation
-    adjusted_glob: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_original_vars/cmip6_12km_downscaling/adjusted/pr_{model}_{scenario}_adjusted.zarr
-    era5_zarr: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_original_vars/cmip6_12km_downscaling/era5_zarr/pr_era5.zarr
+    adjusted_glob: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/adjusted/12km/adjusted/pr_{model}_{scenario}_adjusted.zarr
+    era5_zarr: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/era5_zarr/12km/pr_era5.zarr
   hurs:
     output_var: hurs
     cmip6_var: hurs
     era5_var: rh2_mean
     units: "%"
     long_name: daily mean near-surface relative humidity
-    adjusted_glob: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_new_vars/sfcWind_hurs_hursmin/adjusted/hurs_squeezed/hurs_{model}_{scenario}_squeezed.zarr
-    era5_zarr: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_new_vars/sfcWind_hurs_hursmin/era5_zarr/rh2_mean_era5.zarr
+    adjusted_glob: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/adjusted/12km/adjusted/hurs_{model}_{scenario}_squeezed.zarr
+    era5_zarr: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/era5_zarr/12km/rh2_mean_era5.zarr
   hursmin:
     output_var: hursmin
     cmip6_var: hursmin
     era5_var: rh2_min
     units: "%"
     long_name: daily minimum near-surface relative humidity
-    adjusted_glob: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_new_vars/sfcWind_hurs_hursmin/adjusted/hursmin_squeezed/hursmin_{model}_{scenario}_squeezed.zarr
-    era5_zarr: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_new_vars/sfcWind_hurs_hursmin/era5_zarr/rh2_min_era5.zarr
+    adjusted_glob: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/adjusted/12km/adjusted/hursmin_squeezed/hursmin_{model}_{scenario}_squeezed.zarr
+    era5_zarr: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/era5_zarr/12km/rh2_min_era5.zarr
   sfcWind:
     output_var: sfcwind
     cmip6_var: sfcWind
     era5_var: wspd10_mean
     units: m s-1
     long_name: daily mean near-surface wind speed
-    adjusted_glob: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_new_vars/sfcWind_hurs_hursmin/adjusted/sfcWind_{model}_{scenario}_adjusted.zarr
-    era5_zarr: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_new_vars/sfcWind_hurs_hursmin/era5_zarr/wspd10_mean_era5.zarr
+    adjusted_glob: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/adjusted/12km/adjusted/sfcWind_{model}_{scenario}_adjusted.zarr
+    era5_zarr: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/era5_zarr/12km/wspd10_mean_era5.zarr
   snw:
     output_var: snw
     cmip6_var: snw
     era5_var: snow_mean
     units: kg m-2
     long_name: surface snow water equivalent
-    adjusted_glob: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_snw_2/snw/adjusted/snw_{model}_{scenario}_adjusted.zarr
-    era5_zarr: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_snw_2/snw/era5_zarr/snow_mean_era5.zarr
+    adjusted_glob: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/adjusted/12km/adjusted/snw_{model}_{scenario}_adjusted.zarr
+    era5_zarr: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/era5_zarr/12km/snow_mean_era5.zarr
 
 # Derived variables computed inside compute_fragment.py rather than read
 # directly from a source family.
@@ -178,18 +178,15 @@ scenarios:
 # are inclusive calendar years (see periods.py's module docstring for how
 # cross-year seasons like DJF/ONDJFM are assigned to a year).
 eras:
-  - name: "1981-2010"
-    start_year: 1981
-    end_year: 2010
   - name: "1965-2014"
     start_year: 1965
     end_year: 2014
-  - name: "2040-2069"
-    start_year: 2040
-    end_year: 2069
-  - name: "2070-2099"
-    start_year: 2070
-    end_year: 2099
+  - name: "2041-2070"
+    start_year: 2041
+    end_year: 2070
+  - name: "2071-2100"
+    start_year: 2071
+    end_year: 2100
 
 # months must be in chronological order (not necessarily ascending --
 # order is what determines year-wrap detection for DJF/ONDJFM, see
@@ -231,6 +228,8 @@ periods:
     months: [4, 5, 6, 7, 8, 9]
   - name: ONDJFM
     months: [10, 11, 12, 1, 2, 3]
+  - name: Annual
+    months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
 aggregations:
   - temporal_min
@@ -242,7 +241,7 @@ aggregations:
 # across models/scenarios, so we just copy them once into the master
 # output rather than recomputing/duplicating per fragment.
 grid_reference:
-  zarr_path: /beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_original_vars/cmip6_12km_downscaling/adjusted/tasmax_MIROC6_historical_adjusted.zarr
+  zarr_path: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/adjusted/12km/tasmax_MIROC6_historical_adjusted.zarr
 
 slurm:
   partition: analysis
@@ -250,7 +249,7 @@ slurm:
   fragments:
     mem: "128G"
     cpus_per_task: 4
-    time: "01:00:00"
+    time: "00:10:00"
     array_concurrency: 12
   combine:
     mem: "400G"
@@ -276,7 +275,7 @@ metadata:
     institution: "Scenarios Network for Alaska and Arctic Planning, International Arctic Research Center, University of Alaska Fairbanks; Alaska Climate Adaptation Science Center, University of Alaska Fairbanks"
     summary: >
       Temporal min/mean/max climatologies by calendar period (month or season)
-      and climatological era, for 13 CMIP6 models, a multi-model ensemble mean,
+      and climatological era, for {n_members} CMIP6 models, a multi-model ensemble mean,
       and the WRF-downscaled ERA5 reference. See the model, scenario, era,
       period, and aggregation coordinate attributes, and each data variable's
       own attributes, for full methodology.
@@ -332,9 +331,9 @@ qc:
     baseline:
       model: WRF-ERA5
       scenario: historical
-      era: "1981-2010"
+      era: "1965-2014"
     projection_model: CMIP6-Ensemble
-    future_eras: ["2040-2069", "2070-2099"]
+    future_eras: ["2041-2070", "2071-2100"]
     scenarios: [ssp126, ssp245, ssp370, ssp585]
     # Delta maps are rendered for every configured Period automatically
     # (no separate period list here -- the master output already has all of them).
