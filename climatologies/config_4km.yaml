@@ -328,6 +328,10 @@ qc:
     # Delta maps are rendered for every configured Period automatically
     # (no separate period list here -- the master output already has all of them).
     aggregation: temporal_mean
+  land_mask:
+    # Native WRF LANDMASK (d02 = 4 km), nearest-neighbor warped onto each
+    # climatology grid in annual_land_deltas.py (including the snw override grid).
+    geo_em: /beegfs/CMIP6/wrf_era5/geo_em.d02.nc
   calc_checks:
     # relative tolerance for the pr_tot/tmean exact-identity checks (float32 roundoff)
     rtol: 1.0e-3
