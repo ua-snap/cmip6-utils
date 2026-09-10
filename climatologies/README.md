@@ -234,6 +234,11 @@ Writes to `${paths.output_root}/qc/`:
   configured Period (180 total for the default 10 vars x 18 periods),
   each an 8-panel scenario x era grid of
   `CMIP6-Ensemble[scenario,era] projection - WRF-ERA5[historical baseline]`.
+- `annual_land_deltas/{var}.csv`: named-GCM SSP × future-era land-only
+  domain mean of `Annual` `temporal_mean` minus WRF-ERA5 historical
+  `1965-2014`. Land is WRF `LANDMASK` (see `qc.land_mask.geo_em`)
+  nearest-neighbor warped onto that variable's grid, intersected with
+  finite ERA5 cells.
 
 Once you've reviewed the QC output, run `python cleanup_intermediate.py
 --yes` to delete `intermediate/fragments/` (defaults to a dry run without
@@ -280,7 +285,8 @@ configuration mid-run.
 | `metadata.py` | builds output attrs by filling config YAML templates (no hardcoded text) |
 | `combine.py` | stage 3 — fragments -> one Dataset per variable, ensemble, NaN-fill |
 | `write_outputs.py` | stage 4 — one variable Dataset -> Zarr + NetCDF |
-| `qc.py` | validates the pipeline's own calculations + renders delta maps (run manually, see "QC" above) |
+| `qc.py` | validates the pipeline's own calculations + renders delta maps + writes annual land deltas (run manually, see "QC" above) |
+| `annual_land_deltas.py` | land-only Annual domain deltas vs WRF-ERA5 (also called from `qc.py`) |
 | `cleanup_intermediate.py` | deletes `intermediate/fragments/` (run manually, after `qc.py`, see "QC" above) |
 | `slurm/generate_sbatch.py` | writes `slurm/submit_fragments.sbatch` / `submit_combine.sbatch` / `submit_qc.sbatch` from the given config's `slurm:` section |
 | `slurm/run_pipeline.sh` | runs stage 1, regenerates sbatch scripts, submits the SLURM jobs (fragments + combine only; `qc.py`/`cleanup_intermediate.py` are run separately) |
