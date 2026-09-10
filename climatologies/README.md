@@ -3,8 +3,8 @@
 Computes climatologies (temporal min/mean/max by month/season and by
 configurable historical/future era) from WRF-downscaled, bias-adjusted
 CMIP6 data and the WRF-downscaled ERA5 reference, for 13 CMIP6 models plus
-a multi-model ensemble mean. Produces a single master output (identical
-content in Zarr and NetCDF) with dimensions
+a multi-model ensemble mean. Produces one Zarr and one NetCDF per output
+variable (identical content in both formats) with dimensions
 `model, scenario, era, period, aggregation, y, x`.
 
 
@@ -28,9 +28,12 @@ that runs automatically once every fragment task succeeds. Check progress
 with `squeue --me`. When it's done, the result is at:
 
 ```
-${paths.output_root}/output/cmip6_wrf_climatologies.zarr
-${paths.output_root}/output/cmip6_wrf_climatologies.nc
+${paths.output_root}/output/cmip6_wrf_climatologies_{var}.zarr
+${paths.output_root}/output/cmip6_wrf_climatologies_{var}.nc
 ```
+
+one pair per output variable (`tmin`, `tmax`, `tmean`, `dtr`, `pr`,
+`pr_tot`, `hurs`, `hursmin`, `sfcwind`, `snw`).
 
 Then run the QC and clean up the intermediate file:
 
@@ -101,12 +104,14 @@ Four stages, each its own script:
    Two methods are used (see "Design decisions" below): a direct
    day-level reduction for everything except `pr_tot`, and a per-year
    sum-then-reduce method for `pr_tot`.
-3. **`combine.py`** assembles every fragment into the full master arrays,
-   fills in `NaN` for any (model, scenario) combination with no fragment
-   at all, computes the `CMIP6-Ensemble` mean, and attaches all
-   attributes (via `metadata.py`).
-4. **`write_outputs.py`** writes the combined dataset to both Zarr and
-   NetCDF.
+3. **`combine.py`** assembles fragments for one output variable at a time
+   into the full arrays, fills in `NaN` for any (model, scenario)
+   combination with no fragment at all, computes the `CMIP6-Ensemble`
+   mean, and attaches all attributes (via `metadata.py`).
+4. **`write_outputs.py`** writes that variable to both Zarr and NetCDF
+   (`cmip6_wrf_climatologies_{var}.zarr` / `.nc`) before combine moves on
+   to the next variable, so peak memory is one variable rather than all
+   ten.
 
 `slurm/run_pipeline.sh` runs stage 1, regenerates the SLURM scripts for
 stages 2-4 from the given `--config` (via `slurm/generate_sbatch.py`), and
@@ -124,6 +129,10 @@ single `config.yaml`, since the source data paths, grid reference, and
 - Copy an existing config YAML and update its `paths.output_root` (so runs
   don't write into each other's output) and the `source_families.*`
   paths (`adjusted_glob`, `era5_zarr`) and `grid_reference.zarr_path`.
+  If one variable sits on a different WRF crop than the others (4km `snw`
+  is 460x442 while the rest are 460x443), set
+  `grid_reference.overrides.<output_var>` to a zarr on that variable's
+  own grid; combine uses the override only for that variable.
 - Always pass the same `--config` to every script for a given run --
   `build_job_list.py`, `compute_fragment.py`, `combine.py`, `qc.py`,
   `cleanup_intermediate.py`, and `slurm/generate_sbatch.py` (and therefore
@@ -158,6 +167,10 @@ of edits below — just edit the YAML and re-run `slurm/run_pipeline.sh
   (dataset title/institution/summary, the per-dimension description
   templates, the methodology note attached to most variables). See
   "Why dataclasses" below for why this is safe to edit freely.
+- **Output filenames** — `output.zarr_name` / `output.netcdf_name` are
+  templates that must include `{var}` (default
+  `cmip6_wrf_climatologies_{var}.zarr` / `.nc`). Combine writes one pair
+  of files per output variable.
 - **Temperature units** — `units.temperature_unit`: `celsius` (default) or
   `kelvin`. Source data is always Kelvin; `celsius` applies a K -> degC
   shift to `tmax`/`tmin`/`tmean`. `dtr` is a temperature *difference*, so
@@ -201,7 +214,7 @@ must equal `pr`'s mean times the period's day-count; the ensemble mean
 must equal `nanmean` of its configured members). A violation means *this
 pipeline* has a bug.
 
-Run manually after a pipeline run, on a compute node (not the login node, since it opens the full master output and a couple of variables at a time
+Run manually after a pipeline run, on a compute node (not the login node, since it opens the per-variable outputs and a couple of variables at a time
 can be a few GB):
 
 ```sh
@@ -265,8 +278,8 @@ configuration mid-run.
 | `build_job_list.py` | stage 1 — writes `intermediate/job_list.json` |
 | `compute_fragment.py` | stage 2 — one job -> one or two fragment zarr(s) |
 | `metadata.py` | builds output attrs by filling config YAML templates (no hardcoded text) |
-| `combine.py` | stage 3 — fragments -> master Dataset, ensemble, NaN-fill |
-| `write_outputs.py` | stage 4 — master Dataset -> Zarr + NetCDF |
+| `combine.py` | stage 3 — fragments -> one Dataset per variable, ensemble, NaN-fill |
+| `write_outputs.py` | stage 4 — one variable Dataset -> Zarr + NetCDF |
 | `qc.py` | validates the pipeline's own calculations + renders delta maps (run manually, see "QC" above) |
 | `cleanup_intermediate.py` | deletes `intermediate/fragments/` (run manually, after `qc.py`, see "QC" above) |
 | `slurm/generate_sbatch.py` | writes `slurm/submit_fragments.sbatch` / `submit_combine.sbatch` / `submit_qc.sbatch` from the given config's `slurm:` section |

@@ -54,7 +54,7 @@ source_families:
     era5_var: pr
     units: mm d-1
     long_name: daily total precipitation
-    adjusted_glob: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/adjusted/12km/adjusted/pr_{model}_{scenario}_adjusted.zarr
+    adjusted_glob: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/adjusted/12km/pr_{model}_{scenario}_adjusted.zarr
     era5_zarr: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/era5_zarr/12km/pr_era5.zarr
   hurs:
     output_var: hurs
@@ -62,7 +62,7 @@ source_families:
     era5_var: rh2_mean
     units: "%"
     long_name: daily mean near-surface relative humidity
-    adjusted_glob: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/adjusted/12km/adjusted/hurs_{model}_{scenario}_squeezed.zarr
+    adjusted_glob: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/adjusted/12km/hurs_{model}_{scenario}_squeezed.zarr
     era5_zarr: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/era5_zarr/12km/rh2_mean_era5.zarr
   hursmin:
     output_var: hursmin
@@ -70,7 +70,7 @@ source_families:
     era5_var: rh2_min
     units: "%"
     long_name: daily minimum near-surface relative humidity
-    adjusted_glob: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/adjusted/12km/adjusted/hursmin_squeezed/hursmin_{model}_{scenario}_squeezed.zarr
+    adjusted_glob: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/adjusted/12km/hursmin_{model}_{scenario}_squeezed.zarr
     era5_zarr: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/era5_zarr/12km/rh2_min_era5.zarr
   sfcWind:
     output_var: sfcwind
@@ -78,7 +78,7 @@ source_families:
     era5_var: wspd10_mean
     units: m s-1
     long_name: daily mean near-surface wind speed
-    adjusted_glob: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/adjusted/12km/adjusted/sfcWind_{model}_{scenario}_adjusted.zarr
+    adjusted_glob: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/adjusted/12km/sfcWind_{model}_{scenario}_adjusted.zarr
     era5_zarr: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/era5_zarr/12km/wspd10_mean_era5.zarr
   snw:
     output_var: snw
@@ -86,7 +86,7 @@ source_families:
     era5_var: snow_mean
     units: kg m-2
     long_name: surface snow water equivalent
-    adjusted_glob: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/adjusted/12km/adjusted/snw_{model}_{scenario}_adjusted.zarr
+    adjusted_glob: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/adjusted/12km/snw_{model}_{scenario}_adjusted.zarr
     era5_zarr: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/era5_zarr/12km/snow_mean_era5.zarr
 
 # Derived variables computed inside compute_fragment.py rather than read
@@ -216,18 +216,6 @@ periods:
     months: [11]
   - name: Dec
     months: [12]
-  - name: DJF
-    months: [12, 1, 2]
-  - name: MAM
-    months: [3, 4, 5]
-  - name: JJA
-    months: [6, 7, 8]
-  - name: SON
-    months: [9, 10, 11]
-  - name: AMJJAS
-    months: [4, 5, 6, 7, 8, 9]
-  - name: ONDJFM
-    months: [10, 11, 12, 1, 2, 3]
   - name: Annual
     months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
@@ -261,8 +249,9 @@ slurm:
     time: "00:30:00"
 
 output:
-  zarr_name: cmip6_wrf_climatologies.zarr
-  netcdf_name: cmip6_wrf_climatologies.nc
+  # `{var}` is required -- combine writes one Zarr and one NetCDF per output variable.
+  zarr_name: cmip6_wrf_climatologies_{var}.zarr
+  netcdf_name: cmip6_wrf_climatologies_{var}.nc
   netcdf_compression_level: 4
 
 # All human-readable text that ends up in the output's attributes lives here --

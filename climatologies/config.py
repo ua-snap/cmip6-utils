@@ -69,6 +69,7 @@ class Config:
     periods: list  # list[Period]
     aggregations: list
     grid_reference_zarr_path: str
+    grid_reference_overrides: dict  # output_var -> zarr path; empty when unused
     slurm: dict
     output: dict
     metadata: dict
@@ -99,6 +100,18 @@ class Config:
     def final_output_dir(self) -> Path:
         return self.output_root / "output"
 
+    def output_zarr_path(self, output_var: str) -> Path:
+        return self.final_output_dir / self.output["zarr_name"].format(var=output_var)
+
+    def output_netcdf_path(self, output_var: str) -> Path:
+        return self.final_output_dir / self.output["netcdf_name"].format(var=output_var)
+
+    def grid_reference_path_for(self, output_var: str) -> str:
+        """Zarr used for y/x/lat/lon/spatial_ref when combining this variable."""
+        return self.grid_reference_overrides.get(
+            output_var, self.grid_reference_zarr_path
+        )
+
     @property
     def all_model_dim_values(self) -> list:
         """Exact model coordinate order: named models, then ensemble, then reference."""
@@ -120,7 +133,9 @@ def load_config(path: str | os.PathLike) -> Config:
     periods = [Period(name=p["name"], months=list(p["months"])) for p in raw["periods"]]
 
     output_variable_order = list(raw["output_variable_order"])
-    derivable_vars = {f.output_var for f in source_families.values()} | {d.output_var for d in derived.values()}
+    derivable_vars = {f.output_var for f in source_families.values()} | {
+        d.output_var for d in derived.values()
+    }
     declared_vars = set(output_variable_order)
     if declared_vars != derivable_vars:
         missing = derivable_vars - declared_vars
@@ -129,6 +144,22 @@ def load_config(path: str | os.PathLike) -> Config:
             f"{path}'s output_variable_order doesn't match the output_vars "
             f"produced by source_families+derived. Missing from order: {sorted(missing)}. "
             f"In order but not produced by any family/derived entry: {sorted(extra)}."
+        )
+
+    for key in ("zarr_name", "netcdf_name"):
+        template = raw["output"][key]
+        if "{var}" not in template:
+            raise ValueError(
+                f"{path}'s output.{key} must contain {{var}} placeholder "
+                f"(e.g. cmip6_wrf_climatologies_{{var}}.zarr), got {template!r}."
+            )
+
+    grid_reference_overrides = dict(raw["grid_reference"].get("overrides") or {})
+    unknown_overrides = sorted(set(grid_reference_overrides) - declared_vars)
+    if unknown_overrides:
+        raise ValueError(
+            f"{path}'s grid_reference.overrides keys must be output_var names "
+            f"from output_variable_order. Unknown: {unknown_overrides}."
         )
 
     return Config(
@@ -145,6 +176,7 @@ def load_config(path: str | os.PathLike) -> Config:
         periods=periods,
         aggregations=list(raw["aggregations"]),
         grid_reference_zarr_path=raw["grid_reference"]["zarr_path"],
+        grid_reference_overrides=grid_reference_overrides,
         slurm=raw["slurm"],
         output=raw["output"],
         metadata=raw["metadata"],

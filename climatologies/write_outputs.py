@@ -1,4 +1,4 @@
-"""Write the combined master Dataset to both Zarr and NetCDF (identical content)
+"""Write one combined variable Dataset to both Zarr and NetCDF (identical content).
 """
 
 from __future__ import annotations
@@ -18,15 +18,15 @@ def _strip_stale_encoding(ds: xr.Dataset) -> xr.Dataset:
     return ds
 
 
-def write_outputs(ds: xr.Dataset, config: Config) -> None:
+def write_outputs(ds: xr.Dataset, output_var: str, config: Config) -> None:
     config.final_output_dir.mkdir(parents=True, exist_ok=True)
     ds = _strip_stale_encoding(ds)
 
-    zarr_path = config.final_output_dir / config.output["zarr_name"]
+    zarr_path = config.output_zarr_path(output_var)
     ds.to_zarr(zarr_path, mode="w", consolidated=True)
     print(f"wrote {zarr_path}")
 
-    nc_path = config.final_output_dir / config.output["netcdf_name"]
+    nc_path = config.output_netcdf_path(output_var)
     complevel = config.output["netcdf_compression_level"]
     encoding = {var: {"zlib": True, "complevel": complevel} for var in ds.data_vars}
     ds.to_netcdf(nc_path, engine="netcdf4", encoding=encoding)

@@ -16,7 +16,7 @@ years -- see `pr_tot_aggregate` below). Writes the result fragment(s) to
 
 A fragment is a small zarr store with dims (era, period, aggregation, y, x)
 holding just one (output_var, model, scenario) combination -- combine.py
-later assembles all fragments into the full master array.
+later assembles all fragments for that variable into one output file.
 """
 
 from __future__ import annotations

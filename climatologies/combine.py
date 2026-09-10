@@ -1,7 +1,7 @@
-"""Assemble all per-(output_var, model, scenario) fragments into the single
-master Dataset (model x scenario x era x period x aggregation x y x x for
-each of the 10 data variables), compute the CMIP6-Ensemble multi-model
-mean, attach all attrs, and write zarr + netCDF via write_outputs.py.
+"""Assemble per-(output_var, model, scenario) fragments into one Dataset per
+output variable (model x scenario x era x period x aggregation x y x x),
+compute the CMIP6-Ensemble multi-model mean, attach all attrs, and write
+zarr + netCDF via write_outputs.py -- one pair of files per variable.
 
 Fragments are discovered by globbing <output_root>/intermediate/fragments/
 (not by re-reading job_list.json), so a partial/rerun set of fragments is
@@ -27,7 +27,9 @@ from config import DEFAULT_CONFIG_PATH, Config, load_config
 import metadata
 from write_outputs import write_outputs
 
-warnings.filterwarnings("ignore", category=RuntimeWarning, message="Mean of empty slice")
+warnings.filterwarnings(
+    "ignore", category=RuntimeWarning, message="Mean of empty slice"
+)
 
 
 def discover_fragments(config: Config) -> dict:
@@ -38,12 +40,20 @@ def discover_fragments(config: Config) -> dict:
         if len(parts) != 3:
             continue
         output_var, model, scenario = parts
-        by_var.setdefault(output_var, []).append({"model": model, "scenario": scenario, "path": path})
+        by_var.setdefault(output_var, []).append(
+            {"model": model, "scenario": scenario, "path": path}
+        )
     return by_var
 
 
-def load_grid_reference(config: Config) -> dict:
-    ds = xr.open_zarr(config.grid_reference_zarr_path, consolidated=False)
+def load_grid_reference(config: Config, output_var: str) -> tuple:
+    """Load y, x, and optional lat/lon/spatial_ref for combining one variable.
+
+    Uses config.grid_reference_path_for(output_var), which falls back to the
+    default grid_reference.zarr_path when no override is set.
+    """
+    path = config.grid_reference_path_for(output_var)
+    ds = xr.open_zarr(path, consolidated=False)
     extras = {}
     for name in ("lat", "lon", "spatial_ref"):
         if name in ds.variables:
@@ -79,12 +89,31 @@ def combine_variable(
 
     for frag in fragments:
         if frag["model"] not in model_index:
-            raise ValueError(f"Fragment model {frag['model']!r} not in configured models for {output_var}")
+            raise ValueError(
+                f"Fragment model {frag['model']!r} not in configured models for {output_var}"
+            )
         if frag["scenario"] not in scenario_index:
-            raise ValueError(f"Fragment scenario {frag['scenario']!r} not in configured scenarios for {output_var}")
+            raise ValueError(
+                f"Fragment scenario {frag['scenario']!r} not in configured scenarios for {output_var}"
+            )
         mi = model_index[frag["model"]]
         si = scenario_index[frag["scenario"]]
         da = xr.open_zarr(frag["path"], consolidated=True)[output_var]
+        if da.sizes.get("y") != len(y) or da.sizes.get("x") != len(x):
+            raise ValueError(
+                f"Fragment {Path(frag['path']).name} for {output_var} has spatial "
+                f"shape (y, x)=({da.sizes.get('y')}, {da.sizes.get('x')}) but this "
+                f"variable's grid reference expects ({len(y)}, {len(x)}). "
+                f"Check grid_reference / overrides for {output_var!r}."
+            )
+        if not (
+            np.array_equal(da["y"].values, y) and np.array_equal(da["x"].values, x)
+        ):
+            raise ValueError(
+                f"Fragment {Path(frag['path']).name} for {output_var} has y/x "
+                f"coordinates that do not match this variable's grid reference. "
+                f"Check grid_reference / overrides for {output_var!r}."
+            )
         da = da.reindex(era=era_names, period=period_names, aggregation=agg_names)
         arr[mi, si] = da.values
 
@@ -111,29 +140,28 @@ def combine_variable(
     return out
 
 
-def build_master_dataset(config: Config) -> xr.Dataset:
-    fragments_by_var = discover_fragments(config)
-    model_dim_values = config.all_model_dim_values
-    y, x, grid_extras = load_grid_reference(config)
-
-    data_vars = {}
-    for output_var in config.output_variable_order:
-        fragments = fragments_by_var.get(output_var, [])
-        if not fragments:
-            print(f"WARNING: no fragments found for {output_var} -- it will be entirely NaN", file=sys.stderr)
-        print(f"combining {output_var}: {len(fragments)} fragments")
-        data_vars[output_var] = combine_variable(output_var, fragments, config, model_dim_values, y, x)
-
-    ds = xr.Dataset(data_vars, coords=grid_extras)
-
+def attach_dataset_attrs(ds: xr.Dataset, config: Config) -> xr.Dataset:
     ds["era"].attrs.update(metadata.era_attrs(config))
     ds["model"].attrs.update(metadata.model_attrs(config))
     ds["period"].attrs.update(metadata.period_attrs(config))
     ds["scenario"].attrs.update(metadata.scenario_attrs(config))
     ds["aggregation"].attrs.update(metadata.aggregation_attrs(config))
     ds.attrs.update(metadata.global_attrs(config))
-
     return ds
+
+
+def build_variable_dataset(
+    output_var: str,
+    fragments: list,
+    config: Config,
+    model_dim_values: list,
+    y: np.ndarray,
+    x: np.ndarray,
+    grid_extras: dict,
+) -> xr.Dataset:
+    da = combine_variable(output_var, fragments, config, model_dim_values, y, x)
+    ds = xr.Dataset({output_var: da}, coords=grid_extras)
+    return attach_dataset_attrs(ds, config)
 
 
 def main():
@@ -142,8 +170,23 @@ def main():
     args = parser.parse_args()
 
     config = load_config(args.config)
-    ds = build_master_dataset(config)
-    write_outputs(ds, config)
+    fragments_by_var = discover_fragments(config)
+    model_dim_values = config.all_model_dim_values
+
+    for output_var in config.output_variable_order:
+        fragments = fragments_by_var.get(output_var, [])
+        if not fragments:
+            print(
+                f"WARNING: no fragments found for {output_var} -- it will be entirely NaN",
+                file=sys.stderr,
+            )
+        print(f"combining {output_var}: {len(fragments)} fragments")
+        y, x, grid_extras = load_grid_reference(config, output_var)
+        ds = build_variable_dataset(
+            output_var, fragments, config, model_dim_values, y, x, grid_extras
+        )
+        write_outputs(ds, output_var, config)
+        del ds
 
 
 if __name__ == "__main__":
