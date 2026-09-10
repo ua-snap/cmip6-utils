@@ -23,6 +23,8 @@ Writes to <paths.output_root>/qc/:
     delta_maps/<var>/<var>__<period>.png  -- one PNG per variable x every
         configured period, each a scenario x era grid of
         (CMIP6-Ensemble projection) - (WRF-ERA5 historical baseline)
+    annual_land_deltas/{var}.csv  -- named-GCM land-only domain mean of
+        Annual temporal_mean minus WRF-ERA5 historical baseline
 
 This reads (but does not modify) intermediate/fragments/ for the
 coverage-gap cross-check -- run cleanup_intermediate.py only after this
@@ -45,6 +47,7 @@ import xarray as xr
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from annual_land_deltas import write_annual_land_deltas
 from config import DEFAULT_CONFIG_PATH, Config, load_config
 
 NOLEAP_DAYS_IN_MONTH = {
@@ -491,6 +494,9 @@ def main():
 
     print("generating delta maps...")
     generate_delta_maps(config)
+
+    print("writing annual land-only domain deltas...")
+    write_annual_land_deltas(config)
 
     print()
     print(f"QC complete. Output under {config.qc_dir}")
