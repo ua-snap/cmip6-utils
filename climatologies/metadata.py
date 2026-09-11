@@ -104,7 +104,7 @@ def global_attrs(config: Config) -> dict:
     return {
         "title": g["title"],
         "institution": g["institution"],
-        "summary": g["summary"],
+        "summary": g["summary"].format(n_members=len(config.ensemble_members)),
         "Conventions": g["conventions"],
         "history": g["history_template"].format(timestamp=timestamp),
     }
