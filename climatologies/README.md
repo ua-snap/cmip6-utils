@@ -55,7 +55,7 @@ Input data lives in three separate directory trees (one each for
 sfcWind/hurs/hursmin, the "original" temperature/precip/dtr variables, and
 snw), each with an `era5_zarr/` subtree (the WRF-downscaled ERA5 reference)
 and an `adjusted/` subtree (WRF-downscaled, bias-adjusted CMIP6, one zarr
-store per model/scenario). 
+store per model/scenario).
 
 ⚠️ Note that the input data directories are likely to change soon, as user development data gets moved to a shared production location.
 
@@ -229,16 +229,28 @@ Writes to `${paths.output_root}/qc/`:
   any fixed-calendar CMIP6 model, with an era-length-scaled tolerance for
   the wrapping periods `DJF`/`ONDJFM`: see the file for why); `tmean` vs
   `tmax`/`tmin` bounds; ensemble re-derivation. Ends with a one-line
-  `ALL CHECKS PASSED` / `N TOTAL VIOLATIONS` summary.
+  `ALL CHECKS PASSED` / `N TOTAL VIOLATIONS` summary. Its ensemble section
+  reports the effective contributor-count range, and links to the detailed
+  count table below.
 - `delta_maps/<var>/<var>__<period>.png`: one PNG per variable x *every*
-  configured Period (180 total for the default 10 vars x 18 periods),
+  configured Period (currently 130 total for 10 variables x 13 periods),
   each an 8-panel scenario x era grid of
   `CMIP6-Ensemble[scenario,era] projection - WRF-ERA5[historical baseline]`.
+  Every panel reports `N`, the number (or grid-cell range) of CMIP6 models
+  contributing to that ensemble projection where the displayed delta is finite.
+- `ensemble_member_counts.csv`: one row per variable x scenario x era x
+  period x aggregation, with the min/max number of contributing CMIP6 models
+  over non-empty grid cells and the share of cells without a contributing model.
+- `ensemble_member_counts/<aggregation>/<var>/<var>__<period>.png`: the
+  spatial contributor-count map corresponding to each delta-map panel. Zero
+  contributors are rendered gray; a fixed, discrete viridis scale makes
+  counts comparable across variables and periods.
 - `annual_land_deltas/{var}.csv`: named-GCM SSP × future-era land-only
   domain mean of `Annual` `temporal_mean` minus WRF-ERA5 historical
   `1965-2014`. Land is WRF `LANDMASK` (see `qc.land_mask.geo_em`)
   nearest-neighbor warped onto that variable's grid, intersected with
-  finite ERA5 cells.
+  finite ERA5 cells. `ensemble_n_min`/`ensemble_n_max` give the range of
+  available CMIP6 ensemble members across the cells used for each row.
 
 Once you've reviewed the QC output, run `python cleanup_intermediate.py
 --yes` to delete `intermediate/fragments/` (defaults to a dry run without
@@ -287,6 +299,7 @@ configuration mid-run.
 | `write_outputs.py` | stage 4 — one variable Dataset -> Zarr + NetCDF |
 | `qc.py` | validates the pipeline's own calculations + renders delta maps + writes annual land deltas (run manually, see "QC" above) |
 | `annual_land_deltas.py` | land-only Annual domain deltas vs WRF-ERA5 (also called from `qc.py`) |
+| `ensemble_member_counts.py` | per-climatology ensemble contributor-count CSV and companion count maps (also called from `qc.py`) |
 | `cleanup_intermediate.py` | deletes `intermediate/fragments/` (run manually, after `qc.py`, see "QC" above) |
 | `slurm/generate_sbatch.py` | writes `slurm/submit_fragments.sbatch` / `submit_combine.sbatch` / `submit_qc.sbatch` from the given config's `slurm:` section |
 | `slurm/run_pipeline.sh` | runs stage 1, regenerates sbatch scripts, submits the SLURM jobs (fragments + combine only; `qc.py`/`cleanup_intermediate.py` are run separately) |
