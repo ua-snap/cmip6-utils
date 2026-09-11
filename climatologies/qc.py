@@ -49,6 +49,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from annual_land_deltas import write_annual_land_deltas
 from config import DEFAULT_CONFIG_PATH, Config, load_config
+from ensemble_member_counts import (
+    finite_member_count,
+    generate_member_count_maps,
+    member_count_label,
+    write_member_count_summary,
+)
 
 NOLEAP_DAYS_IN_MONTH = {
     1: 31,
@@ -328,6 +334,10 @@ def check_ensemble_derivation(config: Config, log: Log) -> dict:
         ds = open_output_var(config, var)
         da = ds[var]
         members = da.sel(model=config.ensemble_members)
+        contributor_counts = finite_member_count(da, config.ensemble_members).values
+        contributor_label = member_count_label(
+            contributor_counts, mask=contributor_counts > 0
+        )
         with np.errstate(invalid="ignore"):
             recomputed = members.mean(dim="model", skipna=True).values
         stored = da.sel(model=config.ensemble_name).values
@@ -344,7 +354,8 @@ def check_ensemble_derivation(config: Config, log: Log) -> dict:
             "nan_pattern_mismatches": nan_mismatch,
         }
         log.write(
-            f"  {var}: checked {results[var]['n_checked']}, violations {n_bad}, NaN-pattern mismatches {nan_mismatch}"
+            f"  {var}: checked {results[var]['n_checked']}, violations {n_bad}, "
+            f"NaN-pattern mismatches {nan_mismatch}, contributors {contributor_label}"
         )
         ds.close()
     log.write("")
@@ -378,9 +389,13 @@ def render_delta_map(
 
     scenarios = cfg["scenarios"]
     future_eras = cfg["future_eras"]
+    contributor_counts = finite_member_count(ds[output_var], config.ensemble_members)
     deltas = np.full(
         (len(scenarios), len(future_eras), *baseline_da.shape), np.nan, dtype=np.float32
     )
+    contributor_labels = [
+        ["N=none" for _ in future_eras] for _ in scenarios
+    ]
     for i, scenario in enumerate(scenarios):
         for j, era in enumerate(future_eras):
             proj_da = (
@@ -395,6 +410,15 @@ def render_delta_map(
                 .values
             )
             deltas[i, j] = proj_da - baseline_da
+            panel_counts = contributor_counts.sel(
+                scenario=scenario,
+                era=era,
+                period=period,
+                aggregation=agg,
+            ).values
+            contributor_labels[i][j] = member_count_label(
+                panel_counts, mask=np.isfinite(deltas[i, j])
+            )
 
     finite = deltas[np.isfinite(deltas)]
     vmax = float(np.percentile(np.abs(finite), 99)) if finite.size else 1.0
@@ -413,7 +437,11 @@ def render_delta_map(
             ax = axes[i, j]
             im = ax.imshow(deltas[i, j], cmap="RdBu_r", norm=norm)
             mean_d = np.nanmean(deltas[i, j])
-            ax.set_title(f"{scenario} / {era}\nmean {mean_d:+.2f} {units}", fontsize=9)
+            ax.set_title(
+                f"{scenario} / {era}\n"
+                f"mean {mean_d:+.2f} {units}; {contributor_labels[i][j]}",
+                fontsize=9,
+            )
             ax.set_xticks([])
             ax.set_yticks([])
     fig.suptitle(
@@ -477,6 +505,10 @@ def main():
     tmean_bounds = check_tmean_bounds(temps, config, calc_log)
     temps.close()
     ensemble_check = check_ensemble_derivation(config, calc_log)
+    member_count_summary_path = write_member_count_summary(config)
+    calc_log.write(
+        f"Detailed per-climatology contributor counts: {member_count_summary_path}"
+    )
 
     total_violations = (
         sum(min_mean_max.values())
@@ -494,6 +526,10 @@ def main():
 
     print("generating delta maps...")
     generate_delta_maps(config)
+
+    print("generating ensemble-member count maps...")
+    for path in generate_member_count_maps(config):
+        print(f"  wrote {path}")
 
     print("writing annual land-only domain deltas...")
     write_annual_land_deltas(config)

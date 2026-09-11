@@ -26,8 +26,19 @@ from scipy.spatial import cKDTree
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from config import DEFAULT_CONFIG_PATH, Config, load_config
+from ensemble_member_counts import finite_member_count, member_count_range
 
 PERIOD = "Annual"
+CSV_FIELDNAMES = [
+    "model",
+    "scenario",
+    "era",
+    "delta",
+    "units",
+    "n_cells",
+    "ensemble_n_min",
+    "ensemble_n_max",
+]
 
 
 def analysis_mask(landmask: np.ndarray, era5: np.ndarray) -> np.ndarray:
@@ -115,9 +126,10 @@ def write_variable_csv(
     ).values
     mask = analysis_mask(landmask, era5)
     units = da.attrs.get("units", "")
+    ensemble_counts = finite_member_count(da, config.ensemble_members)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(out_path, "w", newline="") as f:
+    with open(out_path, "w", newline="", encoding="utf-8") as f:
         geo_em = config.qc["land_mask"]["geo_em"]
         f.write(f"# variable: {output_var}\n")
         f.write(f"# geo_em: {geo_em}\n")
@@ -127,8 +139,12 @@ def write_variable_csv(
         f.write(f"# period: {PERIOD}\n")
         f.write(f"# aggregation: {agg}\n")
         f.write("# mask: LANDMASK==1 and finite WRF-ERA5\n")
+        f.write(
+            "# ensemble_n_min/max: range of configured CMIP6 members with finite "
+            "values across the cells used by each named-GCM delta\n"
+        )
         writer = csv.DictWriter(
-            f, fieldnames=["model", "scenario", "era", "delta", "units", "n_cells"]
+            f, fieldnames=CSV_FIELDNAMES
         )
         writer.writeheader()
         for model in config.models:
@@ -145,6 +161,19 @@ def write_variable_csv(
                     if result is None:
                         continue
                     delta, n_cells = result
+                    count_values = ensemble_counts.sel(
+                        scenario=scenario,
+                        era=era,
+                        period=PERIOD,
+                        aggregation=agg,
+                    ).values
+                    contributor_range = member_count_range(
+                        count_values, mask=mask & np.isfinite(future)
+                    )
+                    if contributor_range is None:
+                        ensemble_n_min = ensemble_n_max = 0
+                    else:
+                        ensemble_n_min, ensemble_n_max = contributor_range
                     writer.writerow(
                         {
                             "model": model,
@@ -153,6 +182,8 @@ def write_variable_csv(
                             "delta": f"{float(delta):.2f}",
                             "units": units,
                             "n_cells": n_cells,
+                            "ensemble_n_min": ensemble_n_min,
+                            "ensemble_n_max": ensemble_n_max,
                         }
                     )
 
