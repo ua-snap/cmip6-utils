@@ -31,7 +31,9 @@ from config import DEFAULT_CONFIG_PATH, load_config
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH))
-    parser.add_argument("--yes", action="store_true", help="actually delete (default is a dry run)")
+    parser.add_argument(
+        "--yes", action="store_true", help="actually delete (default is a dry run)"
+    )
     args = parser.parse_args()
     config = load_config(args.config)
 
@@ -41,7 +43,9 @@ def main():
         return
 
     fragments = sorted(frag_dir.glob("*.zarr"))
-    total_bytes = sum(f.stat().st_size for store in fragments for f in store.rglob("*") if f.is_file())
+    total_bytes = sum(
+        f.stat().st_size for store in fragments for f in store.rglob("*") if f.is_file()
+    )
     print(f"{len(fragments)} fragment(s) under {frag_dir} ({total_bytes / 1e9:.2f} GB)")
 
     if not args.yes:

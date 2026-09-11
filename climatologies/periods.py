@@ -14,7 +14,9 @@ import numpy as np
 import xarray as xr
 
 
-def in_period_and_label_year(time: xr.DataArray, months: list[int]) -> tuple[np.ndarray, np.ndarray]:
+def in_period_and_label_year(
+    time: xr.DataArray, months: list[int]
+) -> tuple[np.ndarray, np.ndarray]:
     """Return (in_period, label_year) boolean/int arrays aligned to `time`.
 
     `months` must be in chronological order (not necessarily ascending --
@@ -30,8 +32,12 @@ def in_period_and_label_year(time: xr.DataArray, months: list[int]) -> tuple[np.
         label_year = cal_year.copy()
         return in_period, label_year
 
-    tail = [m for m in months if m >= months[0]]  # from the previous label-year, e.g. DJF -> [12]
-    head = [m for m in months if m <= months[-1]]  # already the label-year, e.g. DJF -> [1, 2]
+    tail = [
+        m for m in months if m >= months[0]
+    ]  # from the previous label-year, e.g. DJF -> [12]
+    head = [
+        m for m in months if m <= months[-1]
+    ]  # already the label-year, e.g. DJF -> [1, 2]
     in_period = np.isin(cal_month, tail + head)
     label_year = np.where(np.isin(cal_month, tail), cal_year + 1, cal_year)
     return in_period, label_year

@@ -143,9 +143,7 @@ def member_count_range(
     return int(selected.min()), int(selected.max())
 
 
-def member_count_label(
-    counts: np.ndarray, *, mask: np.ndarray | None = None
-) -> str:
+def member_count_label(counts: np.ndarray, *, mask: np.ndarray | None = None) -> str:
     """Format a precise N label for one contributor-count grid."""
     count_range = member_count_range(counts, mask=mask)
     if count_range is None:
@@ -337,7 +335,9 @@ def generate_member_count_maps(
             validate_coordinate_values(ds, "scenario", scenarios)
             validate_coordinate_values(ds, "era", eras)
             validate_coordinate_values(ds, "aggregation", [selected_aggregation])
-            selected_periods = periods or [str(period) for period in ds["period"].values]
+            selected_periods = periods or [
+                str(period) for period in ds["period"].values
+            ]
             validate_coordinate_values(ds, "period", selected_periods)
 
             for period in selected_periods:

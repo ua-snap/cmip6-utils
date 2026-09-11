@@ -42,6 +42,9 @@ def convert_value_if_needed(output_var: str, values, config: Config):
 def units_label(output_var: str, base_units: str, config: Config) -> str:
     """Override a configured `units` string (e.g. "K") with "degC" when
     output_var is a temperature variable and celsius is selected."""
-    if is_temperature_var(output_var, config) and config.units["temperature_unit"] == "celsius":
+    if (
+        is_temperature_var(output_var, config)
+        and config.units["temperature_unit"] == "celsius"
+    ):
         return "degC"
     return base_units

@@ -27,7 +27,9 @@ def _dim(config: Config, name: str) -> dict:
 def era_attrs(config: Config) -> dict:
     d = _dim(config, "era")
     lines = " ".join(
-        d["line_template"].format(name=e.name, start_year=e.start_year, end_year=e.end_year)
+        d["line_template"].format(
+            name=e.name, start_year=e.start_year, end_year=e.end_year
+        )
         for e in config.eras
     )
     return {
@@ -55,7 +57,11 @@ def period_attrs(config: Config) -> dict:
     for p in config.periods:
         month_names = "-".join(calendar.month_abbr[m] for m in p.months)
         wrap_suffix = d.get("wrap_suffix", "") if p.wrap else ""
-        lines.append(d["line_template"].format(name=p.name, month_names=month_names, wrap_suffix=wrap_suffix))
+        lines.append(
+            d["line_template"].format(
+                name=p.name, month_names=month_names, wrap_suffix=wrap_suffix
+            )
+        )
     return {
         "long_name": d["long_name"],
         "description": d["description_template"].format(period_lines="; ".join(lines)),
@@ -82,7 +88,11 @@ def _family_for_output_var(config: Config, output_var: str):
 def variable_attrs(output_var: str, config: Config) -> dict:
     if output_var == config.derived["pr_tot"].output_var:
         derived = config.derived["pr_tot"]
-        return {"long_name": derived.long_name, "units": derived.units, "description": derived.description}
+        return {
+            "long_name": derived.long_name,
+            "units": derived.units,
+            "description": derived.description,
+        }
     if output_var == config.derived["tmean"].output_var:
         derived = config.derived["tmean"]
         return {

@@ -1,5 +1,4 @@
-"""Write one combined variable Dataset to both Zarr and NetCDF (identical content).
-"""
+"""Write one combined variable Dataset to both Zarr and NetCDF (identical content)."""
 
 from __future__ import annotations
 

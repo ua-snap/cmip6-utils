@@ -143,9 +143,7 @@ def write_variable_csv(
             "# ensemble_n_min/max: range of configured CMIP6 members with finite "
             "values across the cells used by each named-GCM delta\n"
         )
-        writer = csv.DictWriter(
-            f, fieldnames=CSV_FIELDNAMES
-        )
+        writer = csv.DictWriter(f, fieldnames=CSV_FIELDNAMES)
         writer.writeheader()
         for model in config.models:
             for scenario in cfg["scenarios"]:

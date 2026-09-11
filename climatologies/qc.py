@@ -393,9 +393,7 @@ def render_delta_map(
     deltas = np.full(
         (len(scenarios), len(future_eras), *baseline_da.shape), np.nan, dtype=np.float32
     )
-    contributor_labels = [
-        ["N=none" for _ in future_eras] for _ in scenarios
-    ]
+    contributor_labels = [["N=none" for _ in future_eras] for _ in scenarios]
     for i, scenario in enumerate(scenarios):
         for j, era in enumerate(future_eras):
             proj_da = (

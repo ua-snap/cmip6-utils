@@ -40,8 +40,12 @@ import units
 # variable (confirmed during data inventory). nanmin/nanmean/nanmax on
 # those cells warn on every single (era, period) reduction -- benign, but
 # would otherwise flood SLURM logs across ~427 jobs.
-warnings.filterwarnings("ignore", category=RuntimeWarning, message="All-NaN slice encountered")
-warnings.filterwarnings("ignore", category=RuntimeWarning, message="Mean of empty slice")
+warnings.filterwarnings(
+    "ignore", category=RuntimeWarning, message="All-NaN slice encountered"
+)
+warnings.filterwarnings(
+    "ignore", category=RuntimeWarning, message="Mean of empty slice"
+)
 
 
 def load_var(path: str, varname: str) -> xr.DataArray:
@@ -51,7 +55,9 @@ def load_var(path: str, varname: str) -> xr.DataArray:
     return da.load()
 
 
-def direct_aggregate(da: xr.DataArray, eras: list[Era], periods: list[Period]) -> np.ndarray:
+def direct_aggregate(
+    da: xr.DataArray, eras: list[Era], periods: list[Period]
+) -> np.ndarray:
     """temporal_min/mean/max over every day in period+era, directly."""
     ny, nx = da.sizes["y"], da.sizes["x"]
     out = np.full((len(eras), len(periods), 3, ny, nx), np.nan, dtype=np.float32)
@@ -61,7 +67,11 @@ def direct_aggregate(da: xr.DataArray, eras: list[Era], periods: list[Period]) -
     for pi, period in enumerate(periods):
         in_period, label_year = in_period_and_label_year(time, period.months)
         for ei, era in enumerate(eras):
-            mask = in_period & (label_year >= era.start_year) & (label_year <= era.end_year)
+            mask = (
+                in_period
+                & (label_year >= era.start_year)
+                & (label_year <= era.end_year)
+            )
             if not mask.any():
                 continue
             sub = values[mask]
@@ -72,7 +82,9 @@ def direct_aggregate(da: xr.DataArray, eras: list[Era], periods: list[Period]) -
     return out
 
 
-def pr_tot_aggregate(da: xr.DataArray, eras: list[Era], periods: list[Period]) -> np.ndarray:
+def pr_tot_aggregate(
+    da: xr.DataArray, eras: list[Era], periods: list[Period]
+) -> np.ndarray:
     """per-year period-sum, then temporal_min/mean/max across years."""
     ny, nx = da.sizes["y"], da.sizes["x"]
     out = np.full((len(eras), len(periods), 3, ny, nx), np.nan, dtype=np.float32)
@@ -103,7 +115,9 @@ def pr_tot_aggregate(da: xr.DataArray, eras: list[Era], periods: list[Period]) -
             year_sums[int(yr)] = year_sum
 
         for ei, era in enumerate(eras):
-            stack = [v for yr, v in year_sums.items() if era.start_year <= yr <= era.end_year]
+            stack = [
+                v for yr, v in year_sums.items() if era.start_year <= yr <= era.end_year
+            ]
             if not stack:
                 continue
             stack = np.stack(stack, axis=0)
@@ -133,7 +147,9 @@ def make_fragment_dataset(
     )
 
 
-def write_fragment(ds: xr.Dataset, output_var: str, model: str, scenario: str, config: Config) -> Path:
+def write_fragment(
+    ds: xr.Dataset, output_var: str, model: str, scenario: str, config: Config
+) -> Path:
     config.fragments_dir.mkdir(parents=True, exist_ok=True)
     out_path = config.fragments_dir / f"{output_var}__{model}__{scenario}.zarr"
     ds.to_zarr(out_path, mode="w", consolidated=True)
@@ -148,7 +164,9 @@ def run_job(job: dict, config: Config) -> list[Path]:
         da = units.convert_value_if_needed(job["output_var"], da, config)
         values = direct_aggregate(da, config.eras, config.periods)
         ds = make_fragment_dataset(values, job["output_var"], config, da["y"], da["x"])
-        written.append(write_fragment(ds, job["output_var"], job["model"], job["scenario"], config))
+        written.append(
+            write_fragment(ds, job["output_var"], job["model"], job["scenario"], config)
+        )
 
     elif job["kind"] == "tmean":
         da_max = load_var(job["source_paths"]["tmax"], job["source_vars"]["tmax"])
@@ -165,8 +183,12 @@ def run_job(job: dict, config: Config) -> list[Path]:
         da_min = units.convert_value_if_needed("tmin", da_min, config)
         da_mean = (da_max + da_min) / 2.0
         values = direct_aggregate(da_mean, config.eras, config.periods)
-        ds = make_fragment_dataset(values, job["output_var"], config, da_max["y"], da_max["x"])
-        written.append(write_fragment(ds, job["output_var"], job["model"], job["scenario"], config))
+        ds = make_fragment_dataset(
+            values, job["output_var"], config, da_max["y"], da_max["x"]
+        )
+        written.append(
+            write_fragment(ds, job["output_var"], job["model"], job["scenario"], config)
+        )
 
     elif job["kind"] == "pr":
         da = load_var(job["source_paths"]["main"], job["source_vars"]["main"])
@@ -175,11 +197,17 @@ def run_job(job: dict, config: Config) -> list[Path]:
 
         pr_values = direct_aggregate(da, config.eras, config.periods)
         pr_ds = make_fragment_dataset(pr_values, pr_var, config, da["y"], da["x"])
-        written.append(write_fragment(pr_ds, pr_var, job["model"], job["scenario"], config))
+        written.append(
+            write_fragment(pr_ds, pr_var, job["model"], job["scenario"], config)
+        )
 
         pr_tot_values = pr_tot_aggregate(da, config.eras, config.periods)
-        pr_tot_ds = make_fragment_dataset(pr_tot_values, pr_tot_var, config, da["y"], da["x"])
-        written.append(write_fragment(pr_tot_ds, pr_tot_var, job["model"], job["scenario"], config))
+        pr_tot_ds = make_fragment_dataset(
+            pr_tot_values, pr_tot_var, config, da["y"], da["x"]
+        )
+        written.append(
+            write_fragment(pr_tot_ds, pr_tot_var, job["model"], job["scenario"], config)
+        )
 
     else:
         raise ValueError(f"Unknown job kind: {job['kind']!r}")
@@ -200,7 +228,9 @@ def main():
         jobs = json.load(f)
 
     job = jobs[args.job_index]
-    print(f"[{args.job_index}] {job['family']}/{job['kind']} model={job['model']} scenario={job['scenario']}")
+    print(
+        f"[{args.job_index}] {job['family']}/{job['kind']} model={job['model']} scenario={job['scenario']}"
+    )
     written = run_job(job, config)
     for p in written:
         print(f"  wrote {p}")
