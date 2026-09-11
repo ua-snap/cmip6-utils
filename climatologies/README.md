@@ -79,8 +79,10 @@ shaped `(model, scenario, era, period, aggregation, y, x)`:
 - **Scenario**: `historical`, `ssp126`, `ssp245`, `ssp370`, `ssp585`.
 - **Era**: configurable date ranges (e.g. `1981-2010`, `2040-2069`) — see
   below.
-- **Period**: each calendar month, plus `DJF`/`MAM`/`JJA`/`SON` and the
-  two custom seasons `AMJJAS`/`ONDJFM`.
+- **Period**: the shipped configs currently include each calendar month plus
+  `Annual`. Seasonal configurations such as `DJF`/`MAM`/`JJA`/`SON`,
+  `AMJJAS`, and `ONDJFM` are supported by the period logic but are not in
+  scope for these outputs yet.
 - **Aggregation**: `temporal_min`, `temporal_mean`, `temporal_max`.
 
 Not every model has data for every variable/scenario (e.g. `CESM2` has no
