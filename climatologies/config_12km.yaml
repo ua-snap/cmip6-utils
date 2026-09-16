@@ -237,16 +237,16 @@ slurm:
   fragments:
     mem: "128G"
     cpus_per_task: 4
-    time: "00:10:00"
+    time: "00:20:00"
     array_concurrency: 12
   combine:
     mem: "400G"
     cpus_per_task: 8
-    time: "02:00:00"
+    time: "04:00:00"
   qc:
     mem: "64G"
     cpus_per_task: 4
-    time: "00:30:00"
+    time: "00:59:00"
 
 output:
   # `{var}` is required -- combine writes one Zarr and one NetCDF per output variable.
