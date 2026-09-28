@@ -16,3 +16,5 @@ _build/
 *.err
 
 .claude/
+
+/climatologies/slurm/submit_*
