@@ -366,6 +366,19 @@ def check_ensemble_derivation(config: Config, log: Log) -> dict:
 # Delta maps
 # --------------------------------------------------------------------------
 
+# Water amount and rate variables. BrBG is ColorBrewer's colorblind-safe
+# diverging palette: brown at the low end, blue-green at the high end.
+# With the symmetric zero-centered norm below, negative deltas read as
+# drier and positive deltas as wetter. Other variables stay on RdBu_r.
+WET_DRY_DELTA_VARS = frozenset({"hurs", "hursmin", "pr", "pr_tot", "snw"})
+
+
+def delta_map_colormap(output_var: str) -> str:
+    """Return the diverging colormap for one delta-map variable."""
+    if output_var in WET_DRY_DELTA_VARS:
+        return "BrBG"
+    return "RdBu_r"
+
 
 def render_delta_map(
     ds: xr.Dataset, config: Config, output_var: str, period: str, out_path: Path
@@ -429,11 +442,12 @@ def render_delta_map(
         figsize=(4 * len(future_eras), 3.2 * len(scenarios)),
         squeeze=False,
     )
+    cmap = delta_map_colormap(output_var)
     im = None
     for i, scenario in enumerate(scenarios):
         for j, era in enumerate(future_eras):
             ax = axes[i, j]
-            im = ax.imshow(deltas[i, j], cmap="RdBu_r", norm=norm)
+            im = ax.imshow(deltas[i, j], cmap=cmap, norm=norm)
             mean_d = np.nanmean(deltas[i, j])
             ax.set_title(
                 f"{scenario} / {era}\n"
