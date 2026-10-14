@@ -32,7 +32,7 @@ import xarray as xr
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from config import DEFAULT_CONFIG_PATH, Config, Era, Period, load_config
+from config import DEFAULT_CONFIG_PATH, NOLEAP_DAYS, Config, Era, Period, load_config
 from periods import in_period_and_label_year
 import units
 
@@ -80,6 +80,45 @@ def direct_aggregate(
                 out[ei, pi, 1] = np.nanmean(sub, axis=0)
                 out[ei, pi, 2] = np.nanmax(sub, axis=0)
     return out
+
+
+# Cumulative days before each month in a noleap year.
+_NOLEAP_MONTH_OFFSET = np.array([0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334])
+
+
+def daily_aggregate(da: xr.DataArray, eras: list[Era]) -> np.ndarray:
+    """temporal_min/mean/max for each noleap day-of-year across the era's years."""
+    ny, nx = da.sizes["y"], da.sizes["x"]
+    out = np.full((len(eras), NOLEAP_DAYS, 3, ny, nx), np.nan, dtype=np.float32)
+    values = da.values
+    time = da["time"]
+    month = time.dt.month.values
+    day = time.dt.day.values
+    year = time.dt.year.values
+    not_leap_day = ~((month == 2) & (day == 29))
+    doy_index = _NOLEAP_MONTH_OFFSET[month - 1] + day - 1  # 0-based
+
+    for ei, era in enumerate(eras):
+        era_mask = not_leap_day & (year >= era.start_year) & (year <= era.end_year)
+        if not era_mask.any():
+            continue
+        era_values = values[era_mask]
+        era_doy = doy_index[era_mask]
+        for d in range(NOLEAP_DAYS):
+            sub = era_values[era_doy == d]
+            if sub.shape[0] == 0:
+                continue
+            with np.errstate(invalid="ignore"):
+                out[ei, d, 0] = np.nanmin(sub, axis=0)
+                out[ei, d, 1] = np.nanmean(sub, axis=0)
+                out[ei, d, 2] = np.nanmax(sub, axis=0)
+    return out
+
+
+def aggregate(da: xr.DataArray, config: Config) -> np.ndarray:
+    if config.daily:
+        return daily_aggregate(da, config.eras)
+    return direct_aggregate(da, config.eras, config.periods)
 
 
 def pr_tot_aggregate(
@@ -136,10 +175,10 @@ def make_fragment_dataset(
     x: xr.DataArray,
 ) -> xr.Dataset:
     return xr.Dataset(
-        {output_var: (("era", "period", "aggregation", "y", "x"), values)},
+        {output_var: (("era", config.period_dim, "aggregation", "y", "x"), values)},
         coords={
             "era": [e.name for e in config.eras],
-            "period": [p.name for p in config.periods],
+            config.period_dim: config.period_labels,
             "aggregation": config.aggregations,
             "y": y.values,
             "x": x.values,
@@ -162,7 +201,7 @@ def run_job(job: dict, config: Config) -> list[Path]:
     if job["kind"] == "direct":
         da = load_var(job["source_paths"]["main"], job["source_vars"]["main"])
         da = units.convert_value_if_needed(job["output_var"], da, config)
-        values = direct_aggregate(da, config.eras, config.periods)
+        values = aggregate(da, config)
         ds = make_fragment_dataset(values, job["output_var"], config, da["y"], da["x"])
         written.append(
             write_fragment(ds, job["output_var"], job["model"], job["scenario"], config)
@@ -182,7 +221,7 @@ def run_job(job: dict, config: Config) -> list[Path]:
         da_max = units.convert_value_if_needed("tmax", da_max, config)
         da_min = units.convert_value_if_needed("tmin", da_min, config)
         da_mean = (da_max + da_min) / 2.0
-        values = direct_aggregate(da_mean, config.eras, config.periods)
+        values = aggregate(da_mean, config)
         ds = make_fragment_dataset(
             values, job["output_var"], config, da_max["y"], da_max["x"]
         )
@@ -193,14 +232,17 @@ def run_job(job: dict, config: Config) -> list[Path]:
     elif job["kind"] == "pr":
         da = load_var(job["source_paths"]["main"], job["source_vars"]["main"])
         pr_var = config.source_families["pr"].output_var
-        pr_tot_var = config.derived["pr_tot"].output_var
 
-        pr_values = direct_aggregate(da, config.eras, config.periods)
+        pr_values = aggregate(da, config)
         pr_ds = make_fragment_dataset(pr_values, pr_var, config, da["y"], da["x"])
         written.append(
             write_fragment(pr_ds, pr_var, job["model"], job["scenario"], config)
         )
 
+        if config.daily:
+            return written
+
+        pr_tot_var = config.derived["pr_tot"].output_var
         pr_tot_values = pr_tot_aggregate(da, config.eras, config.periods)
         pr_tot_ds = make_fragment_dataset(
             pr_tot_values, pr_tot_var, config, da["y"], da["x"]
@@ -220,9 +262,12 @@ def main():
     parser.add_argument("--job-index", type=int, required=True)
     parser.add_argument("--job-list", default=None)
     parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH))
+    parser.add_argument(
+        "--daily", action="store_true", help="compute per-day-of-year climatologies"
+    )
     args = parser.parse_args()
 
-    config = load_config(args.config)
+    config = load_config(args.config, daily=args.daily)
     job_list_path = args.job_list or config.job_list_path
     with open(job_list_path) as f:
         jobs = json.load(f)

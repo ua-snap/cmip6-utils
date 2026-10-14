@@ -4,7 +4,12 @@
 # (chained with --dependency=afterok so combine only runs once every
 # fragment succeeds).
 #
-# Usage: run_pipeline.sh --config config_12km.yaml
+# Usage: run_pipeline.sh --config config_12km.yaml [--daily]
+#
+# --daily computes per-day-of-year (365, noleap) climatologies instead of
+# per-month ones; outputs go under <output_root>/daily/ with a "_daily"
+# filename suffix, so they don't overwrite the monthly run. qc.py doesn't
+# support daily outputs.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 

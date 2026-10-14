@@ -34,8 +34,11 @@ def main():
     parser.add_argument(
         "--yes", action="store_true", help="actually delete (default is a dry run)"
     )
+    parser.add_argument(
+        "--daily", action="store_true", help="clean up the daily run's fragments"
+    )
     args = parser.parse_args()
-    config = load_config(args.config)
+    config = load_config(args.config, daily=args.daily)
 
     frag_dir = config.fragments_dir
     if not frag_dir.exists():

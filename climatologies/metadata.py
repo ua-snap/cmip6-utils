@@ -52,6 +52,12 @@ def model_attrs(config: Config) -> dict:
 
 
 def period_attrs(config: Config) -> dict:
+    if config.daily:
+        d = _dim(config, "dayofyear")
+        return {
+            "long_name": d["long_name"],
+            "description": d["description_template"],
+        }
     d = _dim(config, "period")
     lines = []
     for p in config.periods:
@@ -75,7 +81,8 @@ def scenario_attrs(config: Config) -> dict:
 
 def aggregation_attrs(config: Config) -> dict:
     d = _dim(config, "aggregation")
-    return {"long_name": d["long_name"], "description": d["description_template"]}
+    template = d["daily_description_template"] if config.daily else d["description_template"]
+    return {"long_name": d["long_name"], "description": template}
 
 
 def _family_for_output_var(config: Config, output_var: str):
@@ -85,36 +92,42 @@ def _family_for_output_var(config: Config, output_var: str):
     raise KeyError(f"no source family has output_var={output_var!r}")
 
 
+def _method_note(config: Config) -> str:
+    key = "daily_method_note" if config.daily else "direct_method_note"
+    return config.metadata[key]
+
+
 def variable_attrs(output_var: str, config: Config) -> dict:
-    if output_var == config.derived["pr_tot"].output_var:
-        derived = config.derived["pr_tot"]
+    pr_tot = config.derived.get("pr_tot")
+    if pr_tot is not None and output_var == pr_tot.output_var:
         return {
-            "long_name": derived.long_name,
-            "units": derived.units,
-            "description": derived.description,
+            "long_name": pr_tot.long_name,
+            "units": pr_tot.units,
+            "description": pr_tot.description,
         }
-    if output_var == config.derived["tmean"].output_var:
-        derived = config.derived["tmean"]
+    tmean = config.derived.get("tmean")
+    if tmean is not None and output_var == tmean.output_var:
         return {
-            "long_name": derived.long_name,
-            "units": units.units_label(output_var, derived.units, config),
-            "description": f"{derived.description} {config.metadata['direct_method_note']}",
+            "long_name": tmean.long_name,
+            "units": units.units_label(output_var, tmean.units, config),
+            "description": f"{tmean.description} {_method_note(config)}",
         }
     family = _family_for_output_var(config, output_var)
     return {
         "long_name": family.long_name,
         "units": units.units_label(output_var, family.units, config),
-        "description": config.metadata["direct_method_note"],
+        "description": _method_note(config),
     }
 
 
 def global_attrs(config: Config) -> dict:
     g = config.metadata["global_attrs"]
     timestamp = datetime.datetime.utcnow().isoformat()
+    summary = g["daily_summary"] if config.daily else g["summary"]
     return {
         "title": g["title"],
         "institution": g["institution"],
-        "summary": g["summary"].format(n_members=len(config.ensemble_members)),
+        "summary": summary.format(n_members=len(config.ensemble_members)),
         "Conventions": g["conventions"],
         "history": g["history_template"].format(timestamp=timestamp),
     }

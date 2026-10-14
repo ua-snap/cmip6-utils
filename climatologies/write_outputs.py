@@ -20,6 +20,9 @@ def _strip_stale_encoding(ds: xr.Dataset) -> xr.Dataset:
 def write_outputs(ds: xr.Dataset, output_var: str, config: Config) -> None:
     config.final_output_dir.mkdir(parents=True, exist_ok=True)
     ds = _strip_stale_encoding(ds)
+    if config.daily:
+        # A single in-memory block would be a ~200 GB zarr chunk; split it per model/scenario/era.
+        ds = ds.chunk({"model": 1, "scenario": 1, "era": 1})
 
     zarr_path = config.output_zarr_path(output_var)
     ds.to_zarr(zarr_path, mode="w", consolidated=True)

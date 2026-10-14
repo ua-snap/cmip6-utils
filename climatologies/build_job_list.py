@@ -104,9 +104,12 @@ def build_job_list(config) -> list:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH))
+    parser.add_argument(
+        "--daily", action="store_true", help="write the job list for daily climatologies"
+    )
     args = parser.parse_args()
 
-    config = load_config(args.config)
+    config = load_config(args.config, daily=args.daily)
     jobs = build_job_list(config)
 
     config.job_list_path.parent.mkdir(parents=True, exist_ok=True)

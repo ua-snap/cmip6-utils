@@ -14,6 +14,9 @@ from pathlib import Path
 
 import yaml
 
+# Daily climatologies use a noleap calendar; Feb 29 is dropped from leap-year sources.
+NOLEAP_DAYS = 365
+
 
 @dataclass(frozen=True)
 class Era:
@@ -75,10 +78,24 @@ class Config:
     metadata: dict
     qc: dict
     units: dict
+    daily: bool = False
 
     @property
     def output_root(self) -> Path:
-        return Path(self.paths["output_root"])
+        root = Path(self.paths["output_root"])
+        return root / "daily" if self.daily else root
+
+    @property
+    def period_dim(self) -> str:
+        """Name of the temporal-bin dimension in fragments and final outputs."""
+        return "dayofyear" if self.daily else "period"
+
+    @property
+    def period_labels(self) -> list:
+        """Coordinate values of `period_dim`: period names, or 1..365 (noleap) day-of-year."""
+        if self.daily:
+            return list(range(1, NOLEAP_DAYS + 1))
+        return [p.name for p in self.periods]
 
     @property
     def qc_dir(self) -> Path:
@@ -101,10 +118,18 @@ class Config:
         return self.output_root / "output"
 
     def output_zarr_path(self, output_var: str) -> Path:
-        return self.final_output_dir / self.output["zarr_name"].format(var=output_var)
+        return self.final_output_dir / self.output["zarr_name"].format(
+            var=output_var + self._output_name_suffix
+        )
 
     def output_netcdf_path(self, output_var: str) -> Path:
-        return self.final_output_dir / self.output["netcdf_name"].format(var=output_var)
+        return self.final_output_dir / self.output["netcdf_name"].format(
+            var=output_var + self._output_name_suffix
+        )
+
+    @property
+    def _output_name_suffix(self) -> str:
+        return "_daily" if self.daily else ""
 
     def grid_reference_path_for(self, output_var: str) -> str:
         """Zarr used for y/x/lat/lon/spatial_ref when combining this variable."""
@@ -118,7 +143,9 @@ class Config:
         return list(self.models) + [self.ensemble_name, self.reference_model]
 
 
-def load_config(path: str | os.PathLike) -> Config:
+def load_config(path: str | os.PathLike, daily: bool = False) -> Config:
+    """Load a config YAML. `daily=True` switches to per-day-of-year climatologies
+    (written under <output_root>/daily/) instead of per-period ones."""
     with open(path) as f:
         raw = yaml.safe_load(f)
 
@@ -162,6 +189,11 @@ def load_config(path: str | os.PathLike) -> Config:
             f"from output_variable_order. Unknown: {unknown_overrides}."
         )
 
+    if daily and "pr_tot" in derived:
+        # pr_tot's per-year period-sum is just pr itself for a one-day period.
+        pr_tot_var = derived["pr_tot"].output_var
+        output_variable_order = [v for v in output_variable_order if v != pr_tot_var]
+
     return Config(
         paths=raw["paths"],
         source_families=source_families,
@@ -182,6 +214,7 @@ def load_config(path: str | os.PathLike) -> Config:
         metadata=raw["metadata"],
         qc=raw["qc"],
         units=raw["units"],
+        daily=daily,
     )
 
 

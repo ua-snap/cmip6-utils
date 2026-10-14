@@ -70,7 +70,7 @@ def combine_variable(
     x: np.ndarray,
 ) -> xr.DataArray:
     era_names = [e.name for e in config.eras]
-    period_names = [p.name for p in config.periods]
+    period_names = config.period_labels
     agg_names = config.aggregations
 
     model_index = {name: i for i, name in enumerate(model_dim_values)}
@@ -114,22 +114,30 @@ def combine_variable(
                 f"coordinates that do not match this variable's grid reference. "
                 f"Check grid_reference / overrides for {output_var!r}."
             )
-        da = da.reindex(era=era_names, period=period_names, aggregation=agg_names)
+        da = da.reindex(
+            {
+                "era": era_names,
+                config.period_dim: period_names,
+                "aggregation": agg_names,
+            }
+        )
         arr[mi, si] = da.values
 
     ensemble_idx = model_index[config.ensemble_name]
     member_idx = [model_index[m] for m in config.ensemble_members]
-    with np.errstate(invalid="ignore"):
-        arr[ensemble_idx] = np.nanmean(arr[member_idx], axis=0)
+    # Per-era to avoid copying every member's full array at once.
+    for ei in range(len(era_names)):
+        with np.errstate(invalid="ignore"):
+            arr[ensemble_idx, :, ei] = np.nanmean(arr[member_idx, :, ei], axis=0)
 
     out = xr.DataArray(
         arr,
-        dims=("model", "scenario", "era", "period", "aggregation", "y", "x"),
+        dims=("model", "scenario", "era", config.period_dim, "aggregation", "y", "x"),
         coords={
             "model": model_dim_values,
             "scenario": config.scenarios,
             "era": era_names,
-            "period": period_names,
+            config.period_dim: period_names,
             "aggregation": agg_names,
             "y": y,
             "x": x,
@@ -143,7 +151,7 @@ def combine_variable(
 def attach_dataset_attrs(ds: xr.Dataset, config: Config) -> xr.Dataset:
     ds["era"].attrs.update(metadata.era_attrs(config))
     ds["model"].attrs.update(metadata.model_attrs(config))
-    ds["period"].attrs.update(metadata.period_attrs(config))
+    ds[config.period_dim].attrs.update(metadata.period_attrs(config))
     ds["scenario"].attrs.update(metadata.scenario_attrs(config))
     ds["aggregation"].attrs.update(metadata.aggregation_attrs(config))
     ds.attrs.update(metadata.global_attrs(config))
@@ -167,9 +175,12 @@ def build_variable_dataset(
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH))
+    parser.add_argument(
+        "--daily", action="store_true", help="combine per-day-of-year climatologies"
+    )
     args = parser.parse_args()
 
-    config = load_config(args.config)
+    config = load_config(args.config, daily=args.daily)
     fragments_by_var = discover_fragments(config)
     model_dim_values = config.all_model_dim_values
 

@@ -7,7 +7,7 @@ paths:
   # Large intermediate + final outputs live here. This is the only path that must be changed for a new user.
   # All other paths are relative to this root.
   # The output directory must be on a filesystem with enough space to hold the final zarr and netcdf outputs.
-  output_root: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/climatologies/12km/
+  output_root: /beegfs/CMIP6/crstephenson/cmip6_indicators/outputs/12km/
 
 # Temperature unit for the output. "celsius" (default) applies a K -> degC
 # shift to tmax/tmin/tmean (the source data is always Kelvin); dtr's stored
@@ -243,6 +243,11 @@ slurm:
     mem: "400G"
     cpus_per_task: 8
     time: "04:00:00"
+  # Used instead of `combine` when run with --daily (outputs are ~28x larger).
+  combine_daily:
+    mem: "400G"
+    cpus_per_task: 8
+    time: "24:00:00"
   qc:
     mem: "64G"
     cpus_per_task: 4
@@ -269,6 +274,13 @@ metadata:
       period, and aggregation coordinate attributes, and each data variable's
       own attributes, for full methodology.
     conventions: "CF-1.8"
+    # Used instead of `summary` when the pipeline is run with --daily.
+    daily_summary: >
+      Temporal min/mean/max daily climatologies by day of year (noleap
+      calendar, 365 days) and climatological era, for {n_members} CMIP6 models,
+      a multi-model ensemble mean, and the WRF-downscaled ERA5 reference. See
+      the model, scenario, era, dayofyear, and aggregation coordinate
+      attributes, and each data variable's own attributes, for full methodology.
     history_template: "{timestamp}Z: created by cmip6-utils/climatologies pipeline."
 
   # Applies to every data variable except pr_tot (which has its own
@@ -278,6 +290,13 @@ metadata:
     every day falling in the given period and era -- e.g. temporal_max is
     the single most extreme day's value within that period+era, not an
     average of yearly extremes.
+
+  # Used instead of direct_method_note when the pipeline is run with --daily.
+  daily_method_note: >
+    Aggregation (see the aggregation dimension) is computed across the era's
+    years separately for each day of the year -- e.g. temporal_max for
+    dayofyear=32 is the largest value on Feb 1 in any year of the era.
+    Feb 29 is excluded.
 
   dimensions:
     era:
@@ -299,6 +318,11 @@ metadata:
       description_template: "Period over which the temporal aggregation is computed. {period_lines}."
       line_template: "{name}: {month_names}{wrap_suffix}"
       wrap_suffix: " (season-year = calendar year of the last listed month)"
+    dayofyear:
+      long_name: day of year
+      description_template: >
+        Day of year in a noleap (365-day) calendar: 1 = Jan 1, 59 = Feb 28,
+        60 = Mar 1, 365 = Dec 31. Feb 29 in leap years is excluded.
     scenario:
       long_name: scenario
       description_template: >
@@ -312,6 +336,9 @@ metadata:
         variable's own attributes for the exact methodology -- it differs for
         pr_tot (aggregated across per-year period-sums) versus every other
         variable (aggregated directly over days).
+      daily_description_template: >
+        Temporal aggregation applied across the era's years for each day of
+        year: the minimum, mean, or maximum of that calendar day's values.
 
 # Parameters for qc.py (run manually after a pipeline run -- see README.md).
 qc:

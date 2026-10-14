@@ -44,7 +44,7 @@ FRAGMENTS_TEMPLATE = """#!/bin/sh
 set -e
 echo Start slurm && date
 {conda_hook}
-python {climatologies_dir}/compute_fragment.py --job-index $SLURM_ARRAY_TASK_ID --config {config_path}
+python {climatologies_dir}/compute_fragment.py --job-index $SLURM_ARRAY_TASK_ID --config {config_path}{daily_flag}
 echo End slurm && date
 """
 
@@ -61,7 +61,7 @@ COMBINE_TEMPLATE = """#!/bin/sh
 set -e
 echo Start slurm && date
 {conda_hook}
-python {climatologies_dir}/combine.py --config {config_path}
+python {climatologies_dir}/combine.py --config {config_path}{daily_flag}
 echo End slurm && date
 """
 
@@ -86,9 +86,13 @@ echo End slurm && date
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH))
+    parser.add_argument(
+        "--daily", action="store_true", help="generate scripts for daily climatologies"
+    )
     args = parser.parse_args()
     config_path = Path(args.config).resolve()
-    config = load_config(config_path)
+    config = load_config(config_path, daily=args.daily)
+    daily_flag = " --daily" if args.daily else ""
     config.logs_dir.mkdir(parents=True, exist_ok=True)
 
     with open(config.job_list_path) as f:
@@ -97,7 +101,7 @@ def main():
 
     conda_hook = CONDA_HOOK.format(conda_env=config.slurm["conda_env"])
     frag_cfg = config.slurm["fragments"]
-    comb_cfg = config.slurm["combine"]
+    comb_cfg = config.slurm["combine_daily" if args.daily else "combine"]
 
     frag_script = FRAGMENTS_TEMPLATE.format(
         partition=config.slurm["partition"],
@@ -110,6 +114,7 @@ def main():
         conda_hook=conda_hook,
         climatologies_dir=CLIMATOLOGIES_DIR,
         config_path=config_path,
+        daily_flag=daily_flag,
     )
     frag_path = Path(__file__).resolve().parent / "submit_fragments.sbatch"
     frag_path.write_text(frag_script)
@@ -124,10 +129,14 @@ def main():
         conda_hook=conda_hook,
         climatologies_dir=CLIMATOLOGIES_DIR,
         config_path=config_path,
+        daily_flag=daily_flag,
     )
     comb_path = Path(__file__).resolve().parent / "submit_combine.sbatch"
     comb_path.write_text(comb_script)
     print(f"wrote {comb_path}")
+
+    if args.daily:
+        return  # qc.py doesn't support daily outputs; leave submit_qc.sbatch as-is
 
     qc_cfg = config.slurm["qc"]
     qc_script = QC_TEMPLATE.format(
