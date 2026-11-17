@@ -74,8 +74,9 @@ def paths_for(cfg, res, var, model, scenario):
         .format(var=var, model=model, scenario=scenario)
         if prev
         else None,
-        "sim": Path(g["cmip6_zarr"]) / f"{var}_{model}_{scenario}.zarr",
-        "era5": Path(g["era5_zarr"]) / f"{era5_var}_era5.zarr",
+        "sim": Path(g["cmip6_zarr"].format(model=model))
+        / f"{var}_{model}_{scenario}.zarr",
+        "era5": Path(g["era5_zarr"].format(model=model)) / f"{era5_var}_era5.zarr",
     }
     return {k: (v if v is not None and v.exists() else None) for k, v in p.items()}
 

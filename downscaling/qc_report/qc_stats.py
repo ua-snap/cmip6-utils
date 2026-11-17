@@ -124,11 +124,11 @@ def era5_pass(cfg, era5, check, fixed, threads):
     return maps, series, total
 
 
-def get_era5(cfg, res, var, fixed, fixed_names, threads, grid_ref):
+def get_era5(cfg, res, var, model, fixed, fixed_names, threads, grid_ref):
     """ERA5 stats are shared by all models; compute once and cache."""
     vcfg = cfg["variables"][var]
     g = group_for(cfg, res, var)
-    path = Path(g["era5_zarr"]) / f"{vcfg['era5_var']}_era5.zarr"
+    path = Path(g["era5_zarr"].format(model=model)) / f"{vcfg['era5_var']}_era5.zarr"
     data = out_dir(cfg, res) / "data"
     nc = data / f"era5_{var}.nc"
     if nc.exists():
@@ -192,6 +192,7 @@ def scenario_pass(cfg, new, prev, sim, vcfg, fixed, threads):
     }
     M["exceed_count"] = np.zeros((ny, nx), np.int32)
     M["nan_mismatch"] = np.zeros((ny, nx), np.int32)
+    M["exceed_count_prev"] = np.zeros((ny, nx), np.int32)
     Q = {
         "q_new": np.full((L, ny, nx), np.nan, F32),
         "q_prev": np.full((L, ny, nx), np.nan, F32),
@@ -203,6 +204,7 @@ def scenario_pass(cfg, new, prev, sim, vcfg, fixed, threads):
         "valid_new": 0,
         "exceed_new": 0,
         "exceed_sim": 0,
+        "exceed_prev": 0,
         "valid_sim": 0,
         "pairs": 0,
         "equal": 0,
@@ -279,6 +281,10 @@ def scenario_pass(cfg, new, prev, sim, vcfg, fixed, threads):
             r["frac_equal"] = np.where(anyv, eq.mean(0), np.nan).astype(F32)
             r["nan_mismatch"] = (nN != nO).sum(0).astype(np.int32)
             r["pairs"], r["equal"] = int(both.sum()), int((eq & both).sum())
+            Ep = exceed_mask(O, check)
+            r["exceed_count_prev"] = Ep.sum(0).astype(np.int32)
+            r["exceed_prev"] = int(r["exceed_count_prev"].sum())
+            del Ep
             r["sum_abs_diff"], r["max_abs_diff"] = float(
                 d.sum(dtype=np.float64)
             ), float(d.max())
@@ -345,7 +351,9 @@ def dtr_upstream(cfg, res, var, model, scenario):
         return None
     data = {}
     for stage, base in up.items():
-        files = sorted(Path(base, model, scenario, "day", var).glob("*.nc"))
+        files = sorted(
+            Path(base.format(model=model), model, scenario, "day", var).glob("*.nc")
+        )
         if not files:
             continue
         acc = None
@@ -418,7 +426,7 @@ def run(cfg, res, var, model, threads, only_scenarios=None):
     ref = Store(paths_for(cfg, res, var, model, scens[0])["new"], cfg, units)
     fixed = fixed_points(cfg, ref)
     fixed_names = [f[0] for f in fixed]
-    era5 = get_era5(cfg, res, var, fixed, fixed_names, threads, ref)
+    era5 = get_era5(cfg, res, var, model, fixed, fixed_names, threads, ref)
     hist_stores = {}
     for scen in scens:
         t0 = time.time()
@@ -440,6 +448,9 @@ def run(cfg, res, var, model, threads, only_scenarios=None):
         M, Q, fx_new, fx_sim, top, topdays, hv, tot = scenario_pass(
             cfg, new, prev, sim, vcfg, fixed, threads
         )
+        if prev is None:
+            tot["exceed_prev"] = None
+            del M["exceed_count_prev"]
         if scen == "historical":
             hist_stores = {"new": new, "sim": sim}
         log(f"  pass done in {time.time() - t0:.0f} s")

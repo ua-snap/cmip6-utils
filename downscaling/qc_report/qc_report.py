@@ -77,6 +77,10 @@ def g(v, n=3):
     return f"{v:.{n}g}" if abs(v) < 10**n else f"{v:,.0f}"
 
 
+def cnt_fmt(totals, key):
+    return f"{totals[key]:,}" if totals.get(key) is not None else "–"
+
+
 def show_map(ax, a, x, y, **kw):
     a = np.asarray(a)
     dx, dy = abs(x[1] - x[0]) / 2, abs(y[1] - y[0]) / 2
@@ -369,6 +373,8 @@ class ModelReport:
                     "maxad": t["max_abs_diff"],
                     "equal": 100 * t["equal"] / pairs,
                     "nanmm": t["nan_mismatch"],
+                    "ex_new": t["exceed_new"],
+                    "ex_prev": t.get("exceed_prev"),
                 }
             )
         return rows
@@ -477,6 +483,14 @@ class ModelReport:
                 else "Some cells have a different NaN pattern between the two versions (see the NaN-mask column)."
             )
         )
+        if all(r["ex_prev"] is not None for r in rows):
+            msg += (
+                f" Cell-days {self.chk} (QC threshold), new vs published: "
+                + "; ".join(
+                    f"{r['scen']} {r['ex_new']:,} vs {r['ex_prev']:,}" for r in rows
+                )
+                + "."
+            )
         paragraph(fig, 0.04, y - 0.06, msg, size=10.5)
         return fig
 
@@ -485,7 +499,7 @@ class ModelReport:
         fig = page(
             "Quantile differences: new − previous, per grid cell",
             "Top: median over grid cells (line) and 5–95 % of cells (band). Bottom: mean |Δ| over cells, "
-            "log scale. Both are close to zero through the bulk of the distribution and grow in the tails.",
+            "log scale. Compare the size of the change in the middle of the distribution with its ends (tails).",
         )
         gs = fig.add_gridspec(
             2, n, left=0.08, right=0.98, top=0.83, bottom=0.12, hspace=0.12, wspace=0.08
@@ -713,11 +727,16 @@ class ModelReport:
             th = self.js["historical"]["totals"]
             rows += [
                 [f"{self.model} historical, un-adjusted", f"{th['exceed_sim']:,}"],
-                [f"{self.model} historical, downscaled", f"{th['exceed_new']:,}"],
+                [
+                    f"{self.model} historical, previous (published)",
+                    cnt_fmt(th, "exceed_prev"),
+                ],
+                [f"{self.model} historical, downscaled (new)", f"{th['exceed_new']:,}"],
             ]
         rows += [
             [f"{self.model} {s}, un-adjusted", f"{t['exceed_sim']:,}"],
-            [f"{self.model} {s}, downscaled", f"{t['exceed_new']:,}"],
+            [f"{self.model} {s}, previous (published)", cnt_fmt(t, "exceed_prev")],
+            [f"{self.model} {s}, downscaled (new)", f"{t['exceed_new']:,}"],
         ]
         table(
             fig,
@@ -1113,6 +1132,7 @@ def summary(cfg, res, png_dir=None):
                     "scen": s,
                     "exceed_new": t["exceed_new"],
                     "exceed_sim": t["exceed_sim"],
+                    "exceed_prev": t.get("exceed_prev"),
                     "units": fmt_units(js["units"]),
                     "check": check_label(js["check"], fmt_units(js["units"])),
                 }
@@ -1135,6 +1155,8 @@ def summary(cfg, res, png_dir=None):
     path = pdf_dir / f"qc_summary_{res}.pdf"
     doc = Doc(path, f"{res_label} · downscaled CMIP6 QC summary", png_dir)
     doc.add(None)
+    doc.section("How to read the tables")
+    doc.add(lambda: _definitions_page(cfg))
     doc.section(
         "A. New vs previous: mean |Δ| by quantile level, all models and scenarios"
     )
@@ -1179,10 +1201,39 @@ def summary(cfg, res, png_dir=None):
     print(f"wrote {path} ({n} pages)")
 
 
+def _definitions_page(cfg):
+    T = cfg["text"]
+    tq = f"{100 * cfg['tail_quantile']:g}"
+    fig = page("How to read the tables")
+    y = paragraph(fig, 0.04, 0.89, T["summary_definitions_intro"], size=9.5)
+    y -= 0.012
+    for item in T["summary_definitions"]:
+        fig.text(
+            0.04, y, item["term"].format(tq=tq), fontsize=9, weight="bold", va="top"
+        )
+        y2 = paragraph(
+            fig, 0.22, y, item["definition"].format(tq=tq), width=118, size=9
+        )
+        y = min(y - 0.024, y2) - 0.005
+    y -= 0.008
+    fig.text(0.04, y, "QC thresholds", fontsize=9, weight="bold", va="top")
+    items = list(cfg["variables"].items())
+    half = (len(items) + 1) // 2
+    for k, (v, vc) in enumerate(items):
+        col, row = divmod(k, half)
+        x0, yy = 0.22 + 0.37 * col, y - 0.022 * row
+        lab = check_label(vc["check"], fmt_units(vc["units"]))
+        fig.text(x0, yy, f"{v}", fontsize=8.5, weight="bold", va="top")
+        fig.text(x0 + 0.07, yy, f"{vc['long_name']}: {lab}", fontsize=8.5, va="top")
+    y -= 0.022 * half + 0.012
+    paragraph(fig, 0.04, y, T["summary_definitions_note"], size=8.5, color=MUTED)
+    return fig
+
+
 def _summary_profiles(cfg, profiles, levels, rows):
     fig = page(
         "New vs previous: mean |Δ quantile| per grid cell, by quantile level",
-        "One line per model × scenario. Small through the bulk of the distribution, larger in the tails.",
+        "One line per model × scenario. Compare the size of the change in the middle of the distribution with its ends (tails).",
     )
     vs = list(profiles)
     n = max(len(vs), 1)
@@ -1201,6 +1252,11 @@ def _summary_profiles(cfg, profiles, levels, rows):
             ax.plot(levels, p, color="#2a78d6", alpha=0.35, lw=0.8)
         ax.set_xscale("logit")
         ax.set_yscale("log")
+        top = np.nanmax([np.nanmax(p) for p in profiles[v]])
+        if np.isfinite(top) and top > 0:
+            ax.set_ylim(
+                top * 1e-4, top * 2
+            )  # hide float-noise differences (e.g. pr dry days)
         ax.set_xticks([0.001, 0.01, 0.1, 0.5, 0.9, 0.99, 0.999])
         ax.set_xticklabels(
             ["0.001", "0.01", "0.1", "0.5", "0.9", "0.99", "0.999"],
@@ -1228,11 +1284,12 @@ def _summary_table(cfg, v, vr):
         "|Δ mean|",
         "|Δ median|",
         f"|Δ {tq:g}th|",
-        "max |Δ daily|",
-        "Identical days",
-        "NaN-mask diffs",
-        "beyond thr. (new)",
-        "beyond thr. (un-adj.)",
+        "max |Δ|\ndaily",
+        "Identical\ncell-days",
+        "NaN-mask\ndiffs",
+        "Beyond thr.\n(new)",
+        "Beyond thr.\n(published)",
+        "Beyond thr.\n(un-adjusted)",
     ]
     body = [
         [
@@ -1245,6 +1302,7 @@ def _summary_table(cfg, v, vr):
             f"{r['equal']:.1f} %" if "equal" in r else "–",
             f"{r['nanmm']:,}" if "nanmm" in r else "–",
             f"{r['exceed_new']:,}",
+            f"{r['exceed_prev']:,}" if r.get("exceed_prev") is not None else "–",
             f"{r['exceed_sim']:,}",
         ]
         for r in vr
@@ -1254,8 +1312,9 @@ def _summary_table(cfg, v, vr):
         [0.03, 0.86 - 0.033 * (len(body) + 1) - 0.02, 0.94, 0.033 * (len(body) + 1)],
         header,
         body,
-        align=["left", "left"] + ["right"] * 8,
+        align=["left", "left"] + ["right"] * 9,
         size=7.5,
+        col_w=[0.14, 0.08, 0.075, 0.075, 0.075, 0.075, 0.08, 0.075, 0.09, 0.1, 0.11],
     )
     return fig
 

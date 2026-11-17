@@ -110,6 +110,7 @@ variables:
 # comparison section). Note: the beegfs run dirs hold UN-squeezed hurs/hursmin, so do not
 # point previous_adjusted there.
 # dtr_upstream (optional): CMIP6 dtr before/after each regridding step, for the dtr stage maps.
+# Paths may contain {model} where inputs are stored per model.
 resolutions:
   12km:
     label: 12 km
@@ -141,13 +142,18 @@ resolutions:
         previous_adjusted: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/adjusted/4km
         cmip6_zarr: /import/beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_4km_new_vars/sfcWind_hurs_hursmin/cmip6_zarr
         era5_zarr: /import/beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_4km_new_vars/sfcWind_hurs_hursmin/era5_zarr
-      # 4 km original variables: fill in once the inputs are accessible.
-      # original_vars:
-      #   variables: [pr, tasmax, tasmin, dtr]
-      #   new_adjusted: /import/beegfs/CMIP6/jdpaul3/cmip6_patch_31d_reruns/4km_original_vars/adjusted
-      #   previous_adjusted: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/adjusted/4km
-      #   cmip6_zarr:
-      #   era5_zarr:
+      # 4 km original variables: inputs are per model under the first run's directory
+      # (provenance verified 2026-11-17: published = adjusted/ and cmip6_tasmin/ there).
+      original_vars:
+        variables: [pr, tasmax, tasmin, dtr]
+        new_adjusted: /import/beegfs/CMIP6/jdpaul3/cmip6_patch_31d_reruns/4km_original_vars/adjusted
+        previous_adjusted: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/adjusted/4km
+        cmip6_zarr: /beegfs/CMIP6/crstephenson/postprocess_squeeze/{model}/cmip6_4km_downscaling/cmip6_zarr
+        era5_zarr: /beegfs/CMIP6/crstephenson/postprocess_squeeze/{model}/cmip6_4km_downscaling/era5_zarr
+        dtr_upstream:
+          source: /beegfs/CMIP6/crstephenson/postprocess_squeeze/{model}/cmip6_4km_downscaling/cmip6_dtr
+          first_regrid: /beegfs/CMIP6/crstephenson/postprocess_squeeze/{model}/cmip6_4km_downscaling/first_regrid
+          second_regrid: /beegfs/CMIP6/crstephenson/postprocess_squeeze/{model}/cmip6_4km_downscaling/second_regrid
     # Memory per thread depends on the block size, not the grid, so 4 km fits the same nodes as 12 km.
     threads: 6
     slurm: {partition: t2small, mem: 120G, cpus_per_task: 16, time: "04:00:00"}
@@ -169,3 +175,53 @@ text:
     computed per grid cell over all days of each scenario. Quantile differences compare the two
     outputs' distributions at each cell (q is the share of days below the value).
   summary_title: "Downscaled CMIP6 QC summary, {res}"
+  # "How to read the tables" page of the summary PDF. {tq} = tail percentile (e.g. 99.9).
+  summary_definitions_intro: >-
+    Each table row is one bias-adjusted output: one variable, one model, one scenario (historical
+    = 1965-2014, SSPs = 2015-2100). "New" is the re-run (patched) output, "published" is the output
+    it replaces (CMIP6_Downscaled archive), and "un-adjusted" is the regridded CMIP6 model data
+    that goes into bias adjustment, on the same grid and dates. A "cell-day" is one grid cell on
+    one day. Differences are in the variable's units (temperature differences in °C equal K).
+  summary_definitions:
+    - term: "Model, Scenario"
+      definition: "The CMIP6 model and experiment of the output."
+    - term: "|Δ mean|"
+      definition: >-
+        For each grid cell, the average of all daily values (long-term mean) is computed for the new
+        and the published output; the absolute difference between the two is then averaged over all
+        grid cells. Shows how much the typical value changed.
+    - term: "|Δ median|"
+      definition: >-
+        As |Δ mean|, but for each cell's median daily value (half of the days are below it). Shows
+        the change in the middle of the distribution.
+    - term: "|Δ {tq}th|"
+      definition: >-
+        As |Δ mean|, but for each cell's {tq}th percentile: the value exceeded on about 1 day in
+        1,000. Shows the change in the extreme (upper) tail.
+    - term: "max |Δ| daily"
+      definition: >-
+        The largest absolute difference between the new and published value on any single day in any
+        single grid cell. A worst case for one cell-day, not a typical change.
+    - term: "Identical cell-days"
+      definition: >-
+        Percentage of cell-days where the new and published values are exactly equal.
+    - term: "NaN-mask diffs"
+      definition: >-
+        Number of cell-days that are missing (NaN) in one version but not in the other. 0 means both
+        versions have exactly the same missing-data pattern.
+    - term: "Beyond thr. (new)"
+      definition: >-
+        Number of cell-days in the new output beyond the variable's QC threshold (listed below), summed
+        over all grid cells and days.
+    - term: "Beyond thr. (published)"
+      definition: >-
+        The same count for the published output. New vs published shows whether the fix changed how
+        often the threshold is crossed.
+    - term: "Beyond thr. (un-adjusted)"
+      definition: >-
+        The same count for the un-adjusted CMIP6 input. New vs un-adjusted shows the effect of bias
+        adjustment itself, not of the fix.
+  summary_definitions_note: >-
+    Counts are not comparable across scenarios as raw numbers: the historical period has 50 years of
+    days and the SSPs 86. Maps and histograms of the exceedances, and ERA5 counts for reference, are in
+    each variable/model report.
