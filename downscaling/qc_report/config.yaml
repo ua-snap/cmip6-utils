@@ -1,0 +1,171 @@
+# Configuration for the downscaled-output QC reports (qc_stats.py / qc_report.py / run_qc.py).
+# This is the only file a user should need to edit.
+
+output_root: /import/beegfs/CMIP6/jdpaul3/cmip6_patch_31d_reruns/qc_reports
+conda_env: cmip6-utils
+
+# Point-wise reads/blocks: every store is read once, in (all time, block x block) spatial windows.
+block_size: 100
+# Seed for the random QC locations (same locations in every report of a resolution).
+random_seed: 20261117
+n_random_points: 5
+# Keep at most this many beyond-threshold values per scenario for the histogram.
+max_hist_values: 2000000
+
+# Quantile levels used for the new-vs-previous comparison (per grid cell, over all days).
+comparison_quantiles: [0.0001, 0.001, 0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99, 0.999, 0.9999]
+# Quantile shown in the "tail" maps and summary tables.
+tail_quantile: 0.999
+
+# value_out = value_in * scale + offset
+unit_conversions:
+  - {from: K, to: degC, scale: 1.0, offset: -273.15}
+  - {from: kg m-2 s-1, to: mm d-1, scale: 86400.0, offset: 0.0}
+  - {from: mm, to: mm d-1, scale: 1.0, offset: 0.0}
+
+# File name of a previous (published) store; variables can override it (previous_filename).
+previous_filename: "{var}_{model}_{scenario}_adjusted.zarr"
+
+# Fire season months (hurs / hursmin ECDFs).
+fire_season_months: [5, 6, 7, 8, 9]
+
+# Hand-picked places (EPSG:3338 x/y). Two sets of six, as in the original notebooks.
+places:
+  Fairbanks: {x: 297504.537742375, y: 1667301.4672914068}
+  Anchorage: {x: 219385.09124775976, y: 1255247.7055300924}
+  Nome: {x: -545085.3109182257, y: 1662288.1529547903}
+  Yakutat: {x: 798186.4505862442, y: 1147549.237487728}
+  Utqiagvik: {x: -102347.93849425799, y: 2368027.8649091986}
+  near_McGrath: {x: -158391.91330927753, y: 1377871.2528303924}
+  near_Arctic_Village: {x: 340012.1339986391, y: 2118363.789483479}
+  warmest: {x: 599436.2987255983, y: 1730624.4491167169}
+  coldest: {x: 880053.9955060182, y: 1321724.3766652476}
+  wettest: {x: 723709.850156927, y: 1229521.419151681}
+  driest: {x: 739745.1471158082, y: 2428159.8668280467}
+place_sets:
+  - [Fairbanks, Anchorage, Nome, Yakutat, Utqiagvik, near_McGrath]
+  - [near_McGrath, near_Arctic_Village, warmest, coldest, wettest, driest]
+
+# Per-variable QC settings (taken from the production notebooks in downscaling/notebooks).
+#   check.kind: above | below | outside  (outside uses [low, high])
+#   ecdf: window31 = 31-day window around the day of the extreme, all years
+#         season   = fire season + full year
+#   extreme: max | min  (which extreme defines the ECDF window / "top" pixels)
+variables:
+  pr:
+    long_name: Precipitation
+    units: mm d-1
+    era5_var: pr
+    check: {kind: above, value: 400}
+    ecdf: window31
+    extreme: max
+  tasmax:
+    long_name: Daily maximum temperature
+    units: degC
+    era5_var: t2max
+    check: {kind: above, value: 35}
+    ecdf: window31
+    extreme: max
+  tasmin:
+    long_name: Daily minimum temperature
+    units: degC
+    era5_var: t2min
+    check: {kind: below, value: -55}
+    ecdf: window31
+    extreme: min
+  dtr:
+    long_name: Diurnal temperature range
+    units: K
+    era5_var: dtr
+    check: {kind: above, value: 40}
+    ecdf: window31
+    extreme: max
+    top_point_days: 10
+  hurs:
+    previous_filename: "{var}_{model}_{scenario}_squeezed.zarr"  # published hurs/hursmin are the squeezed stores
+    long_name: Relative humidity
+    units: "%"
+    era5_var: rh2_mean
+    check: {kind: outside, low: 0, high: 100}
+    ecdf: season
+    extreme: max
+  hursmin:
+    previous_filename: "{var}_{model}_{scenario}_squeezed.zarr"  # published hurs/hursmin are the squeezed stores
+    long_name: Minimum relative humidity
+    units: "%"
+    era5_var: rh2_min
+    check: {kind: outside, low: 0, high: 100}
+    ecdf: season
+    extreme: min
+  sfcWind:
+    long_name: Near-surface wind speed
+    units: m s-1
+    era5_var: wspd10_mean
+    check: {kind: above, value: 31.3}
+    ecdf: window31
+    extreme: max
+
+# Where each product lives. "new_adjusted" = patched outputs under QC; "previous_adjusted" =
+# the published outputs they replace (canonical archive, opened read-only; null = skip the
+# comparison section). Note: the beegfs run dirs hold UN-squeezed hurs/hursmin, so do not
+# point previous_adjusted there.
+# dtr_upstream (optional): CMIP6 dtr before/after each regridding step, for the dtr stage maps.
+resolutions:
+  12km:
+    label: 12 km
+    groups:
+      original_vars:
+        variables: [pr, tasmax, tasmin, dtr]
+        new_adjusted: /import/beegfs/CMIP6/jdpaul3/cmip6_patch_31d_reruns/12km/adjusted
+        previous_adjusted: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/adjusted/12km
+        cmip6_zarr: /import/beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_original_vars/cmip6_12km_downscaling/cmip6_zarr
+        era5_zarr: /import/beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_original_vars/cmip6_12km_downscaling/era5_zarr
+        dtr_upstream:
+          source: /import/beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_original_vars/cmip6_12km_downscaling/cmip6_dtr
+          first_regrid: /import/beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_original_vars/cmip6_12km_downscaling/first_regrid
+          second_regrid: /import/beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_original_vars/cmip6_12km_downscaling/second_regrid
+      new_vars:
+        variables: [hurs, hursmin, sfcWind]
+        new_adjusted: /import/beegfs/CMIP6/jdpaul3/cmip6_patch_31d_reruns/12km/adjusted
+        previous_adjusted: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/adjusted/12km
+        cmip6_zarr: /import/beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_new_vars/sfcWind_hurs_hursmin/cmip6_zarr
+        era5_zarr: /import/beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_12km_new_vars/sfcWind_hurs_hursmin/era5_zarr
+    threads: 6
+    slurm: {partition: t2small, mem: 120G, cpus_per_task: 16, time: "02:00:00"}
+  4km:
+    label: 4 km
+    groups:
+      new_vars:
+        variables: [hurs, hursmin, sfcWind]
+        new_adjusted: /import/beegfs/CMIP6/jdpaul3/cmip6_patch_31d_reruns/4km_new_vars/adjusted
+        previous_adjusted: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/adjusted/4km
+        cmip6_zarr: /import/beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_4km_new_vars/sfcWind_hurs_hursmin/cmip6_zarr
+        era5_zarr: /import/beegfs/CMIP6/jdpaul3/cmip6_downscaled_llm_fixes_4km_new_vars/sfcWind_hurs_hursmin/era5_zarr
+      # 4 km original variables: fill in once the inputs are accessible.
+      # original_vars:
+      #   variables: [pr, tasmax, tasmin, dtr]
+      #   new_adjusted: /import/beegfs/CMIP6/jdpaul3/cmip6_patch_31d_reruns/4km_original_vars/adjusted
+      #   previous_adjusted: /import/SNAP/poseidon/Data/Finished_Projects/CMIP6_Downscaled/adjusted/4km
+      #   cmip6_zarr:
+      #   era5_zarr:
+    # Memory per thread depends on the block size, not the grid, so 4 km fits the same nodes as 12 km.
+    threads: 6
+    slurm: {partition: t2small, mem: 120G, cpus_per_task: 16, time: "04:00:00"}
+
+# Report text (PDF). {placeholders} are filled in by qc_report.py.
+text:
+  title: "Downscaled CMIP6 QC: {var} ({long_name}), {model}, {res}"
+  subtitle: "Patched bias adjustment (QDM ranked over the 31-day training window, ua-snap/cmip6-utils#125)"
+  intro: >-
+    This document checks the re-run (patched) bias-adjusted outputs. Section A compares them
+    with the previously published outputs: the fix changes how each simulated value is ranked
+    before its adjustment factor is looked up, so the bulk of the distribution should be almost
+    unchanged and differences should be concentrated in the tails. Section B repeats the
+    standard QC from the production notebooks on the new outputs: threshold checks, the most
+    extreme grid cells, empirical distributions (ECDFs) at hand-picked and random locations,
+    and day-of-year means, each compared with ERA5 and the un-adjusted CMIP6 model data.
+  comparison_intro: >-
+    New = patched output; previous = published output it replaces; difference = new minus previous,
+    computed per grid cell over all days of each scenario. Quantile differences compare the two
+    outputs' distributions at each cell (q is the share of days below the value).
+  summary_title: "Downscaled CMIP6 QC summary, {res}"
