@@ -28,7 +28,13 @@ import xarray as xr
 from zarr.sync import ThreadSynchronizer
 import numcodecs
 from xclim import sdba
-from luts import sim_ref_var_lu, varid_adj_kind_lu, jitter_under_lu, adapt_freq_thresh_lu
+from luts import (
+    sim_ref_var_lu,
+    varid_adj_kind_lu,
+    jitter_under_lu,
+    adapt_freq_thresh_lu,
+)
+from config import QDM_NQUANTILES, QDM_WINDOW
 
 logging.basicConfig(
     level=logging.INFO,
@@ -37,7 +43,9 @@ logging.basicConfig(
 )
 
 
-def configure_dask_for_training(n_workers=4, threads_per_worker=4, memory_limit="30GB", local_directory=None):
+def configure_dask_for_training(
+    n_workers=4, threads_per_worker=4, memory_limit="30GB", local_directory=None
+):
     """Configure Dask LocalCluster optimized for QDM training on 128GB nodes.
 
     Args:
@@ -498,7 +506,9 @@ def get_var_id(ds):
     climate_vars = [v for v in ds.data_vars if len(ds[v].dims) == 3]
 
     if len(climate_vars) == 0:
-        raise ValueError(f"No 3D climate variable found in dataset. Available variables: {list(ds.data_vars)}")
+        raise ValueError(
+            f"No 3D climate variable found in dataset. Available variables: {list(ds.data_vars)}"
+        )
     if len(climate_vars) > 1:
         raise ValueError(f"Multiple 3D variables found in dataset: {climate_vars}")
 
@@ -735,7 +745,9 @@ if __name__ == "__main__":
         elif _partition == "t2small":
             _memory_limit = "30GB"
         else:
-            raise ValueError(f"Unsupported SLURM partition: {_partition!r}. Expected 'analysis' or 't2small'.")
+            raise ValueError(
+                f"Unsupported SLURM partition: {_partition!r}. Expected 'analysis' or 't2small'."
+            )
         client = configure_dask_for_training(
             n_workers=4,
             threads_per_worker=4,
@@ -842,9 +854,9 @@ if __name__ == "__main__":
         train_kwargs = dict(
             ref=ref,
             hist=hist,
-            nquantiles=100,
+            nquantiles=QDM_NQUANTILES,
             group="time.dayofyear",
-            window=31,
+            window=QDM_WINDOW,
             kind=varid_adj_kind_lu[var_id],
         )
         if var_id in adapt_freq_thresh_lu:

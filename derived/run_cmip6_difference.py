@@ -139,6 +139,17 @@ def parse_args():
         help="slurm partition",
         required=True,
     )
+    parser.add_argument("--cpus_per_task", type=int, default=16)
+    parser.add_argument(
+        "--mem", type=str, default="120G", help="sbatch --mem; 'none' to omit"
+    )
+    parser.add_argument("--time_limit", type=str, default="01:00:00")
+    parser.add_argument(
+        "--array_limit", type=int, default=10, help="max concurrent array tasks"
+    )
+    parser.add_argument(
+        "--dry_run", action="store_true", help="write the scripts but do not submit"
+    )
     parser.add_argument(
         "--clear_out_files",
         action="store_true",
@@ -162,6 +173,11 @@ def parse_args():
         args.slurm_dir,
         args.partition,
         args.clear_out_files,
+        args.cpus_per_task,
+        None if args.mem.lower() == "none" else args.mem,
+        args.time_limit,
+        args.array_limit,
+        args.dry_run,
     )
 
 
@@ -202,8 +218,12 @@ def write_config_file(
         f.write("array_id\tmodel\tscenario\n")
         array_id = 0
         for model, scenario in product(models, scenarios):
-            minuend_path = input_dir / minuend_tmp_fn.replace("${model}", model).replace("${scenario}", scenario)
-            subtrahend_path = input_dir / subtrahend_tmp_fn.replace("${model}", model).replace("${scenario}", scenario)
+            minuend_path = input_dir / minuend_tmp_fn.replace(
+                "${model}", model
+            ).replace("${scenario}", scenario)
+            subtrahend_path = input_dir / subtrahend_tmp_fn.replace(
+                "${model}", model
+            ).replace("${scenario}", scenario)
             if not minuend_path.exists() or not subtrahend_path.exists():
                 logging.warning(
                     f"Skipping {model}/{scenario}: missing input zarr store(s) "
@@ -225,7 +245,16 @@ def write_config_file(
     return array_range
 
 
-def make_sbatch_head(array_range, partition, sbatch_out_fp, conda_env_name):
+def make_sbatch_head(
+    array_range,
+    partition,
+    sbatch_out_fp,
+    conda_env_name,
+    cpus_per_task=None,
+    mem=None,
+    time_limit=None,
+    array_limit=10,
+):
     """Make a string of SBATCH commands that can be written into a .slurm script
 
     Args:
@@ -238,15 +267,29 @@ def make_sbatch_head(array_range, partition, sbatch_out_fp, conda_env_name):
         sbatch_head (str): string of SBATCH commands ready to be used as parameter in sbatch-writing functions.
         The following keys are left for filling with str.format:
     """
+    # full option names with "=" (required by the tclaude sbatch broker; fine elsewhere)
     sbatch_head = (
         "#!/bin/sh\n"
-        f"#SBATCH --array={array_range}%10\n"  # don't run more than 10 tasks
+        f"#SBATCH --array={array_range}%{array_limit}\n"  # max concurrent tasks
         f"#SBATCH --job-name=cmip6_difference\n"
         "#SBATCH --nodes=1\n"
-        f"#SBATCH -p {partition}\n"
-        f"#SBATCH --output {sbatch_out_fp}\n"
+        f"#SBATCH --partition={partition}\n"
+        f"#SBATCH --output={sbatch_out_fp}\n"
+    )
+    if time_limit:
+        sbatch_head += f"#SBATCH --time={time_limit}\n"
+    if cpus_per_task:
+        sbatch_head += f"#SBATCH --cpus-per-task={cpus_per_task}\n"
+    if mem:
+        sbatch_head += f"#SBATCH --mem={mem}\n"
+    sbatch_head += (
         # print start time
         "echo Start slurm && date\n"
+        # numba/matplotlib caches on node-local disk ($HOME may not be writable);
+        # braces doubled because write_sbatch_diff() calls sbatch_head.format()
+        "export NUMBA_CACHE_DIR=${{SLURM_TMPDIR:-/tmp}}/${{USER}}/numba_cache_${{SLURM_JOB_ID}}\n"
+        "export MPLCONFIGDIR=${{SLURM_TMPDIR:-/tmp}}/${{USER}}/mpl_${{SLURM_JOB_ID}}\n"
+        "mkdir -p $NUMBA_CACHE_DIR $MPLCONFIGDIR\n"
         # prepare shell for using activate - Chinook requirement
         # this seems to work to initialize conda without init script
         'eval "$($HOME/miniconda3/bin/conda shell.bash hook)"\n'
@@ -303,9 +346,13 @@ def write_sbatch_diff(
         f"--subtrahend_store {subtrahend_store} "
         f"--output_store {output_store} "
         f"--new_var_id {new_var_id}\n"
+        "status=$?\n"
     )
 
-    pycommands += f"echo End dtr processing && date\n\n"
+    pycommands += (
+        f"echo End {new_var_id} difference for $model $scenario with exit status $status && date\n"
+        "exit $status\n"
+    )
     commands = sbatch_head.format(sbatch_out_fp=sbatch_out_fp) + pycommands
 
     with open(sbatch_fp, "w") as f:
@@ -346,6 +393,11 @@ if __name__ == "__main__":
         slurm_dir,
         partition,
         clear_out_files,
+        cpus_per_task,
+        mem,
+        time_limit,
+        array_limit,
+        dry_run,
     ) = parse_args()
 
     output_dir.mkdir(exist_ok=True)
@@ -386,6 +438,10 @@ if __name__ == "__main__":
         "partition": partition,
         "sbatch_out_fp": sbatch_out_fp,
         "conda_env_name": conda_env_name,
+        "cpus_per_task": cpus_per_task,
+        "mem": mem,
+        "time_limit": time_limit,
+        "array_limit": array_limit,
     }
     sbatch_head = make_sbatch_head(**sbatch_head_kwargs)
 
@@ -403,6 +459,8 @@ if __name__ == "__main__":
         "config_file": config_path,
     }
     write_sbatch_diff(**sbatch_diff_kwargs)
-    job_id = submit_sbatch(sbatch_fp)
-
-    print(job_id)
+    if dry_run:
+        logging.info(f"Dry run: not submitting {sbatch_fp}")
+    else:
+        job_id = submit_sbatch(sbatch_fp)
+        print(job_id)
