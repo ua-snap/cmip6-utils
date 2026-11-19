@@ -55,7 +55,8 @@ non-snow variables: `pr`, `tasmax`, `dtr` (+ derived `tasmin`), `hurs`, `hursmin
 
 The run took about 65 node-hours, and no adjustment job failed. The job set exactly
 matches the previous 12 km product (pr 56, tasmax 50, dtr 50, hurs 56, hursmin 27,
-sfcWind 49).
+sfcWind 49). The 49 `sfcWind` stores include historical-only `sfcWind` for CNRM-CM6-1-HR and
+EC-Earth3-Veg, which have no `sfcWind` scenarios; see the note in Section 5.
 
 **NaN consistency:**
 - Every output (338 new, and the 338 previous ones checked the same way) has the **same
@@ -106,8 +107,11 @@ derived `tasmin`. The set of outputs matches the previous 4 km product exactly:
 | Original variables: `pr` 56, `tasmax` 50, `dtr` 50 | 156 | ✅ Same checks |
 | Derived `tasmin` | 50 | ✅ Equals `max(tasmax − dtr, 203.15 K)` exactly |
 
-The CNRM-CM6-1-HR and EC-Earth3-Veg `sfcWind` historical runs are excluded, as in the previous
-product: those models have no `sfcWind` scenarios.
+> **Note: 12 km and 4 km intentionally differ by two datasets** (338 vs 336 outputs; 79 vs 77
+> QC reports). CNRM-CM6-1-HR and EC-Earth3-Veg have `sfcWind` for the historical period only,
+> with no scenarios. Their historical `sfcWind` is included at 12 km and excluded at 4 km. Each
+> resolution mirrors its previous published product (12 km: 49 `sfcWind` stores; 4 km: 47).
+> Decision (2026-11-18): leave as is; do not add them at 4 km or remove them at 12 km.
 
 **Run:**
 - No adjustment job failed. The two waves used ~140 job-hours each.

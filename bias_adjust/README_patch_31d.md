@@ -82,3 +82,17 @@ Every output store records which mode produced it: global attrs `qdm_rank_main_o
   `--time_limit`, `--array_limit`, `--dry_run`, node-local numba/matplotlib caches, real
   exit status. Submit from a writable directory (or `sbatch --chdir=/tmp`): dask creates
   `dask-worker-space` in the working directory.
+
+## Job sets (what was re-run)
+
+Each resolution re-runs exactly the job set of its previous published product:
+
+| Resolution | pr | tasmax | dtr | tasmin (derived) | hurs | hursmin | sfcWind | total |
+|---|---|---|---|---|---|---|---|---|
+| 12 km | 56 | 50 | 50 | 50 | 56 | 27 | 49 | 338 |
+| 4 km | 56 | 50 | 50 | 50 | 56 | 27 | 47 | 336 |
+
+**The two resolutions intentionally differ by two `sfcWind` stores.** CNRM-CM6-1-HR and
+EC-Earth3-Veg have `sfcWind` for the historical period only, with no scenarios. Their
+historical `sfcWind` is in the 12 km product but not the 4 km product. This was kept as is on
+2026-11-18. Do not "fix" the mismatch without a decision to change the published job sets.
