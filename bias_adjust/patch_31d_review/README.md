@@ -42,7 +42,7 @@ non-snow variables: `pr`, `tasmax`, `dtr` (+ derived `tasmin`), `hurs`, `hursmin
 | **T3 Completeness:** every chunk written; NaN mask equals the expected mask. | Guard against the partial writes seen on beegfs in earlier runs. | ✅ All test outputs written after the untrained-cell fix are complete. |
 | **T4 Science check:** windowed vs legacy statistics. | Size the effect of the fix. | ✅ Small in the bulk of the distribution, larger in the tails (Section 4). |
 | **T5 4 km determinism:** the same 4 km job run 3× concurrently on different nodes. | 4 km runs were previously flaky. | ✅ All three runs bit-identical, with no worker restarts. |
-| **T6 4 km original-variable inputs:** find which of the first run's many store versions was published, then re-run in legacy mode on its inputs. | The 4 km `pr`/`tasmax`/`dtr` inputs live in a colleague's run directories with several experimental variants. | ✅ All 206 published stores are byte copies of one source per model. Legacy re-runs match the published `pr` and `tasmax` exactly. `dtr` differs in ~1,400 of 3.7 billion values (≤ 0.0013 K); see Section 5. |
+| **T6 4 km original-variable inputs:** find which of the first run's many store versions was published, then re-run in legacy mode on its inputs. | The 4 km `pr`/`tasmax`/`dtr` inputs live in the first 4 km run's directories, alongside several experimental variants. | ✅ All 206 published stores are byte copies of one source per model. Legacy re-runs match the published `pr` and `tasmax` exactly. `dtr` differs in ~1,400 of 3.7 billion values (≤ 0.0013 K); see Section 5. |
 | **T7 Partition invariance:** one 4 km job run on a 250 GB t2small node vs the analysis node. | Part of the 4 km run was moved to t2small to finish in ~10 h instead of ~30 h. | ✅ Bit-identical (6.4 billion values). |
 
 ## 4. 12 km results
@@ -119,7 +119,7 @@ derived `tasmin`. The set of outputs matches the previous 4 km product exactly:
   The results are bit-identical across node types (T7).
 
 **Inputs for the original variables (T6):**
-- The published 4 km `pr`/`tasmax`/`dtr`/`tasmin` came from a colleague's first run. Every published
+- The published 4 km `pr`/`tasmax`/`dtr`/`tasmin` came from the first 4 km run. Every published
   store was traced to a byte-identical source: `adjusted/` for `pr`/`tasmax`/`dtr`, and
   `cmip6_tasmin/` for `tasmin`.
 - The re-run uses that run's trained datasets and regridded inputs. Re-running in legacy mode
