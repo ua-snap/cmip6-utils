@@ -1117,7 +1117,10 @@ def summary(cfg, res, png_dir=None):
     levels = np.asarray(cfg["comparison_quantiles"])
     iq, i50 = int(np.argmin(abs(levels - tq))), int(np.argmin(abs(levels - 0.5)))
     rows, profiles, missing = [], {}, []
-    for var, model in jobs_for(cfg, res):
+    # fixed order at every resolution: variables as listed in config.yaml, then model
+    var_order = {v: i for i, v in enumerate(cfg["variables"])}
+    jobs = sorted(jobs_for(cfg, res), key=lambda j: (var_order.get(j[0], 99), j[1]))
+    for var, model in jobs:
         for s in scenarios_for(cfg, res, var, model):
             f = data / f"{var}_{model}_{s}.nc"
             if not f.exists():
@@ -1235,7 +1238,7 @@ def _summary_profiles(cfg, profiles, levels, rows):
         "New vs previous: mean |Δ quantile| per grid cell, by quantile level",
         "One line per model × scenario. Compare the size of the change in the middle of the distribution with its ends (tails).",
     )
-    vs = list(profiles)
+    vs = [v for v in cfg["variables"] if v in profiles]
     n = max(len(vs), 1)
     ncol = min(4, n)
     nrow = int(np.ceil(n / ncol))
