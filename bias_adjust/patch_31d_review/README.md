@@ -1,7 +1,7 @@
 # patch_31d: QDM 31-day-window ranking fix — review summary
 
-**Issue:** [#125](https://github.com/ua-snap/cmip6-utils/issues/125) · **Branch:** `patch_31d` (`193086a`) ·
-**Status (2026-11-16):** 12 km complete and verified · 4 km new variables running · 4 km original variables waiting on inputs
+**Issue:** [#125](https://github.com/ua-snap/cmip6-utils/issues/125) · **Branch:** `patch_31d` (production code `193086a`) ·
+**Status (2026-11-18):** 12 km and 4 km complete and verified (674 outputs); QC reports produced for every output
 
 ## 1. The problem
 
@@ -30,6 +30,7 @@ non-snow variables: `pr`, `tasmax`, `dtr` (+ derived `tasmin`), `hurs`, `hursmin
 | Measured Dask/Slurm settings in `config.py` (spatial chunk 15; 12 km 4×4 workers on 120 GB; 4 km 6×4 on 500 GB). | Windowed ranking needs ~60× more memory per block, so chunks had to shrink. |
 | `derived/difference.py` (tasmin = tasmax − dtr) updated for the new layout. | It would have failed on the new chunking and attributes. |
 | New QC tools: `check_adjusted_complete.py`, `compare_rank_modes.py`, `summarize_runs.py`. | Used for the tests below and for every production output. |
+| **QC reports as PDFs** (`downscaling/qc_report/`): replaces the production QC notebooks, and adds a new-vs-published comparison at the front of each report. | The notebooks took hours per model and needed converting to PDF by hand for collaborators. The new tool reads each store once (minutes per model) and writes the PDFs directly. |
 
 ## 3. Tests before production
 
@@ -41,6 +42,8 @@ non-snow variables: `pr`, `tasmax`, `dtr` (+ derived `tasmin`), `hurs`, `hursmin
 | **T3 Completeness:** every chunk written; NaN mask equals the expected mask. | Guard against the partial writes seen on beegfs in earlier runs. | ✅ All test outputs written after the untrained-cell fix are complete. |
 | **T4 Science check:** windowed vs legacy statistics. | Size the effect of the fix. | ✅ Small in the bulk of the distribution, larger in the tails (Section 4). |
 | **T5 4 km determinism:** the same 4 km job run 3× concurrently on different nodes. | 4 km runs were previously flaky. | ✅ All three runs bit-identical, with no worker restarts. |
+| **T6 4 km original-variable inputs:** find which of the first run's many store versions was published, then re-run in legacy mode on its inputs. | The 4 km `pr`/`tasmax`/`dtr` inputs live in a colleague's run directories with several experimental variants. | ✅ All 206 published stores are byte copies of one source per model. Legacy re-runs match the published `pr` and `tasmax` exactly. `dtr` differs in ~1,400 of 3.7 billion values (≤ 0.0013 K); see Section 5. |
+| **T7 Partition invariance:** one 4 km job run on a 250 GB t2small node vs the analysis node. | Part of the 4 km run was moved to t2small to finish in ~10 h instead of ~30 h. | ✅ Bit-identical (6.4 billion values). |
 
 ## 4. 12 km results
 
@@ -83,45 +86,101 @@ Domain-average absolute change in each statistic:
 
 **Takeaway:**
 - Changes to means and medians are small.
-- Changes grow toward the tails, as expected: the largest is in extreme precipitation,
-  where the 1-in-1000-day value rises by 0.55 mm d⁻¹ on average and changes by
+- Changes grow toward the tails: the upper tail for `pr`, `dtr` and `sfcWind`, and mostly the
+  cold/dry (lower) tail for `tasmax`, `tasmin`, `hurs` and `hursmin`. The largest is in extreme
+  precipitation, where the 1-in-1000-day value rises by 0.55 mm d⁻¹ on average and changes by
   between −9 and +13 mm d⁻¹ at individual cells.
+- How often the QC thresholds are crossed (e.g. `pr` > 400 mm d⁻¹) changes by less than
+  3 % for every variable.
 - Downstream products that depend on extremes (indicators, climatologies of extremes)
   should be regenerated from the new outputs.
 
-## 5. 4 km — new variables (`hurs`, `hursmin`, `sfcWind`)
+## 5. 4 km results
 
-*Running; to be filled in.* 130 jobs on the analysis partition (the sfcWind
-historical-only models CNRM-CM6-1-HR and EC-Earth3-Veg are excluded, as in the previous
-product).
+**All 336 outputs were produced and passed QC.** These are 286 bias-adjusted outputs plus 50
+derived `tasmin`. The set of outputs matches the previous 4 km product exactly:
 
-| Item | Result |
-|---|---|
-| Outputs produced / QC passed | _TBD_ / 130 |
-| Node-hours | _TBD_ |
-| NaN consistency | _TBD_ |
-| Change vs previous (figures) | _TBD_ |
+| Group | Outputs | Checks |
+|---|---|---|
+| New variables: `hurs` 56, `hursmin` 27, `sfcWind` 47 | 130 | ✅ Every chunk present; NaN mask = expected mask; within squeeze limits |
+| Original variables: `pr` 56, `tasmax` 50, `dtr` 50 | 156 | ✅ Same checks |
+| Derived `tasmin` | 50 | ✅ Equals `max(tasmax − dtr, 203.15 K)` exactly |
 
-## 6. 4 km — original variables (`pr`, `tasmax`, `dtr` + `tasmin`)
+The CNRM-CM6-1-HR and EC-Earth3-Veg `sfcWind` historical runs are excluded, as in the previous
+product: those models have no `sfcWind` scenarios.
 
-*Waiting on input access; to be filled in.*
+**Run:**
+- No adjustment job failed. The two waves used ~140 job-hours each.
+- Part of the original-variable wave ran on 250 GB t2small nodes, which cut it from ~30 h to ~10.5 h.
+  The results are bit-identical across node types (T7).
 
-| Item | Result |
-|---|---|
-| Outputs produced / QC passed | _TBD_ |
-| NaN consistency | _TBD_ |
-| Change vs previous (figures) | _TBD_ |
+**Inputs for the original variables (T6):**
+- The published 4 km `pr`/`tasmax`/`dtr`/`tasmin` came from a colleague's first run. Every published
+  store was traced to a byte-identical source: `adjusted/` for `pr`/`tasmax`/`dtr`, and
+  `cmip6_tasmin/` for `tasmin`.
+- The re-run uses that run's trained datasets and regridded inputs. Re-running in legacy mode
+  reproduces the published `pr` and `tasmax` exactly.
+
+**One known, accepted difference.** The published 4 km `dtr` was made in February 2026 and set its
+top/bottom clipping limits (0.00002 % of values) from exact quantiles. The current code, used
+since April 2026 and for 12 km, uses a 10,000-bin histogram. In the store we tested, this moved
+~1,400 of 3.7 billion values by at most 0.0013 K. We kept the histogram method so that both resolutions
+match.
+
+**NaN consistency:**
+- Each group has a **single spatial NaN mask**, identical to the previous/published outputs for
+  every store: 16,260 cells for the new variables, 15,381 for the original variables.
+- As at 12 km, the only exception is the regridded KACE-1-0-G `hursmin` input, which has NaN
+  patches on 2 historical and 41 ssp585 days. These are carried through unchanged. *Known
+  source-data quirk; not fixed.*
+
+**Size of the change (new − previous output; MIROC6 ssp585, 2015–2100):**
+
+![Change in long-term mean, 4 km](figures/change_mean_4km.png)
+
+![Change in 99.9th percentile, 4 km](figures/change_q999_4km.png)
+
+Domain-average absolute change in each statistic (4 km):
+
+| Variable (units) | Long-term mean | Median | 99th pct | 99.9th pct |
+|---|---|---|---|---|
+| pr (mm d⁻¹) | 0.004 | 0.006 | 0.18 | 0.66 |
+| tasmax (K) | 0.012 | 0.056 | 0.052 | 0.12 |
+| dtr (K) | 0.006 | 0.010 | 0.060 | 0.17 |
+| hurs (%) | 0.073 | 0.070 | 0.091 | 0.16 |
+| hursmin (%) | 0.085 | 0.095 | 0.16 | 0.17 |
+| sfcWind (m s⁻¹) | 0.004 | 0.006 | 0.040 | 0.082 |
+
+**Takeaway:** the 4 km results look like the 12 km results.
+- Means and medians barely change; changes are larger in the tails.
+- The 1-in-1000-day precipitation value rises by 0.57 mm d⁻¹ on average and ranges from −11 to
+  +21 mm d⁻¹ at individual cells.
+- Threshold-exceedance counts stay within ~2 % of the published product (12 km: within ~3 %).
+
+## 6. QC reports
+
+Every output at both resolutions has been through the new PDF QC. Each variable × model report
+leads with the new-vs-published comparison, followed by the checks from the production notebooks.
+
+| Resolution | Reports | Summary |
+|---|---|---|
+| 12 km | 79 | `qc_summary_12km.pdf` |
+| 4 km | 77 | `qc_summary_4km.pdf` |
+
+The summary PDFs list the comparison metrics and threshold counts for every model and scenario,
+with a page defining each column. Location:
+`/import/beegfs/CMIP6/jdpaul3/cmip6_patch_31d_reruns/qc_reports/<res>/pdf/`.
 
 ## 7. Next steps
 
-1. Finish the 4 km runs and fill in Sections 5–6.
-2. Hand outputs to downstream QC (difference matrices, QC notebooks).
-3. Publish as a new version alongside the current product (no overwrite), then re-run
+1. Review the QC reports, and hand the outputs to downstream QC (difference matrices).
+2. Publish as a new version alongside the current product (no overwrite), then re-run
    climatologies and indicators.
-4. PR `patch_31d → main`; close #125. Consider reporting the ranking behaviour upstream
+3. PR `patch_31d → main`; close #125. Consider reporting the ranking behaviour upstream
    to xclim.
 
 ---
-<sub>Figures: `python make_figures.py --figdata <review/figdata>`. Comparison maps come
-from `compare_rank_modes.py summary` (new vs previous outputs). Output location:
+<sub>Figures: `python make_figures.py --figdata <review/figdata>` (12 km, from
+`compare_rank_modes.py summary`) and `python make_figures.py --qcdata <qc_reports/4km/data>
+--res_label "4 km" --suffix _4km` (4 km, from the QC statistics). Outputs:
 `/import/beegfs/CMIP6/jdpaul3/cmip6_patch_31d_reruns/`.</sub>

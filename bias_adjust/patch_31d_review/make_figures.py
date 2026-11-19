@@ -1,10 +1,15 @@
 """Figures for the patch_31d review document (README.md in this directory).
 
-Reads the per-variable comparison maps written by
-`compare_rank_modes.py summary --legacy <previous output> --windowed <new output>`
-(MIROC6 ssp585, 12 km) and draws small multiples of new - previous.
+Draws small multiples of new - previous (MIROC6 ssp585) for the six variables, from either
+  * the comparison maps written by
+    `compare_rank_modes.py summary --legacy <previous output> --windowed <new output>`
+    (--figdata; used for 12 km), or
+  * the per-scenario statistics written by downscaling/qc_report/qc_stats.py
+    (--qcdata; per-cell means and quantiles of the new and published outputs; used for 4 km).
 
 usage: python make_figures.py --figdata /path/to/review/figdata --out_dir figures
+       python make_figures.py --qcdata /path/to/qc_reports/4km/data --res_label "4 km" \
+           --suffix _4km --out_dir figures
 """
 
 import argparse
@@ -35,13 +40,28 @@ CMAP.set_bad("#ffffff")
 INK, MUTED = "#1f1f1e", "#6b6a66"
 
 
-def panel_grid(figdata, field, title, out_png):
+def load_field(args, v, field):
+    """new - previous for one variable; field is 'mean_diff' or 'q<level>_diff'."""
+    if args.figdata:
+        ds = xr.open_dataset(
+            Path(args.figdata) / f"{v}_{CASE}" / "rank_mode_comparison_maps.nc"
+        )
+        return ds[field].transpose("y", "x")
+    ds = xr.open_dataset(Path(args.qcdata) / f"{v}_{CASE}.nc")
+    if field == "mean_diff":
+        d = ds["mean_new"] - ds["mean_prev"]
+    else:
+        q = float(field[1:].replace("_diff", ""))
+        d = ds["q_new"].sel(level=q, method="nearest") - ds["q_prev"].sel(
+            level=q, method="nearest"
+        )
+    return d.transpose("y", "x")
+
+
+def panel_grid(args, field, title, out_png):
     fig, axs = plt.subplots(2, 3, figsize=(13.5, 7.2), facecolor="#ffffff")
     for ax, (v, name, units) in zip(axs.flat, VARS):
-        ds = xr.open_dataset(
-            Path(figdata) / f"{v}_{CASE}" / "rank_mode_comparison_maps.nc"
-        )
-        d = ds[field].transpose("y", "x")
+        d = load_field(args, v, field)
         vals = d.values[np.isfinite(d.values)]
         lim = float(np.percentile(np.abs(vals), 98)) or 1e-6
         im = ax.pcolormesh(
@@ -65,7 +85,7 @@ def panel_grid(figdata, field, title, out_png):
         0.01,
         0.005,
         "New (31-day-window ranking) minus previous published output, MIROC6 ssp585 "
-        "2015-2100, 12 km. Red = higher in the new output. Colour range = ±98th "
+        f"2015-2100, {args.res_label}. Red = higher in the new output. Colour range = ±98th "
         "percentile of |Δ| per variable.",
         fontsize=8.5,
         color=MUTED,
@@ -76,19 +96,40 @@ def panel_grid(figdata, field, title, out_png):
     print("wrote", out_png)
 
 
+def domain_table(args):
+    """Domain-average |new - previous| of the mean, median, 99th and 99.9th pct."""
+    rows = []
+    for v, _, units in VARS:
+        cells = [
+            np.nanmean(np.abs(load_field(args, v, f).values))
+            for f in ("mean_diff", "q0.5_diff", "q0.99_diff", "q0.999_diff")
+        ]
+        rows.append(
+            f"| {v} ({units}) | " + " | ".join(f"{c:.2g}" for c in cells) + " |"
+        )
+    print("\n".join(rows))
+
+
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--figdata", required=True)
+    src = p.add_mutually_exclusive_group(required=True)
+    src.add_argument("--figdata")
+    src.add_argument("--qcdata")
     p.add_argument("--out_dir", default="figures")
+    p.add_argument("--res_label", default="12 km")
+    p.add_argument("--suffix", default="", help="appended to the figure file names")
+    p.add_argument("--table", action="store_true", help="print the README table rows")
     a = p.parse_args()
     out = Path(a.out_dir)
     out.mkdir(parents=True, exist_ok=True)
     panel_grid(
-        a.figdata, "mean_diff", "Change in long-term mean", out / "change_mean.png"
+        a, "mean_diff", "Change in long-term mean", out / f"change_mean{a.suffix}.png"
     )
     panel_grid(
-        a.figdata,
+        a,
         "q0.999_diff",
         "Change in the 99.9th percentile (≈ 1-in-1000-day value)",
-        out / "change_q999.png",
+        out / f"change_q999{a.suffix}.png",
     )
+    if a.table:
+        domain_table(a)
