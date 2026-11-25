@@ -499,13 +499,10 @@ if __name__ == "__main__":
             f"Computing difference: {minuend_store.name} - {subtrahend_store.name}"
         )
 
-        # Optimized chunking for difference calculation
-        # Simple subtraction, so larger chunks are better
-        chunk_dict = {"time": 365, "x": 150, "y": 150}  # One year at a time
-
-        logging.info(
-            f"Using chunk strategy: time={chunk_dict['time']}, x={chunk_dict['x']}, y={chunk_dict['y']}"
-        )
+        # Read in the stores' native zarr chunks: the output inherits the minuend's
+        # encoding, and dask chunks that straddle zarr chunks are rejected on write
+        # (e.g. the old fixed (365, 150, 150) vs patch_31d's (365, 100, 100) stores).
+        chunk_dict = {}
 
         # CRITICAL: Force filesystem cache refresh before opening zarr files
         logging.info("=" * 60)
@@ -541,7 +538,16 @@ if __name__ == "__main__":
         logging.info(f"Computing: {minu_var_id} - {subtr_var_id} = {new_var_id}")
 
         minuend = minu_ds[minu_var_id]
-        diff = minuend - subtr_ds[subtr_var_id]
+        subtrahend = (
+            subtr_ds[subtr_var_id]
+            .transpose(*minuend.dims)
+            .chunk(dict(zip(minuend.dims, minuend.chunks)))
+        )
+        logging.info(
+            f"Chunks: {dict(zip(minuend.dims, minuend.data.chunksize))}; "
+            f"dtype {minuend.dtype} - {subtrahend.dtype}"
+        )
+        diff = minuend - subtrahend
 
         # get units and make sure they are the same between both inputs
         units = minuend.attrs["units"]
@@ -558,9 +564,33 @@ if __name__ == "__main__":
 
         # the list here at the end is just making sure we have a matching dim order
         diff_ds = diff.to_dataset().transpose(*list(minuend.dims))
+        # Keep the global attrs both inputs share, except per-store provenance that
+        # would be misleading on the derived variable (bias-adjust job id, input paths,
+        # squeeze bookkeeping). Compared by value (some attrs are lists, so the old
+        # set intersection of attrs.items() raised TypeError: unhashable type).
+        per_store_prefixes = (
+            "squeeze_",
+            "bias_adjust_job_id",
+            "sim_path",
+            "trained_qdm_path",
+            "creation_date",
+            "history",
+        )
         diff_ds.attrs = {
-            k: v for k, v in minu_ds.attrs.items() & subtr_ds.attrs.items()
+            k: v
+            for k, v in minu_ds.attrs.items()
+            if k in subtr_ds.attrs
+            and str(v) == str(subtr_ds.attrs[k])
+            and not k.startswith(per_store_prefixes)
         }
+        diff_ds.attrs.update(
+            {
+                "derived_as": f"{minu_var_id} - {subtr_var_id}",
+                "minuend_store": str(minuend_store),
+                "subtrahend_store": str(subtrahend_store),
+                "creation_date": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+            }
+        )
         # give this a variable_id attribute for consistency (helps with e.g. regridding with regrid.py)
         diff_ds.attrs["variable_id"] = new_var_id
 
@@ -580,6 +610,17 @@ if __name__ == "__main__":
                 (diff_ds[variable_id] >= min_tasmin) | diff_ds[variable_id].isnull(),
                 min_tasmin,
             )
+            diff_ds.attrs["squeeze_lower_limit"] = min_tasmin
+            diff_ds.attrs["squeeze_count_below"] = int(count_below_threshold)
+
+        # Re-apply the minuend's storage encoding: .where() above drops it, which
+        # silently fell back to zarr's default compressor (Blosc lz4).
+        diff_ds[variable_id].encoding = {
+            k: v
+            for k, v in minuend.encoding.items()
+            if k in ("chunks", "compressor", "filters", "dtype", "_FillValue")
+        }
+        logging.info(f"Output encoding: {diff_ds[variable_id].encoding}")
 
         # Remove existing output
         if output_store.exists():

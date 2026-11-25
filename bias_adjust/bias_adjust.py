@@ -1,30 +1,62 @@
 """Script for bias adjusting a given model and scenario. Uses a pre-trained quantile mapping adjustment object.
 
 Example usage:
-    python bias_adjust.py --train_path /center1/CMIP6/kmredilla/bias_adjustment_testing/trained_qdm_pr_GFDL-ESM4.zarr --sim_path /center1/CMIP6/kmredilla/zarr_bias_adjust_inputs/pr_GFDL-ESM4_historical.zarr --adj_path /center1/CMIP6/kmredilla/cmip6_4km_3338_downscaled/pr_GFDL-ESM4_historical_adj.zarr --tmp_path /center1/CMIP6/kmredilla/tmp
+    python bias_adjust.py \
+        --train_path /beegfs/CMIP6/.../trained_datasets/trained_qdm_pr_GFDL-ESM4.zarr \
+        --sim_path /beegfs/CMIP6/.../cmip6_zarr/pr_GFDL-ESM4_historical.zarr \
+        --adj_path /beegfs/CMIP6/.../adjusted/pr_GFDL-ESM4_historical_adjusted.zarr \
+        --tmp_path /beegfs/CMIP6/.../tmp
+
+Processing outline (see patch_31d_review/README.md, Appendix A3):
+  1. Apply the QDM ranking-window patch (config.QDM_RANK_WINDOWED / --rank_main_only).
+  2. Open the sim store with time=-1 spatial chunks (config.ADJUST_CHUNK_SIZE per resolution)
+     and the trained QDM store rechunked to the same spatial chunks.
+  3. qm.adjust(...) -> transpose to (time, y, x) -> fillna(sim) -> cast float32
+     -> ONE distributed compute that gathers the whole result to the client.
+  4. Close the dask cluster, then squeeze (clip) in memory per config.SQUEEZE_LIMITS
+     (dtr: histogram-quantile limits), recording counts in the global attrs.
+  5. Synchronous write to "<adj_path>.writing" -> rename -> read-back validation.
 """
 
 import argparse
 import datetime
+import json
 import logging
 import os
+import resource
 import shutil
+import socket
 import subprocess
 import sys
 import time
-
-# import multiprocessing as mp
-from itertools import product
 from pathlib import Path
-import dask
-from dask.distributed import Client, LocalCluster
-import xarray as xr
-from xclim import sdba
-import numcodecs
 
+import dask
+import numcodecs
+import numpy as np
+import psutil
+import xarray as xr
+import xclim
+from dask.distributed import Client, LocalCluster
+from distributed.diagnostics import MemorySampler
+from xclim import sdba
 from zarr.sync import ThreadSynchronizer
 
-# from luts import jitter_under_lu
+import qdm_window_patch
+from config import (
+    ADJUST_CHUNK_SIZE,
+    DASK_ADJUST,
+    DTR_HIST_BINS,
+    DTR_SQUEEZE_QUANTILES,
+    GRID_SHAPE_TO_RESOLUTION,
+    OUTPUT_CHUNKS,
+    OUTPUT_COMPRESSOR,
+    OUTPUT_DTYPE,
+    QDM_NQUANTILES,
+    QDM_RANK_WINDOWED,
+    QDM_WINDOW,
+    SQUEEZE_LIMITS,
+)
 from train_qm import get_var_id
 
 logging.basicConfig(
@@ -33,22 +65,26 @@ logging.basicConfig(
     handlers=[logging.StreamHandler()],
 )
 
+BIAS_ADJUST_VERSION = "2026-11-16 patch_31d"
+
 
 def configure_dask_for_adjustment(
-    n_workers=4, threads_per_worker=4, memory_limit="30GB", worker_dir=None
+    n_workers=4,
+    threads_per_worker=4,
+    memory_limit="30GB",
+    worker_dir=None,
+    spill_to_disk=True,
 ):
-    """Configure Dask LocalCluster optimized for bias adjustment on 128GB nodes.
-
-    Adjustment is more I/O intensive than training, so optimize accordingly.
+    """Configure Dask LocalCluster optimized for bias adjustment.
 
     Args:
-        n_workers: Number of worker processes (default: 4)
-        threads_per_worker: Threads per worker (default: 4)
-        memory_limit: Memory limit per worker (default: 30GB)
+        n_workers: Number of worker processes
+        threads_per_worker: Threads per worker
+        memory_limit: Memory limit per worker (string or bytes)
         worker_dir: Directory for dask worker files (default: None, uses dask default)
 
     Returns:
-        client: Dask distributed client
+        (client, cluster)
     """
     # Close any existing clients
     try:
@@ -61,8 +97,9 @@ def configure_dask_for_adjustment(
     dask.config.set(
         {
             # Memory management - more conservative thresholds to avoid OOM
-            "distributed.worker.memory.target": 0.70,  # Start managing at 70%
-            "distributed.worker.memory.spill": 0.80,  # Spill to disk at 80%
+            # (target/spill are disabled when spill_to_disk is False)
+            "distributed.worker.memory.target": 0.70 if spill_to_disk else False,
+            "distributed.worker.memory.spill": 0.80 if spill_to_disk else False,
             "distributed.worker.memory.pause": 0.85,  # Pause at 85%
             "distributed.worker.memory.terminate": 0.95,
             # I/O optimization
@@ -90,11 +127,12 @@ def configure_dask_for_adjustment(
     logging.info(f"Dask cluster configured for adjustment:")
     logging.info(f"  Workers: {n_workers}, Threads/worker: {threads_per_worker}")
     logging.info(f"  Memory per worker: {memory_limit}")
+    logging.info(f"  Spill to disk: {spill_to_disk}")
     if worker_dir:
         logging.info(f"  Worker directory: {worker_dir}")
     logging.info(f"  Dashboard: {client.dashboard_link}")
 
-    return client
+    return client, cluster
 
 
 def force_filesystem_cache_refresh(zarr_path, max_attempts=10, delay=10):
@@ -339,12 +377,13 @@ def validate_zarr_readback(zarr_path, expected_var_id, max_retries=120, retry_de
     return False
 
 
-def add_global_attrs(adj_ds, src_ds):
+def add_global_attrs(adj_ds, src_ds, extra_attrs=None):
     """Add global attributes to a new adjusted dataset
 
     Args:
         adj_ds (xarray.Dataset): dataset of a adjusted data
         src_ds (xarray.Dataset): dataset of source data
+        extra_attrs (dict): provenance attributes to add (patch/run settings)
 
     Returns:
         xarray.Dataset with updated global attributes
@@ -371,6 +410,9 @@ def add_global_attrs(adj_ds, src_ds):
     ]:
         if attr in src_ds.attrs:
             new_attrs[attr] = src_ds.attrs[attr]
+
+    if extra_attrs:
+        new_attrs.update(extra_attrs)
 
     adj_ds.attrs = new_attrs
 
@@ -403,13 +445,37 @@ def drop_non_coord_vars(ds, keep_spatial_ref=True, keep_latlon=True):
     return ds
 
 
+def str2bool(value):
+    """argparse helper for explicit true/false flags."""
+    if isinstance(value, bool):
+        return value
+    v = str(value).strip().lower()
+    if v in ("true", "t", "yes", "y", "1"):
+        return True
+    if v in ("false", "f", "no", "n", "0"):
+        return False
+    raise argparse.ArgumentTypeError(f"Expected true/false, got {value!r}")
+
+
+def parse_isel(spec):
+    """Parse an --isel spec like "y=0:50,x=100:150" into {dim: slice}."""
+    if not spec:
+        return None
+    out = {}
+    for part in spec.split(","):
+        dim, rng = part.split("=")
+        start, stop = rng.split(":")
+        out[dim.strip()] = slice(int(start), int(stop))
+    return out
+
+
 def parse_args():
     """Parse some arguments"""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--train_path",
         type=str,
-        help="Path to trained quantile mapping adjustment netcdf file",
+        help="Path to trained quantile mapping adjustment zarr store",
         required=True,
     )
     parser.add_argument(
@@ -430,15 +496,69 @@ def parse_args():
         help="Path to directory where dask temporary files will be written.",
         required=True,
     )
+    # --- optional overrides (defaults come from config.py) ---
+    parser.add_argument(
+        "--rank_main_only",
+        type=str2bool,
+        default=None,
+        help="true: legacy exact-day-of-year ranking; false: rank over the training window. "
+        f"Default: {'false' if QDM_RANK_WINDOWED else 'true'} (config.QDM_RANK_WINDOWED).",
+    )
+    parser.add_argument(
+        "--resolution",
+        type=str,
+        choices=sorted(ADJUST_CHUNK_SIZE.keys()),
+        default=None,
+        help="Resolution label; inferred from the sim grid shape if omitted.",
+    )
+    parser.add_argument(
+        "--chunk_size",
+        type=int,
+        default=None,
+        help="Spatial chunk edge for the time=-1 adjustment chunks (overrides config).",
+    )
+    parser.add_argument("--n_workers", type=int, default=None)
+    parser.add_argument("--threads_per_worker", type=int, default=None)
+    parser.add_argument(
+        "--memory_limit",
+        type=str,
+        default=None,
+        help="Per-worker dask memory limit, e.g. 30GB (overrides the derived value).",
+    )
+    parser.add_argument(
+        "--isel",
+        type=str,
+        default=None,
+        help='Spatial subset for tests, e.g. "y=0:50,x=100:150" (applied to sim and trained data).',
+    )
+    parser.add_argument(
+        "--worker_dir_local",
+        type=str2bool,
+        default=DASK_ADJUST["worker_dir_local"],
+        help="true: dask worker files under $SLURM_TMPDIR (or /tmp); false: under --tmp_path.",
+    )
+    parser.add_argument(
+        "--spill_to_disk",
+        type=str2bool,
+        default=DASK_ADJUST["spill_to_disk"],
+        help="Allow dask workers to spill to the worker dir (pointless on tmpfs).",
+    )
+    parser.add_argument(
+        "--run_label",
+        type=str,
+        default="",
+        help="Free-text label recorded in the output attrs (e.g. test id).",
+    )
 
     args = parser.parse_args()
-
-    return (
-        Path(args.train_path),
-        Path(args.sim_path),
-        Path(args.adj_path),
-        Path(args.tmp_path),
-    )
+    args.train_path = Path(args.train_path)
+    args.sim_path = Path(args.sim_path)
+    args.adj_path = Path(args.adj_path)
+    args.tmp_path = Path(args.tmp_path)
+    args.isel = parse_isel(args.isel)
+    if args.rank_main_only is None:
+        args.rank_main_only = not QDM_RANK_WINDOWED
+    return args
 
 
 def validate_sim_source(train_ds, sim_ds):
@@ -535,349 +655,461 @@ def validate_input_data(ds, var_id, label):
     logging.info(f"{label} validation passed for {var_id}")
 
 
-def validate_output_zarr(adj_path, var_id, min_size_mb=10):
-    """Validate written zarr output.
-
-    Args:
-        adj_path: Path to zarr store
-        var_id: variable identifier
-        min_size_mb: minimum expected size in MB
-
-    Raises:
-        ValueError: If output is invalid
-    """
-    import os
-
-    logging.info(f"Validating output at {adj_path}...")
-
-    if not adj_path.exists():
-        raise ValueError(f"Output zarr store not created at {adj_path}")
-
-    # Check size
-    total_size = sum(
-        os.path.getsize(os.path.join(dirpath, filename))
-        for dirpath, _, filenames in os.walk(adj_path)
-        for filename in filenames
-        if os.path.exists(os.path.join(dirpath, filename))
+def infer_resolution(sim_var, override=None):
+    """Resolution label from the (y, x) grid shape, unless overridden."""
+    if override:
+        return override
+    shape = (sim_var.sizes["y"], sim_var.sizes["x"])
+    if shape in GRID_SHAPE_TO_RESOLUTION:
+        return GRID_SHAPE_TO_RESOLUTION[shape]
+    raise ValueError(
+        f"Cannot infer resolution from grid shape {shape}; pass --resolution or --chunk_size."
     )
 
-    size_mb = total_size / (1024 * 1024)
-    logging.info(f"Output zarr store size: {size_mb:.2f} MB")
 
-    if size_mb < min_size_mb:
-        raise ValueError(
-            f"Output suspiciously small ({size_mb:.2f} MB < {min_size_mb} MB)"
-        )
+def resolve_memory_limit(args, n_workers, result_gb):
+    """Per-worker dask memory limit in bytes (see config.DASK_ADJUST for the rationale)."""
+    if args.memory_limit:
+        return args.memory_limit, "cli"
+    mem_env = os.environ.get("SLURM_MEM_PER_NODE")
+    if mem_env:
+        node_gb = float(mem_env) / 1024.0
+        source = "SLURM_MEM_PER_NODE"
+    else:
+        node_gb = psutil.virtual_memory().total / 2**30
+        source = "psutil.virtual_memory"
+    reserve = max(
+        DASK_ADJUST["client_reserve_min_gb"],
+        DASK_ADJUST["client_reserve_factor"] * result_gb,
+    )
+    per_worker = (node_gb - reserve) * DASK_ADJUST["memory_fraction"] / n_workers
+    per_worker = min(
+        DASK_ADJUST["worker_memory_max_gb"],
+        max(DASK_ADJUST["worker_memory_min_gb"], per_worker),
+    )
+    logging.info(
+        f"Memory sizing: node={node_gb:.1f}GB ({source}), result={result_gb:.1f}GB, "
+        f"client reserve={reserve:.1f}GB -> {per_worker:.1f}GB per worker"
+    )
+    return int(per_worker * 2**30), source
 
-    # Validate content
+
+def worker_peak_memory_gb(client):
+    """Per-worker peak RSS (GB) from the workers' SystemMonitor history (last ~1 h)."""
     try:
-        adj_ds_check = xr.open_zarr(adj_path, consolidated=True)
-    except Exception as e:
-        raise ValueError(f"Cannot open output zarr: {e}")
+        peaks = client.run(
+            lambda dask_worker: max(dask_worker.monitor.quantities["memory"])
+        )
+        return {addr: round(v / 2**30, 2) for addr, v in peaks.items()}
+    except Exception as e:  # diagnostics only, never fatal
+        logging.warning(f"Could not collect per-worker peak memory: {e}")
+        return {}
 
-    validate_input_data(adj_ds_check, var_id, "Output")
-    logging.info("Output validation passed")
+
+def count_chunk_files(zarr_path, var_id):
+    """Number of chunk files present on disk for var_id (metadata-only, cheap)."""
+    try:
+        d = Path(zarr_path) / var_id
+        return sum(1 for p in d.iterdir() if not p.name.startswith("."))
+    except Exception:
+        return -1
+
+
+def squeeze_in_memory(arr, var_id):
+    """Clip an in-memory numpy array per config (NaN-preserving); return (arr, attrs).
+
+    Reproduces the previous lazy `.where((v >= lo) | isnull, lo)` / `.where((v <= hi) |
+    isnull, hi)` logic exactly: np.clip / np.minimum / np.maximum propagate NaN.
+    """
+    attrs = {}
+    lo = hi = None
+    if var_id == "dtr":
+        logging.info("##### START SQUEEZING DTR #####")
+        arr_min = float(np.nanmin(arr))
+        arr_max = float(np.nanmax(arr))
+        logging.info(f"DTR range: [{arr_min:.2f}, {arr_max:.2f}] K")
+        logging.info(f"Computing histogram with {DTR_HIST_BINS} bins...")
+        hist, bin_edges = np.histogram(
+            arr, bins=DTR_HIST_BINS, range=(arr_min, arr_max)
+        )
+        cumsum = np.cumsum(hist)
+        cdf = cumsum / cumsum[-1]
+        lower_quantile, upper_quantile = DTR_SQUEEZE_QUANTILES
+        lower_idx = np.searchsorted(cdf, lower_quantile)
+        upper_idx = np.searchsorted(cdf, upper_quantile)
+        lo = float(bin_edges[lower_idx])
+        hi = float(bin_edges[upper_idx + 1])  # Use upper edge of bin
+        logging.info(f"Computed quantile-based thresholds: [{lo:.2f}, {hi:.2f}] K")
+        attrs.update(
+            {
+                "squeeze_raw_min": arr_min,
+                "squeeze_raw_max": arr_max,
+                "squeeze_quantiles": list(DTR_SQUEEZE_QUANTILES),
+            }
+        )
+    elif var_id in SQUEEZE_LIMITS:
+        lo, hi = SQUEEZE_LIMITS[var_id]
+    else:
+        logging.info(f"No squeeze limits configured for {var_id}")
+        return arr, attrs
+
+    n_below = int(np.count_nonzero(arr < lo)) if lo is not None else 0
+    n_above = int(np.count_nonzero(arr > hi)) if hi is not None else 0
+    logging.info(f"Squeezing {var_id} to [{lo}, {hi}]")
+    logging.info(f"Count of values below {lo}: {n_below}")
+    logging.info(f"Count of values above {hi}: {n_above}")
+    if lo is not None and hi is not None:
+        np.clip(arr, lo, hi, out=arr)
+    elif hi is not None:
+        np.minimum(arr, hi, out=arr)
+    elif lo is not None:
+        np.maximum(arr, lo, out=arr)
+    attrs.update(
+        {
+            "squeeze_lower_limit": "none" if lo is None else lo,
+            "squeeze_upper_limit": "none" if hi is None else hi,
+            "squeeze_count_below": n_below,
+            "squeeze_count_above": n_above,
+        }
+    )
+    if var_id == "dtr":
+        logging.info("##### FINISH SQUEEZING DTR #####")
+    return arr, attrs
+
+
+def git_commit_of(path):
+    """Code version for provenance.
+
+    A frozen code snapshot (run directory copy) carries a CODE_VERSION file next to
+    the script; use it verbatim. Otherwise the short git hash of the containing repo,
+    with "-dirty" appended when the work tree has uncommitted changes; 'unknown' if
+    neither is available.
+    """
+    here = Path(path).resolve().parent
+    version_file = here / "CODE_VERSION"
+    if version_file.exists():
+        return version_file.read_text().strip()
+
+    def _git(*cmd):
+        out = subprocess.run(
+            ["git", "-C", str(here), *cmd],
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+        return out.stdout.strip()
+
+    try:
+        commit = _git("rev-parse", "--short", "HEAD")
+        if not commit:
+            return "unknown"
+        if _git("status", "--porcelain", "--untracked-files=no"):
+            commit += "-dirty"
+        return commit
+    except Exception:
+        return "unknown"
 
 
 if __name__ == "__main__":
-    train_path, sim_path, adj_path, tmp_path = parse_args()
+    args = parse_args()
+    train_path, sim_path, adj_path, tmp_path = (
+        args.train_path,
+        args.sim_path,
+        args.adj_path,
+        args.tmp_path,
+    )
 
     success = False
     client = None
+    cluster = None
+    t_start = time.time()
+    phase = {}
+    summary = {
+        "sim": sim_path.name,
+        "host": socket.gethostname(),
+        "partition": os.environ.get("SLURM_JOB_PARTITION"),
+        "job_id": os.environ.get("SLURM_JOB_ID"),
+        "cpus_on_node": os.cpu_count(),
+        "bias_adjust_version": BIAS_ADJUST_VERSION,
+        "run_label": args.run_label,
+    }
 
     try:
-        # Create dedicated worker directory in tmp_path
-        # Name it without "dask-worker" prefix to avoid nested dask-worker-space directories
-        worker_base_dir = tmp_path / f"bias-adjust-{sim_path.stem}-{os.getpid()}"
+        logging.info("=" * 70)
+        logging.info(f"BIAS_ADJUST.PY - {BIAS_ADJUST_VERSION}")
+        logging.info("=" * 70)
+
+        # --- QDM ranking-window patch (the point of patch_31d) ---
+        qdm_window_patch.apply(main_only=args.rank_main_only)
+        summary["rank_main_only"] = args.rank_main_only
+
+        # --- Open sim metadata first: resolution, chunks and memory sizing depend on it ---
+        logging.info(f"Loading simulation dataset from {sim_path}")
+        sim_ds = xr.open_zarr(sim_path, consolidated=True)
+        var_id = get_var_id(sim_ds)
+        logging.info(f"Processing variable: {var_id}")
+        if args.isel:
+            logging.info(f"Applying test subset isel={args.isel}")
+            sim_ds = sim_ds.isel(args.isel)
+        resolution = infer_resolution(sim_ds[var_id], args.resolution)
+        chunk_size = args.chunk_size or ADJUST_CHUNK_SIZE[resolution]
+        adjustment_chunks = {"time": -1, "x": chunk_size, "y": chunk_size}
+        sim_ds = sim_ds.chunk(adjustment_chunks)
+        sim_var = sim_ds[var_id]
+        result_gb = sim_var.size * np.dtype(OUTPUT_DTYPE).itemsize / 2**30
+        summary.update(
+            {
+                "var_id": var_id,
+                "resolution": resolution,
+                "shape": list(sim_var.shape),
+                "chunk_size": chunk_size,
+                "result_gb": round(result_gb, 2),
+            }
+        )
+        logging.info(
+            f"Resolution {resolution}; adjustment chunks {adjustment_chunks}; "
+            f"result size {result_gb:.2f} GB ({OUTPUT_DTYPE})"
+        )
+
+        # --- Dask cluster ---
+        n_workers = args.n_workers or DASK_ADJUST["n_workers"][resolution]
+        threads = (
+            args.threads_per_worker or DASK_ADJUST["threads_per_worker"][resolution]
+        )
+        memory_limit, mem_source = resolve_memory_limit(args, n_workers, result_gb)
+        if args.worker_dir_local:
+            local_root = Path(os.environ.get("SLURM_TMPDIR", "/tmp")) / os.environ.get(
+                "USER", "dask"
+            )
+        else:
+            local_root = tmp_path
+        worker_base_dir = local_root / f"bias-adjust-{sim_path.stem}-{os.getpid()}"
         logging.info(f"Creating worker base directory: {worker_base_dir}")
         try:
             worker_base_dir.mkdir(parents=True, exist_ok=True)
         except FileExistsError:
-            # Race condition in parallel jobs - safe to ignore
-            pass
-
-        # Configure Dask
+            pass  # Race condition in parallel jobs - safe to ignore
         logging.info("Configuring Dask cluster...")
-        _partition = os.environ.get("SLURM_JOB_PARTITION", "analysis")
-        if _partition == "analysis":
-            _memory_limit = "60GB"
-        elif _partition == "t2small":
-            _memory_limit = "30GB"
-        else:
-            raise ValueError(f"Unsupported SLURM partition: {_partition!r}. Expected 'analysis' or 't2small'.")
-        client = configure_dask_for_adjustment(
-            n_workers=4,
-            threads_per_worker=4,
-            memory_limit=_memory_limit,
+        client, cluster = configure_dask_for_adjustment(
+            n_workers=n_workers,
+            threads_per_worker=threads,
+            memory_limit=memory_limit,
             worker_dir=worker_base_dir,
+            spill_to_disk=args.spill_to_disk,
+        )
+        summary.update(
+            {
+                "n_workers": n_workers,
+                "threads_per_worker": threads,
+                "memory_limit_gb": round(
+                    (
+                        memory_limit
+                        if isinstance(memory_limit, (int, float))
+                        else dask.utils.parse_bytes(memory_limit)
+                    )
+                    / 2**30,
+                    1,
+                ),
+                "memory_limit_source": mem_source,
+                "worker_dir": str(worker_base_dir),
+                "spill_to_disk": args.spill_to_disk,
+            }
         )
 
         logging.info(f"Starting bias adjustment for {sim_path.name}")
 
-        # Initial chunking for loading - will be rechunked before adjustment
-        # xclim requires time=-1, but we load with larger chunks first for efficiency
-        chunk_dict = {"time": 365, "x": 150, "y": 150}
-
-        logging.info(
-            f"Using initial chunk strategy: time={chunk_dict['time']}, x={chunk_dict['x']}, y={chunk_dict['y']}"
-        )
-
-        # open connection to trained QM dataset
+        # --- Trained QM dataset ---
         logging.info(f"Loading trained QM dataset from {train_path}")
-        train_ds = xr.open_zarr(
-            train_path, consolidated=True
-        )  # Training data is small, no need to chunk
+        train_ds = xr.open_zarr(train_path, consolidated=True)
 
-        # CRITICAL FIX: Some training datasets have wrong dimension order (x, y) instead of (y, x)
-        # This causes non-deterministic NaN creation during bias adjustment
-        # Transpose training data if needed to match simulation data dimensions
+        # Some training datasets have dimension order (x, y) instead of (y, x); this
+        # caused non-deterministic NaN creation during bias adjustment. Transpose to match.
         for var in train_ds.data_vars:
-            if train_ds[var].dims[:2] == ('x', 'y'):
-                logging.warning(f"Training data has wrong dimension order: {train_ds[var].dims}")
-                logging.warning(f"Transposing {var} from ('x', 'y', ...) to ('y', 'x', ...)")
-                # Transpose spatial dimensions while preserving other dimensions
-                train_ds[var] = train_ds[var].transpose('y', 'x', ...)
+            if train_ds[var].dims[:2] == ("x", "y"):
+                logging.warning(
+                    f"Training data has dimension order {train_ds[var].dims}"
+                )
+                logging.warning(
+                    f"Transposing {var} from ('x', 'y', ...) to ('y', 'x', ...)"
+                )
+                train_ds[var] = train_ds[var].transpose("y", "x", ...)
                 logging.info(f"After transpose: {var} dims = {train_ds[var].dims}")
+        if args.isel:
+            train_ds = train_ds.isel(args.isel)
+        # Align the trained-store chunks with the adjustment chunks explicitly (xclim's
+        # map_blocks would otherwise unify_chunks into irregular pieces).
+        train_chunks = {"y": chunk_size, "x": chunk_size}
+        for d in ("dayofyear", "quantiles"):
+            if d in train_ds.dims:
+                train_chunks[d] = -1
+        train_ds = train_ds.chunk(train_chunks)
+        logging.info(f"Trained af chunks: {train_ds['af'].chunks}")
+
+        validate_sim_source(train_ds, sim_ds)
+        validate_input_data(sim_ds, var_id, "Input simulation data")
 
         qm = sdba.QuantileDeltaMapping.from_dataset(train_ds)
 
-        # Load simulation data with optimized chunks
-        logging.info(f"Loading simulation dataset from {sim_path}")
-        sim_ds = xr.open_zarr(sim_path, chunks=chunk_dict, consolidated=True)
-
-        # Validate source matching
-        validate_sim_source(train_ds, sim_ds)
-
-        var_id = get_var_id(sim_ds)
-        logging.info(f"Processing variable: {var_id}")
-
-        # Validate input data
-        validate_input_data(sim_ds, var_id, "Input simulation data")
-
-        # CRITICAL: Rechunk time dimension for adjustment
-        # xclim's QDM adjust() requires time to be in a single chunk (same as training)
-        # Use smaller spatial chunks to compensate for large time chunk
-        # Memory per chunk: ~36,500 days × 50 × 50 × 4 bytes = ~3.6GB (worst case for long scenarios)
-        logging.info("Rechunking data for adjustment (time=-1 required by xclim)...")
-        sim_var = sim_ds[var_id]
-        adjustment_chunks = {"time": -1, "x": 50, "y": 50}
-        sim_var_rechunked = sim_var.chunk(adjustment_chunks)
-        logging.info(f"  Adjustment chunks: time=-1, x=50, y=50")
-        logging.info(f"  Memory per spatial chunk: ~3.6GB (worst case)")
-        logging.info(f"  Rechunked shape: {sim_var_rechunked.shape}")
-        logging.info(f"  Rechunked chunks: {sim_var_rechunked.chunks}")
-
         logging.info(f"Applying bias adjustment for {var_id}...")
         scen = qm.adjust(
-            sim_var_rechunked,
+            sim_var,
             extrapolation="constant",
             interp="nearest",
         )
-        logging.info(f"DEBUG: After QDM adjust - dims={scen.dims}, shape={scen.shape}")
+        logging.info(f"After QDM adjust - dims={scen.dims}, shape={scen.shape}")
 
-        # CRITICAL FIX: QDM may return dimensions in wrong order - ensure (time, y, x)
-        expected_dims = ('time', 'y', 'x')
+        # QDM may return dimensions in a different order - ensure (time, y, x)
+        expected_dims = ("time", "y", "x")
         if scen.dims != expected_dims:
-            logging.warning(f"QDM returned wrong dimension order: {scen.dims}, transposing to {expected_dims}")
+            logging.info(f"Transposing QDM output from {scen.dims} to {expected_dims}")
             scen = scen.transpose(*expected_dims)
-            logging.info(f"DEBUG: After transpose - dims={scen.dims}, shape={scen.shape}")
 
-        # FIX: xclim QDM returns NaN when sim=0 and hist_q_min > 0 (a snow-specific failure
+        # xclim QDM returns NaN when sim=0 and hist_q_min > 0 (a snow-specific failure
         # mode where warming drives cells to zero that historically had non-zero snow).
         # Fill QDM-produced NaN with the unadjusted sim value: sim=0 fills as 0 (correct),
-        # ocean/no-data NaN fills as NaN (preserved). Result: output NaN == input NaN.
-        logging.info("Applying fillna fix: replacing QDM-produced NaN with unadjusted sim values")
-        scen = scen.fillna(sim_var_rechunked)
+        # ocean/no-data NaN fills as NaN (preserved).
+        # BUT only inside cells that have a trained QDM. Cells where the reference (ERA5/WRF)
+        # is NaN but the GCM is not get an all-NaN `af`; they must stay NaN, otherwise the
+        # fillna writes raw, unadjusted GCM values there (3,439 such cells at 12 km).
+        # Result: output NaN == (sim NaN | untrained cell), matching the published products.
+        logging.info(
+            "Applying fillna fix: replacing QDM-produced NaN with unadjusted sim values "
+            "(trained cells only)"
+        )
+        untrained = train_ds["af"].isnull().all(["dayofyear", "quantiles"])
+        scen = scen.fillna(sim_var).where(~untrained).astype(OUTPUT_DTYPE)
+        scen.name = var_id
+
+        # --- ONE distributed compute: gather the whole adjusted array to the client ---
+        logging.info("Computing adjusted data (single pass, gathered to client)...")
+        t0 = time.time()
+        sampler = MemorySampler()
+        with sampler.sample("adjust", client=client, measure="process", interval=5):
+            scen, untrained = dask.compute(scen, untrained)
+        phase["adjust_compute_s"] = round(time.time() - t0, 1)
+        n_untrained = int(untrained.sum())
+        n_untrained_sim_finite = int(
+            (untrained & scen.isel(time=0).isnull() & sim_var.isel(time=0).notnull())
+            .sum()
+            .compute()
+        )
+        summary["n_untrained_cells"] = n_untrained
+        logging.info(
+            f"Cells without a trained QDM: {n_untrained} "
+            f"({n_untrained_sim_finite} of them have finite sim values -> left NaN)"
+        )
+        try:
+            ms_df = sampler.to_pandas()
+            summary["cluster_peak_gb"] = round(
+                float(ms_df["adjust"].max()) / 2**30, 2
+            )
+        except Exception as e:
+            logging.warning(f"MemorySampler summary failed: {e}")
+        summary["worker_peak_gb"] = worker_peak_memory_gb(client)
+        logging.info(
+            f"Adjustment computed in {phase['adjust_compute_s']} s; "
+            f"cluster peak {summary.get('cluster_peak_gb')} GB; "
+            f"worker peaks {summary['worker_peak_gb']}"
+        )
+
+        # Workers are no longer needed: free their memory before the in-memory squeeze/write
+        logging.info("Closing Dask cluster (all remaining work is in-process)...")
+        client.close()
+        cluster.close()
+        client = cluster = None
 
         scen_ds = scen.to_dataset(name=var_id)
         scen_ds = drop_non_coord_vars(scen_ds)
-        scen_ds = add_global_attrs(scen_ds, sim_ds)
+        if scen_ds[var_id].dims != expected_dims:
+            raise RuntimeError(f"Unexpected dims after compute: {scen_ds[var_id].dims}")
         logging.info(f"Bias adjustment completed for {var_id}")
 
-        # CRITICAL: Rechunk after adjustment to avoid memory issues during squeeze operations
-        # The adjustment step requires time=-1, but squeeze operations need smaller chunks
-        # Use moderate time chunks to balance memory and task overhead
-        logging.info("Rechunking adjusted data for squeeze operations...")
-        squeeze_chunks = {"time": 365, "x": 100, "y": 100}
-        scen_ds = scen_ds.chunk(squeeze_chunks)
-        logging.info(f"  Rechunked to: time=365, x=100, y=100 for memory efficiency")
+        # --- Squeeze in memory (identical limits/logic to the previous lazy version) ---
+        t0 = time.time()
+        arr = scen_ds[var_id].values
+        if arr.dtype != np.dtype(OUTPUT_DTYPE):
+            raise RuntimeError(f"Expected {OUTPUT_DTYPE} data, got {arr.dtype}")
+        arr, squeeze_attrs = squeeze_in_memory(
+            arr, var_id
+        )  # in place on the numpy buffer
+        if arr is not scen_ds[var_id].data:  # defensive: only copy if a copy was made
+            scen_ds[var_id].data[...] = arr
+        phase["squeeze_s"] = round(time.time() - t0, 1)
 
-        # Remove existing output
-        if adj_path.exists():
-            logging.info(f"Removing existing adjusted data store at {adj_path}")
-            try:
-                shutil.rmtree(adj_path)
-            except Exception as e:
-                logging.error(f"Failed to remove existing output: {e}")
-                raise
+        provenance = {
+            "qdm_rank_main_only": str(args.rank_main_only),
+            "qdm_rank_window_days": 1 if args.rank_main_only else QDM_WINDOW,
+            "qdm_train_window_days": QDM_WINDOW,
+            "qdm_nquantiles": QDM_NQUANTILES,
+            "qdm_adjust_chunk_size": chunk_size,
+            "n_cells_without_trained_qdm": n_untrained,
+            "nan_policy": "NaN where sim is NaN or the cell has no trained QDM (all-NaN af); "
+            "other QDM-produced NaN filled with the unadjusted sim value",
+            "xclim_version": xclim.__version__,
+            "cmip6_utils_commit": git_commit_of(__file__),
+            "bias_adjust_version": BIAS_ADJUST_VERSION,
+            "bias_adjust_run_label": args.run_label,
+            "bias_adjust_job_id": str(os.environ.get("SLURM_JOB_ID", "")),
+            "trained_qdm_path": str(train_path),
+            "sim_path": str(sim_path),
+        }
+        provenance.update(squeeze_attrs)
+        scen_ds = add_global_attrs(scen_ds, sim_ds, extra_attrs=provenance)
 
-        # Apply variable-specific thresholding
-        if var_id == "dtr":
-            logging.info("##### START SQUEEZING DTR #####")
-            import numpy as np
-            import dask.array as da
-
-            logging.info(
-                "Computing quantile-based thresholds using histogram method..."
-            )
-            arr = scen_ds[var_id]
-
-            # Use histogram-based quantile estimation to avoid loading entire array
-            # This works efficiently with chunked dask arrays
-            logging.info("Building histogram of DTR values...")
-
-            # Compute min/max for histogram range (reduction ops work efficiently with chunks)
-            arr_min = float(arr.min().compute())
-            arr_max = float(arr.max().compute())
-            logging.info(f"DTR range: [{arr_min:.2f}, {arr_max:.2f}] K")
-
-            # Create histogram with sufficient bins to capture extreme quantiles
-            # Use 10000 bins to get good resolution for 0.0000002 quantile
-            n_bins = 10000
-            hist_range = (arr_min, arr_max)
-
-            logging.info(
-                f"Computing histogram with {n_bins} bins (processes chunks efficiently)..."
-            )
-            # dask.array.histogram works with chunks without loading full array
-            hist, bin_edges = da.histogram(arr.data, bins=n_bins, range=hist_range)
-            hist = (
-                hist.compute()
-            )  # Only histogram counts need to be in memory, not raw data
-
-            # Build cumulative distribution from histogram
-            cumsum = np.cumsum(hist)
-            total_count = cumsum[-1]
-            cdf = cumsum / total_count
-
-            # Find quantile values from CDF
-            lower_quantile = 0.0000002
-            upper_quantile = 0.9999998
-
-            lower_idx = np.searchsorted(cdf, lower_quantile)
-            upper_idx = np.searchsorted(cdf, upper_quantile)
-
-            lower_thresh = float(bin_edges[lower_idx])
-            upper_thresh = float(bin_edges[upper_idx + 1])  # Use upper edge of bin
-
-            logging.info(
-                f"Computed quantile-based thresholds: [{lower_thresh:.2f}, {upper_thresh:.2f}] K"
-            )
-            logging.info(
-                f"  Lower threshold (q={lower_quantile}): {lower_thresh:.2f} K"
-            )
-            logging.info(
-                f"  Upper threshold (q={upper_quantile}): {upper_thresh:.2f} K"
-            )
-
-            # Count the number of pixels above and below the thresholds
-            num_below = (
-                scen_ds[var_id]
-                .where(scen_ds[var_id] < lower_thresh)
-                .count()
-                .compute()
-                .item()
-            )
-            num_above = (
-                scen_ds[var_id]
-                .where(scen_ds[var_id] > upper_thresh)
-                .count()
-                .compute()
-                .item()
-            )
-            logging.info(f"Number of pixels below lower threshold: {num_below}")
-            logging.info(f"Number of pixels above upper threshold: {num_above}")
-
-            scen_ds[var_id] = scen_ds[var_id].where(
-                (scen_ds[var_id] >= lower_thresh) | scen_ds[var_id].isnull(),
-                other=lower_thresh,
-            )
-            scen_ds[var_id] = scen_ds[var_id].where(
-                (scen_ds[var_id] <= upper_thresh) | scen_ds[var_id].isnull(),
-                other=upper_thresh,
-            )
-
-            logging.info(f"Max DTR value: {arr_max:.2f} K")
-            logging.info(f"Min DTR value: {arr_min:.2f} K")
-            logging.info(f"Set values below {lower_thresh:.2f} to {lower_thresh:.2f}")
-            logging.info(f"Set values above {upper_thresh:.2f} to {upper_thresh:.2f}")
-            logging.info("##### FINISH SQUEEZING DTR #####")
-
-        max_tasmax = 333.15
-        max_pr = 1650
-        min_pr = 0
-
-        # tasmin is squeezed separately in the derived/difference.py script
-        var_ds = scen_ds[var_id]
-        if var_id == "tasmax":
-            logging.info("Squeezing tasmax values above limit")
-            count_above_threshold = (var_ds > max_tasmax).sum().compute().item()
-            logging.info(
-                f"Count of values above {max_tasmax} K: {count_above_threshold}"
-            )
-            var_ds = var_ds.where((var_ds <= max_tasmax) | var_ds.isnull(), max_tasmax)
-        elif var_id == "pr":
-            logging.info("Squeezing pr values above and below limits")
-            count_above_threshold = (var_ds > max_pr).sum().compute().item()
-            count_below_zero = (var_ds < min_pr).sum().compute().item()
-            logging.info(
-                f"Count of values above {max_pr} mm/day: {count_above_threshold}"
-            )
-            logging.info(f"Count of values below {min_pr} mm/day: {count_below_zero}")
-            var_ds = var_ds.where((var_ds <= max_pr) | var_ds.isnull(), max_pr)
-            var_ds = var_ds.where((var_ds >= min_pr) | var_ds.isnull(), min_pr)
-        scen_ds[var_id] = var_ds
-
+        # --- Write: .writing sibling -> rename -> read-back validation ---
         logging.info(f"Writing adjusted data to {adj_path}")
         synchronizer = ThreadSynchronizer()
-
-        # Configure compression optimized for climate data
-        # Use fixed output chunks that work for all scenarios
-        output_chunks = (365, 100, 100)  # (time, y, x)
-
-        logging.info(f"Rechunking to {output_chunks} before write...")
-        scen_ds = scen_ds.chunk(
-            {"time": output_chunks[0], "y": output_chunks[1], "x": output_chunks[2]}
-        )
-
+        shuffle = {
+            "bitshuffle": numcodecs.Blosc.BITSHUFFLE,
+            "shuffle": numcodecs.Blosc.SHUFFLE,
+            "noshuffle": numcodecs.Blosc.NOSHUFFLE,
+        }[OUTPUT_COMPRESSOR["shuffle"]]
         encoding = {
             var_id: {
                 "compressor": numcodecs.Blosc(
-                    cname="zstd",
-                    clevel=3,  # Lower compression for faster writes
-                    shuffle=numcodecs.Blosc.BITSHUFFLE,
+                    cname=OUTPUT_COMPRESSOR["cname"],
+                    clevel=OUTPUT_COMPRESSOR["clevel"],
+                    shuffle=shuffle,
                 ),
-                "chunks": output_chunks,
+                "chunks": OUTPUT_CHUNKS,
+                "dtype": OUTPUT_DTYPE,
             }
         }
 
+        if adj_path.exists():
+            logging.info(f"Removing existing adjusted data store at {adj_path}")
+            shutil.rmtree(adj_path)
+
         # Write to a .writing sibling first, then atomically rename to adj_path.
-        # This ensures a failed or partial run never corrupts the live output: the
-        # old store stays intact until the new one is fully written.
-        # .compute() is called directly on the lazy graph — no prior persist() — so
-        # dask retries any failed tasks instead of returning cached NaN futures.
+        # This ensures a failed or partial run never corrupts the live output.
+        # The data is fully in memory (numpy) here: nothing is recomputed during the write.
         tmp_adj_path = adj_path.parent / (adj_path.name + ".writing")
         try:
-            # Clean up any temp store left by a previous failed run
             if tmp_adj_path.exists():
                 shutil.rmtree(tmp_adj_path)
 
-            logging.info("Loading dataset to memory (compute)...")
-            scen_ds_computed = scen_ds.compute()
-
+            t0 = time.time()
             logging.info(f"Writing to temp path {tmp_adj_path.name}...")
-            scen_ds_computed.to_zarr(
+            scen_ds.to_zarr(
                 tmp_adj_path,
                 encoding=encoding,
                 synchronizer=synchronizer,
                 consolidated=True,
             )
+            phase["write_s"] = round(time.time() - t0, 1)
+            n_files_after_write = count_chunk_files(tmp_adj_path, var_id)
+            logging.info(
+                f"Write finished in {phase['write_s']} s; chunk files visible: {n_files_after_write}"
+            )
 
-            # Swap in the new store only after the write is fully complete
-            if adj_path.exists():
-                shutil.rmtree(adj_path)
             tmp_adj_path.rename(adj_path)
-            logging.info("✓ Write succeeded and renamed to final path")
+            n_files_after_rename = count_chunk_files(adj_path, var_id)
+            summary["chunk_files_after_write"] = n_files_after_write
+            summary["chunk_files_after_rename"] = n_files_after_rename
+            logging.info(
+                f"✓ Write succeeded and renamed to final path (chunk files: {n_files_after_rename})"
+            )
         except Exception as e:
             logging.error(f"Write failed: {e}")
             if tmp_adj_path.exists():
@@ -892,7 +1124,9 @@ if __name__ == "__main__":
         logging.info("=" * 60)
 
         try:
+            t0 = time.time()
             validate_zarr_readback(adj_path, var_id, max_retries=120, retry_delay=60)
+            phase["readback_s"] = round(time.time() - t0, 1)
             logging.info("=" * 60)
             logging.info("✓✓✓ Adjusted data validated and confirmed readable ✓✓✓")
             logging.info("=" * 60)
@@ -911,20 +1145,30 @@ if __name__ == "__main__":
 
     except Exception as e:
         logging.error(f"FATAL ERROR during processing or writing: {e}")
+        logging.exception("Traceback:")
         logging.error(f"Bias adjustment FAILED for {sim_path.name}")
         for path_to_clean in [adj_path, adj_path.parent / (adj_path.name + ".writing")]:
             if path_to_clean.exists():
                 logging.info(f"Cleaning up {path_to_clean}")
                 shutil.rmtree(path_to_clean, ignore_errors=True)
-        sys.exit(1)
 
     finally:
         # Cleanup Dask client (but leave worker directory - Dask may still be using it)
         if client is not None:
             logging.info("Closing Dask client...")
-            client.close()
-            # Note: Not removing worker_base_dir to avoid race conditions with Dask cleanup
-            # These directories can be cleaned up periodically with a separate maintenance script
+            try:
+                client.close()
+                cluster.close()
+            except Exception:
+                pass
+        phase["total_s"] = round(time.time() - t_start, 1)
+        summary["phase_s"] = phase
+        summary["client_maxrss_gb"] = round(
+            resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2**20, 2
+        )
+        summary["success"] = success
+        logging.info("RUN_SUMMARY " + json.dumps(summary, default=str))
+
     if not success:
         logging.error("Bias adjustment did not complete successfully")
         sys.exit(1)
