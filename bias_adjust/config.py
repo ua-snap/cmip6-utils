@@ -24,7 +24,7 @@ cmip6_adjusted_tmp_fn = "{var_id}_{model}_{scenario}_adjusted.zarr"
 
 # ---------------------------------------------------------------------------
 # QDM bias-adjustment parameters (shared by train_qm.py and bias_adjust.py).
-# See README_patch_31d.md for the history of QDM_RANK_WINDOWED (issue #125).
+# See patch_31d_review/README.md (Appendix A1) for QDM_RANK_WINDOWED (issue #125).
 # ---------------------------------------------------------------------------
 QDM_NQUANTILES = 100
 QDM_WINDOW = 31  # days; group="time.dayofyear" with a centred +/-15 day window

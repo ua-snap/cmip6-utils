@@ -7,7 +7,7 @@ Example usage:
         --adj_path /beegfs/CMIP6/.../adjusted/pr_GFDL-ESM4_historical_adjusted.zarr \
         --tmp_path /beegfs/CMIP6/.../tmp
 
-Processing outline (see README_patch_31d.md):
+Processing outline (see patch_31d_review/README.md, Appendix A3):
   1. Apply the QDM ranking-window patch (config.QDM_RANK_WINDOWED / --rank_main_only).
   2. Open the sim store with time=-1 spatial chunks (config.ADJUST_CHUNK_SIZE per resolution)
      and the trained QDM store rechunked to the same spatial chunks.

@@ -1,4 +1,8 @@
-# patch_31d: QDM 31-day-window ranking fix — review summary
+# patch_31d: QDM 31-day-window ranking fix
+
+This is the single reference for the patch_31d work: what was wrong, what changed, how it was
+tested, the 12 km and 4 km results, and (in the [Appendix](#appendix-technical-reference)) the
+technical details needed to run or modify the code.
 
 **Issue:** [#125](https://github.com/ua-snap/cmip6-utils/issues/125) · **Branch:** `patch_31d` (production code `193086a`) ·
 **Status (2026-11-18):** 12 km and 4 km complete and verified (674 outputs); QC reports produced for every output
@@ -11,7 +15,9 @@ adjustment is applied, each simulated value is first ranked to find which quanti
 adjustment factor to use. In xclim 0.47.0 that ranking uses **only the exact day-of-year**
 (`main_only=True`, ~86 values). Training and adjustment therefore used different
 populations, so values were sometimes looked up at the wrong quantile. Training is
-correct; only the ranking at adjustment time is affected.
+correct; only the ranking at adjustment time is affected. No argument of
+`QuantileDeltaMapping.adjust()` controls this, so the fix replaces one xclim function at
+runtime (Appendix A1).
 
 **Scope of the re-run:** bias adjustment only (no re-training, no re-regridding), for all
 non-snow variables: `pr`, `tasmax`, `dtr` (+ derived `tasmin`), `hurs`, `hursmin`,
@@ -56,7 +62,8 @@ non-snow variables: `pr`, `tasmax`, `dtr` (+ derived `tasmin`), `hurs`, `hursmin
 The run took about 65 node-hours, and no adjustment job failed. The job set exactly
 matches the previous 12 km product (pr 56, tasmax 50, dtr 50, hurs 56, hursmin 27,
 sfcWind 49). The 49 `sfcWind` stores include historical-only `sfcWind` for CNRM-CM6-1-HR and
-EC-Earth3-Veg, which have no `sfcWind` scenarios; see the note in Section 5.
+EC-Earth3-Veg, which have no `sfcWind` scenarios; see the note in Section 5 and the table in
+Appendix A7.
 
 **NaN consistency:**
 - Every output (338 new, and the 338 previous ones checked the same way) has the **same
@@ -182,6 +189,136 @@ with a page defining each column. Location:
    climatologies and indicators.
 3. PR `patch_31d → main`; close #125. Consider reporting the ranking behaviour upstream
    to xclim.
+4. Port the same fix to the standalone `cmip6-downscaling` repo, **only after the full review of
+   the patched dataset is complete.** The patch is `qdm_window_patch.py` plus how
+   `bias_adjust.py` applies it (Appendix A1). Re-check the xclim version and ranking-line guard
+   there before applying it.
+
+## Appendix: technical reference
+
+### A1. How the patch works
+
+- **Where.** QDM is trained with `group="time.dayofyear", window=31` (`train_qm.py`). In xclim
+  0.47.0, `xclim/sdba/_adjustment.py::qdm_adjust` ranks `sim` with `main_only=True`. The
+  ranking therefore uses ~50–86 values (the same calendar day across all years) instead of
+  the ~1,550–2,666 the factors were built from. The successor library xsdba exposes the
+  consistent behaviour as `rank_window=True`.
+- **What.** `bias_adjust/qdm_window_patch.py` re-defines `qdm_adjust` with the same
+  `@map_blocks` decorator and the same code, except that `main_only` is configurable. It then
+  rebinds `xclim.sdba.adjustment.qdm_adjust`, the name `QuantileDeltaMapping._adjust` looks
+  up. The conda environment is not modified.
+- **Safety.** The patch refuses to run unless xclim is 0.47.0 (pinned in `environment.yml`)
+  and the expected ranking line is present in the installed source.
+- **Switches.**
+  - `config.QDM_RANK_WINDOWED = True` is the default; `False` gives the legacy behaviour.
+  - `bias_adjust.py --rank_main_only true|false` overrides the config for A/B tests.
+- **Training is unchanged**, so the existing `trained_datasets/` are reused.
+
+### A2. Provenance attributes on every output
+
+- **Global attrs:**
+  - ranking mode: `qdm_rank_main_only`, `qdm_rank_window_days`, `qdm_nquantiles`;
+  - code: `xclim_version`, `cmip6_utils_commit`, `bias_adjust_version`, `bias_adjust_run_label`;
+  - inputs: `sim_path`, `trained_qdm_path`;
+  - untrained cells: `n_cells_without_trained_qdm`;
+  - squeeze: `squeeze_*` counts and limits.
+- **Derived `tasmin`** also records `minuend_store`, `subtrahend_store`,
+  `squeeze_lower_limit` and `squeeze_count_below`.
+
+### A3. `bias_adjust.py` implementation notes
+
+- **Chunking.** Adjustment chunks are `time=-1` with a spatial edge of
+  `config.ADJUST_CHUNK_SIZE` (15 at both resolutions). The resolution is inferred from the
+  grid shape, and the trained store is rechunked to match. Windowed ranking needs ~60× more
+  memory per block than exact-day ranking (~2.8 GB for a 15×15 SSP block). Outputs are
+  bit-identical across chunk sizes and worker layouts (T2, T7).
+- **Memory.** `config.DASK_ADJUST` sets workers × threads per resolution. The memory limit
+  per worker comes from `SLURM_MEM_PER_NODE` minus a client reserve of
+  max(16 GB, 2 × the float32 result). Overrides: `--n_workers`, `--threads_per_worker`,
+  `--memory_limit`, `--chunk_size`.
+- **Measured settings and wall times** (production, per job):
+
+  | Resolution / node | Workers × threads, memory | Historical | SSP | Notes |
+  |---|---|---|---|---|
+  | 12 km, t2small | 4 × 4, 120 GB | ~9 min | ~14–17 min | ~100 jobs at once; `pr` SSP is memory-tight (some worker restarts, outputs valid) |
+  | 4 km, analysis | 6 × 4, 500 GB | ~40–45 min | ~60–75 min | 2 jobs per node |
+  | 4 km, t2small 250 GB nodes | 3 × 3, `--mem=240G` | ~35 min | ~55–62 min | `pr` SSP tight (6 of 37 had a worker restart, outputs valid) |
+
+  Windowed 4 km runs do not fit on the 128 GB nodes. In legacy mode on 120 GB, `pr` and `dtr`
+  also stalled, and only `tasmax` historical finished.
+- **Untrained cells.** NaN = sim NaN or an untrained cell (trained `af` all-NaN). Other
+  QDM-produced NaN are still filled from `sim`, as in #112.
+- **Compute once.** The adjusted array is gathered to the client in a single distributed
+  compute. The Dask cluster is then closed, and the squeeze runs in memory:
+  - `dtr`: 10,000-bin histogram limits at the 0.0000002 / 0.9999998 quantiles;
+  - `pr`, `tasmax`, `hurs`, `hursmin`: fixed limits in `SQUEEZE_LIMITS`.
+
+  The write path is unchanged: synchronous `to_zarr` to `<store>.writing`, rename, then a
+  read-back check.
+- **Test helpers:** `--isel "y=a:b,x=c:d"` (spatial subset), `--run_label` and
+  `--worker_dir_local`.
+- **Run log.** Each job log ends with a `RUN_SUMMARY {json}` line: phase timings, cluster and
+  worker peak memory, and chunk-file counts after write and rename.
+
+### A4. Running it
+
+`run_bias_adjust.py` writes one Slurm script per variable × model × scenario and submits them.
+- Inputs and outputs: `--sim_dir`, `--train_dir`, `--output_dir`, `--slurm_dir`.
+- Job set: `--models`, `--scenarios`, `--variables`.
+- Resources: `--resolution`, `--partition`, `--time_limit`, `--cpus_per_task`, `--mem`.
+- Other options: `--extra_args` (passed to `bias_adjust.py`), `--exclude`, `--skip_complete`
+  and `--dry_run`.
+
+`#SBATCH` headers use full option names and set `--cpus-per-task`, so shared partitions are
+not oversubscribed. Submit from a writable directory, or use `sbatch --chdir=/tmp`, because
+Dask creates `dask-worker-space` in the working directory.
+
+### A5. Verification tools
+
+- `compare_rank_modes.py`:
+  - `pixel`: proves on a tiny subset that xclim's `sim_q` equals an independently computed
+    rank. It checks the legacy population (same calendar day) and the windowed one (±15 days).
+  - `summary`: maps and statistics of windowed vs legacy (or new vs previous) outputs: mean,
+    quantiles, max and wet days.
+  - `regress`: A vs B numerical identity.
+- `check_adjusted_complete.py`:
+  - checks that every chunk is present, plus the time coordinate and attributes;
+  - checks that the NaN mask equals the expected mask (sim NaN ∪ untrained cells, using
+    `--train_dirs`);
+  - `--hash` hashes **decoded** chunk bytes for run-to-run comparison. Multithreaded Blosc
+    can write identical data to differently ordered compressed files, so file checksums
+    don't work.
+- `summarize_runs.py`: collects the `RUN_SUMMARY` lines of a set of job logs into a CSV.
+
+### A6. `derived/` (tasmin = tasmax − dtr)
+
+- `difference.py`:
+  - reads inputs in their native zarr chunks;
+  - keeps the minuend's encoding through the 203.15 K tasmin floor;
+  - merges global attributes by value, without per-store provenance;
+  - records the provenance attributes in A2.
+- `run_cmip6_difference.py` has full-name `#SBATCH` options plus `--cpus_per_task`, `--mem`,
+  `--time_limit`, `--array_limit` and `--dry_run`. It uses node-local numba/matplotlib
+  caches and returns the real exit status.
+
+### A7. Job sets
+
+Each resolution re-runs exactly the job set of its previous published product:
+
+| Resolution | pr | tasmax | dtr | tasmin (derived) | hurs | hursmin | sfcWind | total |
+|---|---|---|---|---|---|---|---|---|
+| 12 km | 56 | 50 | 50 | 50 | 56 | 27 | 49 | 338 |
+| 4 km | 56 | 50 | 50 | 50 | 56 | 27 | 47 | 336 |
+
+The two `sfcWind` stores that differ are historical-only CNRM-CM6-1-HR and EC-Earth3-Veg (see
+the note in Section 5). Do not "fix" the mismatch without a decision to change the published
+job sets.
+
+### A8. QC reports
+
+The PDF QC tool is general-purpose and has its own usage documentation:
+[`downscaling/qc_report/README.md`](../../downscaling/qc_report/README.md). All of its
+settings are in `downscaling/qc_report/config.yaml`.
 
 ---
 <sub>Figures: `python make_figures.py --figdata <review/figdata>` (12 km, from
